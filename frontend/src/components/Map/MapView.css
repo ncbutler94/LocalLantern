@@ -1,0 +1,38 @@
+/* src/components/Map/MapView.css */
+
+/* ──────────────────────────────────────────────
+   1) Bounce keyframes
+   ────────────────────────────────────────────── */
+@keyframes bounce-vertical {
+    0%   { transform: translateY(0); }
+    100% { transform: translateY(-12px); }
+}
+
+/* ──────────────────────────────────────────────
+   2) Hover → bounce
+   ────────────────────────────────────────────── */
+.community-div-icon:hover .marker-icon {
+    animation: bounce-vertical 0.6s infinite alternate ease-in-out;
+    transform-origin: 50% 100%;
+}
+
+/* ──────────────────────────────────────────────
+   3) Popup card: no extra shadow or border
+   ────────────────────────────────────────────── */
+.leaflet-popup-content-wrapper .MuiCard-root {
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;  /* Let the popup’s white BG show */
+}
+
+/* ──────────────────────────────────────────────
+   4) Marker wrapper tweaks
+   ────────────────────────────────────────────── */
+.marker-wrapper {
+    margin: 0;
+    padding: 0;
+}
+
+.marker-wrapper img {
+    display: block;   /* prevent inline-img spacing quirks */
+}

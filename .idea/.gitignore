@@ -1,0 +1,14 @@
+# ↓ stop tracking dependency and build artefacts
+node_modules/
+.env
+*.log
+dist/
+build/
+# JetBrains project metadata
+.idea/
+# macOS / Windows noise
+.DS_Store
+Thumbs.db
+.cache/
+frontend/node_modules/
+frontend/node_modules/.cache/
