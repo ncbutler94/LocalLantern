@@ -1,0 +1,2354 @@
+[
+  {
+    "name": "Abanda",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Abbeville",
+    "county": "Henry County"
+  },
+  {
+    "name": "Adamsville",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Addison",
+    "county": "Winston County"
+  },
+  {
+    "name": "Akron",
+    "county": "Hale County"
+  },
+  {
+    "name": "Alabaster",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Albertville",
+    "county": "Marshall County"
+  },
+  {
+    "name": "Alexander City",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Alexandria",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Aliceville",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Allgood",
+    "county": "Blount County"
+  },
+  {
+    "name": "Altoona",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Andalusia",
+    "county": "Covington County"
+  },
+  {
+    "name": "Anderson",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "Anniston",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Arab",
+    "county": "Marshall County"
+  },
+  {
+    "name": "Ardmore",
+    "county": "Limestone County"
+  },
+  {
+    "name": "Argo",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Ariton",
+    "county": "Dale County"
+  },
+  {
+    "name": "Arley",
+    "county": "Winston County"
+  },
+  {
+    "name": "Ashford",
+    "county": "Houston County"
+  },
+  {
+    "name": "Ashland",
+    "county": "Clay County"
+  },
+  {
+    "name": "Ashville",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Athens",
+    "county": "Limestone County"
+  },
+  {
+    "name": "Atmore",
+    "county": "Escambia County"
+  },
+  {
+    "name": "Attalla",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Auburn",
+    "county": "Lee County"
+  },
+  {
+    "name": "Autaugaville",
+    "county": "Autauga County"
+  },
+  {
+    "name": "Avon",
+    "county": "Houston County"
+  },
+  {
+    "name": "Axis",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Babbie",
+    "county": "Covington County"
+  },
+  {
+    "name": "Baileyton",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Bakerhill",
+    "county": "Barbour County"
+  },
+  {
+    "name": "Ballplay",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Banks",
+    "county": "Pike County"
+  },
+  {
+    "name": "Bay Minette",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Bayou La Batre",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Bear Creek",
+    "county": "Marion County"
+  },
+  {
+    "name": "Beatrice",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Beaverton",
+    "county": "Lamar County"
+  },
+  {
+    "name": "Belgreen",
+    "county": "Franklin County"
+  },
+  {
+    "name": "Belk",
+    "county": "Fayette County"
+  },
+  {
+    "name": "Bellamy",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Belle Fontaine",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Benton",
+    "county": "Lowndes County"
+  },
+  {
+    "name": "Berry",
+    "county": "Fayette County"
+  },
+  {
+    "name": "Bessemer",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Billingsley",
+    "county": "Autauga County"
+  },
+  {
+    "name": "Birmingham",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Black",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Blountsville",
+    "county": "Blount County"
+  },
+  {
+    "name": "Blue Ridge",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Blue Springs",
+    "county": "Barbour County"
+  },
+  {
+    "name": "Boaz",
+    "county": "Marshall County"
+  },
+  {
+    "name": "Boligee",
+    "county": "Greene County"
+  },
+  {
+    "name": "Bon Air",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Boykin",
+    "county": "Wilcox County"
+  },
+  {
+    "name": "Brantley",
+    "county": "Crenshaw County"
+  },
+  {
+    "name": "Brantleyville",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Brent",
+    "county": "Bibb County"
+  },
+  {
+    "name": "Brewton",
+    "county": "Escambia County"
+  },
+  {
+    "name": "Bridgeport",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Brighton",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Brilliant",
+    "county": "Marion County"
+  },
+  {
+    "name": "Bristow Cove",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Brook Highland",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Brookside",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Brookwood",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Broomtown",
+    "county": "Cherokee County"
+  },
+  {
+    "name": "Brundidge",
+    "county": "Pike County"
+  },
+  {
+    "name": "Bucks",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Butler",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "Calera",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Calvert",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Camden",
+    "county": "Wilcox County"
+  },
+  {
+    "name": "Camp Hill",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Carbon Hill",
+    "county": "Walker County"
+  },
+  {
+    "name": "Cardiff",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Carlisle-Rockledge",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Carlton",
+    "county": "Clarke County"
+  },
+  {
+    "name": "Carolina",
+    "county": "Covington County"
+  },
+  {
+    "name": "Carrollton",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Castleberry",
+    "county": "Conecuh County"
+  },
+  {
+    "name": "Catherine",
+    "county": "Wilcox County"
+  },
+  {
+    "name": "Cedar Bluff",
+    "county": "Cherokee County"
+  },
+  {
+    "name": "Center Point",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Centre",
+    "county": "Cherokee County"
+  },
+  {
+    "name": "Centreville",
+    "county": "Bibb County"
+  },
+  {
+    "name": "Chatom",
+    "county": "Washington County"
+  },
+  {
+    "name": "Chelsea",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Cherokee",
+    "county": "Colbert County"
+  },
+  {
+    "name": "Chickasaw",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Childersburg",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Choccolocco",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Chunchula",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Citronelle",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Clanton",
+    "county": "Chilton County"
+  },
+  {
+    "name": "Clay",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Clayhatchee",
+    "county": "Dale County"
+  },
+  {
+    "name": "Clayton",
+    "county": "Barbour County"
+  },
+  {
+    "name": "Cleveland",
+    "county": "Blount County"
+  },
+  {
+    "name": "Clio",
+    "county": "Barbour County"
+  },
+  {
+    "name": "Coaling",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Coats Bend",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Coffee Springs",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Coffeeville",
+    "county": "Clarke County"
+  },
+  {
+    "name": "Coker",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Collinsville",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Colony",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Columbia",
+    "county": "Houston County"
+  },
+  {
+    "name": "Columbiana",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Concord",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Coosada",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Cordova",
+    "county": "Walker County"
+  },
+  {
+    "name": "Cottonwood",
+    "county": "Houston County"
+  },
+  {
+    "name": "County Line",
+    "county": "Blount County"
+  },
+  {
+    "name": "Courtland",
+    "county": "Lawrence County"
+  },
+  {
+    "name": "Cowarts",
+    "county": "Houston County"
+  },
+  {
+    "name": "Creola",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Crossville",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Cuba",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Cullman",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Cullomburg",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "Cusseta",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Dadeville",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Daleville",
+    "county": "Dale County"
+  },
+  {
+    "name": "Daphne",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Dauphin Island",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Daviston",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Dayton",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Deatsville",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Decatur",
+    "county": "Morgan County"
+  },
+  {
+    "name": "Deer Park",
+    "county": "Washington County"
+  },
+  {
+    "name": "Delta",
+    "county": "Clay County"
+  },
+  {
+    "name": "Demopolis",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Detroit",
+    "county": "Lamar County"
+  },
+  {
+    "name": "Dodge City",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Dora",
+    "county": "Walker County"
+  },
+  {
+    "name": "Dothan",
+    "county": "Houston County"
+  },
+  {
+    "name": "Double Springs",
+    "county": "Winston County"
+  },
+  {
+    "name": "Douglas",
+    "county": "Marshall County"
+  },
+  {
+    "name": "Dozier",
+    "county": "Crenshaw County"
+  },
+  {
+    "name": "Dunnavant",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Dutton",
+    "county": "Jackson County"
+  },
+  {
+    "name": "East Brewton",
+    "county": "Escambia County"
+  },
+  {
+    "name": "East Point",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Eclectic",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Edgewater",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Edwardsville",
+    "county": "Cleburne County"
+  },
+  {
+    "name": "Egypt",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Elba",
+    "county": "Coffee County"
+  },
+  {
+    "name": "Elberta",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Eldridge",
+    "county": "Walker County"
+  },
+  {
+    "name": "Elkmont",
+    "county": "Limestone County"
+  },
+  {
+    "name": "Elmore",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Emelle",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Emerald Mountain",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Enterprise",
+    "county": "Coffee County"
+  },
+  {
+    "name": "Epes",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Ethelsville",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Eufaula",
+    "county": "Barbour County"
+  },
+  {
+    "name": "Eunola",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Eutaw",
+    "county": "Greene County"
+  },
+  {
+    "name": "Eva",
+    "county": "Morgan County"
+  },
+  {
+    "name": "Evergreen",
+    "county": "Conecuh County"
+  },
+  {
+    "name": "Excel",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Fairfield",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Fairford",
+    "county": "Washington County"
+  },
+  {
+    "name": "Fairhope",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Fairview",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Falkville",
+    "county": "Morgan County"
+  },
+  {
+    "name": "Faunsdale",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Fayette",
+    "county": "Fayette County"
+  },
+  {
+    "name": "Fayetteville",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Fitzpatrick",
+    "county": "Bullock County"
+  },
+  {
+    "name": "Five Points",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Flomaton",
+    "county": "Escambia County"
+  },
+  {
+    "name": "Florala",
+    "county": "Covington County"
+  },
+  {
+    "name": "Florence",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "Foley",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Forestdale",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Forkland",
+    "county": "Greene County"
+  },
+  {
+    "name": "Fort Deposit",
+    "county": "Lowndes County"
+  },
+  {
+    "name": "Fort Payne",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Fort Rucker",
+    "county": "Dale County"
+  },
+  {
+    "name": "Franklin",
+    "county": "Macon County"
+  },
+  {
+    "name": "Fredonia",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Frisco City",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Fruitdale",
+    "county": "Washington County"
+  },
+  {
+    "name": "Fruithurst",
+    "county": "Cleburne County"
+  },
+  {
+    "name": "Fulton",
+    "county": "Clarke County"
+  },
+  {
+    "name": "Fultondale",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Fyffe",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Gadsden",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Gainesville",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Gallant",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Gantt",
+    "county": "Covington County"
+  },
+  {
+    "name": "Garden City",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Gardendale",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Gaylesville",
+    "county": "Cherokee County"
+  },
+  {
+    "name": "Geiger",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Geneva",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Georgiana",
+    "county": "Butler County"
+  },
+  {
+    "name": "Geraldine",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Gilbertown",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "Glen Allen",
+    "county": "Fayette County"
+  },
+  {
+    "name": "Glencoe",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Glenwood",
+    "county": "Crenshaw County"
+  },
+  {
+    "name": "Goldville",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Good Hope",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Goodwater",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Gordo",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Gordon",
+    "county": "Houston County"
+  },
+  {
+    "name": "Gordonville",
+    "county": "Lowndes County"
+  },
+  {
+    "name": "Goshen",
+    "county": "Pike County"
+  },
+  {
+    "name": "Graham",
+    "county": "Randolph County"
+  },
+  {
+    "name": "Grand Bay",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Grant",
+    "county": "Marshall County"
+  },
+  {
+    "name": "Grayson Valley",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Graysville",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Greensboro",
+    "county": "Hale County"
+  },
+  {
+    "name": "Greenville",
+    "county": "Butler County"
+  },
+  {
+    "name": "Grimes",
+    "county": "Dale County"
+  },
+  {
+    "name": "Grove Hill",
+    "county": "Clarke County"
+  },
+  {
+    "name": "Gu-Win",
+    "county": "Marion County"
+  },
+  {
+    "name": "Guin",
+    "county": "Marion County"
+  },
+  {
+    "name": "Gulf Shores",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Gulfcrest",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Guntersville",
+    "county": "Marshall County"
+  },
+  {
+    "name": "Gurley",
+    "county": "Madison County"
+  },
+  {
+    "name": "Hackleburg",
+    "county": "Marion County"
+  },
+  {
+    "name": "Hackneyville",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Haleburg",
+    "county": "Henry County"
+  },
+  {
+    "name": "Haleyville",
+    "county": "Winston County"
+  },
+  {
+    "name": "Hamilton",
+    "county": "Marion County"
+  },
+  {
+    "name": "Hammondville",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Hanceville",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Hanover",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Harpersville",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Hartford",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Hartselle",
+    "county": "Morgan County"
+  },
+  {
+    "name": "Harvest",
+    "county": "Madison County"
+  },
+  {
+    "name": "Hatton",
+    "county": "Lawrence County"
+  },
+  {
+    "name": "Hayden",
+    "county": "Blount County"
+  },
+  {
+    "name": "Hayneville",
+    "county": "Lowndes County"
+  },
+  {
+    "name": "Hazel Green",
+    "county": "Madison County"
+  },
+  {
+    "name": "Headland",
+    "county": "Henry County"
+  },
+  {
+    "name": "Heath",
+    "county": "Covington County"
+  },
+  {
+    "name": "Heflin",
+    "county": "Cleburne County"
+  },
+  {
+    "name": "Helena",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Henagar",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Highland Lake",
+    "county": "Blount County"
+  },
+  {
+    "name": "Highland Lakes",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Hillsboro",
+    "county": "Lawrence County"
+  },
+  {
+    "name": "Hissop",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Hobson",
+    "county": "Washington County"
+  },
+  {
+    "name": "Hobson City",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Hodges",
+    "county": "Franklin County"
+  },
+  {
+    "name": "Hokes Bluff",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Hollins",
+    "county": "Clay County"
+  },
+  {
+    "name": "Hollis Crossroads",
+    "county": "Cleburne County"
+  },
+  {
+    "name": "Holly Pond",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Hollywood",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Holt",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Holtville",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Homewood",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Hoover",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Horn Hill",
+    "county": "Covington County"
+  },
+  {
+    "name": "Hueytown",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Huguley",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Huntsville",
+    "county": "Madison County"
+  },
+  {
+    "name": "Hurtsboro",
+    "county": "Russell County"
+  },
+  {
+    "name": "Hytop",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Ider",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Indian Springs Village",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Irondale",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Ivalee",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Jackson",
+    "county": "Clarke County"
+  },
+  {
+    "name": "Jacksons' Gap",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Jacksonville",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Jasper",
+    "county": "Walker County"
+  },
+  {
+    "name": "Jemison",
+    "county": "Chilton County"
+  },
+  {
+    "name": "Joppa",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Kansas",
+    "county": "Walker County"
+  },
+  {
+    "name": "Kellyton",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Kennedy",
+    "county": "Lamar County"
+  },
+  {
+    "name": "Killen",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "Kimberly",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Kinsey",
+    "county": "Houston County"
+  },
+  {
+    "name": "Kinston",
+    "county": "Coffee County"
+  },
+  {
+    "name": "La Fayette",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Ladonia",
+    "county": "Russell County"
+  },
+  {
+    "name": "Lake View",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Lakeview",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Lanett",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Langston",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Leeds",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Leesburg",
+    "county": "Cherokee County"
+  },
+  {
+    "name": "Leighton",
+    "county": "Colbert County"
+  },
+  {
+    "name": "Leroy",
+    "county": "Washington County"
+  },
+  {
+    "name": "Lester",
+    "county": "Limestone County"
+  },
+  {
+    "name": "Level Plains",
+    "county": "Dale County"
+  },
+  {
+    "name": "Lexington",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "Libertyville",
+    "county": "Covington County"
+  },
+  {
+    "name": "Lillian",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Lincoln",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Linden",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Lineville",
+    "county": "Clay County"
+  },
+  {
+    "name": "Lipscomb",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Lisman",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "Littleville",
+    "county": "Colbert County"
+  },
+  {
+    "name": "Livingston",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Loachapoka",
+    "county": "Lee County"
+  },
+  {
+    "name": "Lockhart",
+    "county": "Covington County"
+  },
+  {
+    "name": "Locust Fork",
+    "county": "Blount County"
+  },
+  {
+    "name": "Lookout Mountain",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Louisville",
+    "county": "Barbour County"
+  },
+  {
+    "name": "Lowndesboro",
+    "county": "Lowndes County"
+  },
+  {
+    "name": "Loxley",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Luverne",
+    "county": "Crenshaw County"
+  },
+  {
+    "name": "Lynn",
+    "county": "Winston County"
+  },
+  {
+    "name": "Macedonia",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Madison",
+    "county": "Madison County"
+  },
+  {
+    "name": "Madrid",
+    "county": "Houston County"
+  },
+  {
+    "name": "Magnolia Springs",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Malcolm",
+    "county": "Washington County"
+  },
+  {
+    "name": "Malvern",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Maplesville",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Marbury",
+    "county": "Autauga County"
+  },
+  {
+    "name": "Margaret",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Marion",
+    "county": "Perry County"
+  },
+  {
+    "name": "Maytown",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "McCalla",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "McDonald Chapel",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "McIntosh",
+    "county": "Washington County"
+  },
+  {
+    "name": "McKenzie",
+    "county": "Butler County"
+  },
+  {
+    "name": "McMullen",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Meadowbrook",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Megargel",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Memphis",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Mentone",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Meridianville",
+    "county": "Madison County"
+  },
+  {
+    "name": "Midfield",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Midland City",
+    "county": "Dale County"
+  },
+  {
+    "name": "Midway",
+    "county": "Bullock County"
+  },
+  {
+    "name": "Mignon",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Millbrook",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Millerville",
+    "county": "Clay County"
+  },
+  {
+    "name": "Millport",
+    "county": "Lamar County"
+  },
+  {
+    "name": "Millry",
+    "county": "Washington County"
+  },
+  {
+    "name": "Minor",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Mobile",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Monroeville",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Montevallo",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Montgomery",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Moody",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Moores Mill",
+    "county": "Madison County"
+  },
+  {
+    "name": "Mooresville",
+    "county": "Limestone County"
+  },
+  {
+    "name": "Morris",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Morrison Crossroads",
+    "county": "Randolph County"
+  },
+  {
+    "name": "Mosses",
+    "county": "Lowndes County"
+  },
+  {
+    "name": "Moulton",
+    "county": "Lawrence County"
+  },
+  {
+    "name": "Moundville",
+    "county": "Hale County"
+  },
+  {
+    "name": "Mount Olive",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Mount Olive (Jefferson Co.)",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Mount Vernon",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Mountain Brook",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Movico",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Mulga",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Munford",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Muscle Shoals",
+    "county": "Colbert County"
+  },
+  {
+    "name": "Myrtlewood",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Nanafalia",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Nances Creek",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Napier Field",
+    "county": "Dale County"
+  },
+  {
+    "name": "Natural Bridge",
+    "county": "Winston County"
+  },
+  {
+    "name": "Nauvoo",
+    "county": "Walker County"
+  },
+  {
+    "name": "Nectar",
+    "county": "Blount County"
+  },
+  {
+    "name": "Needham",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "New Brockton",
+    "county": "Coffee County"
+  },
+  {
+    "name": "New Hope",
+    "county": "Madison County"
+  },
+  {
+    "name": "New Market",
+    "county": "Madison County"
+  },
+  {
+    "name": "New Site",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "New Union",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Newbern",
+    "county": "Hale County"
+  },
+  {
+    "name": "Newton",
+    "county": "Dale County"
+  },
+  {
+    "name": "Newville",
+    "county": "Henry County"
+  },
+  {
+    "name": "Nixburg",
+    "county": "Coosa County"
+  },
+  {
+    "name": "North Courtland",
+    "county": "Lawrence County"
+  },
+  {
+    "name": "North Johns",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Northport",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Notasulga",
+    "county": "Macon County"
+  },
+  {
+    "name": "Oak Grove",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Oak Hill",
+    "county": "Wilcox County"
+  },
+  {
+    "name": "Oakman",
+    "county": "Walker County"
+  },
+  {
+    "name": "Odenville",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Ohatchee",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Oneonta",
+    "county": "Blount County"
+  },
+  {
+    "name": "Onycha",
+    "county": "Covington County"
+  },
+  {
+    "name": "Opelika",
+    "county": "Lee County"
+  },
+  {
+    "name": "Opp",
+    "county": "Covington County"
+  },
+  {
+    "name": "Orange Beach",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Orrville",
+    "county": "Dallas County"
+  },
+  {
+    "name": "Our Town",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Owens Cross Roads",
+    "county": "Madison County"
+  },
+  {
+    "name": "Oxford",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Ozark",
+    "county": "Dale County"
+  },
+  {
+    "name": "Paint Rock",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Panola",
+    "county": "Sumter County"
+  },
+  {
+    "name": "Parrish",
+    "county": "Walker County"
+  },
+  {
+    "name": "Pea Ridge",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Pelham",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Pell City",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Pennington",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "Penton",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Perdido",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Perdido Beach",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Peterman",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Petrey",
+    "county": "Crenshaw County"
+  },
+  {
+    "name": "Phenix City",
+    "county": "Russell County"
+  },
+  {
+    "name": "Phil Campbell",
+    "county": "Franklin County"
+  },
+  {
+    "name": "Pickensville",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Piedmont",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Pike Road",
+    "county": "Montgomery County"
+  },
+  {
+    "name": "Pinckard",
+    "county": "Dale County"
+  },
+  {
+    "name": "Pine Apple",
+    "county": "Wilcox County"
+  },
+  {
+    "name": "Pine Hill",
+    "county": "Wilcox County"
+  },
+  {
+    "name": "Pine Level",
+    "county": "Autauga County"
+  },
+  {
+    "name": "Pine Ridge",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Pinson",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Pisgah",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Pleasant Grove",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Pleasant Groves",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Point Clear",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Pollard",
+    "county": "Escambia County"
+  },
+  {
+    "name": "Powell",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Prattville",
+    "county": "Autauga County"
+  },
+  {
+    "name": "Priceville",
+    "county": "Morgan County"
+  },
+  {
+    "name": "Prichard",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Providence",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Putnam",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Ragland",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Rainbow City",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Rainsville",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Ranburne",
+    "county": "Cleburne County"
+  },
+  {
+    "name": "Ray",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Red Bay",
+    "county": "Franklin County"
+  },
+  {
+    "name": "Red Level",
+    "county": "Covington County"
+  },
+  {
+    "name": "Redland",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Redstone Arsenal",
+    "county": "Madison County"
+  },
+  {
+    "name": "Reece City",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Reeltown",
+    "county": "Tallapoosa County"
+  },
+  {
+    "name": "Reform",
+    "county": "Pickens County"
+  },
+  {
+    "name": "Rehobeth",
+    "county": "Houston County"
+  },
+  {
+    "name": "Remlap",
+    "county": "Blount County"
+  },
+  {
+    "name": "Repton",
+    "county": "Conecuh County"
+  },
+  {
+    "name": "Ridgeville",
+    "county": "Etowah County"
+  },
+  {
+    "name": "River Falls",
+    "county": "Covington County"
+  },
+  {
+    "name": "Riverside",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Riverview",
+    "county": "Escambia County"
+  },
+  {
+    "name": "Roanoke",
+    "county": "Randolph County"
+  },
+  {
+    "name": "Robertsdale",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Rock Creek",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Rock Mills",
+    "county": "Randolph County"
+  },
+  {
+    "name": "Rockford",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Rockville",
+    "county": "Clarke County"
+  },
+  {
+    "name": "Rogersville",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "Rosa",
+    "county": "Blount County"
+  },
+  {
+    "name": "Russellville",
+    "county": "Franklin County"
+  },
+  {
+    "name": "Rutledge",
+    "county": "Crenshaw County"
+  },
+  {
+    "name": "Saks",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Samson",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Sand Rock",
+    "county": "Cherokee County"
+  },
+  {
+    "name": "Sanford",
+    "county": "Covington County"
+  },
+  {
+    "name": "Saraland",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Sardis City",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Satsuma",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Scottsboro",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Section",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Selma",
+    "county": "Dallas County"
+  },
+  {
+    "name": "Selmont-West Selmont",
+    "county": "Dallas County"
+  },
+  {
+    "name": "Semmes",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Sheffield",
+    "county": "Colbert County"
+  },
+  {
+    "name": "Shelby",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Shiloh",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Shoal Creek",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Shorter",
+    "county": "Macon County"
+  },
+  {
+    "name": "Silas",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "Silverhill",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Sims Chapel",
+    "county": "Washington County"
+  },
+  {
+    "name": "Sipsey",
+    "county": "Walker County"
+  },
+  {
+    "name": "Skyline",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Slocomb",
+    "county": "Geneva County"
+  },
+  {
+    "name": "Smiths Station",
+    "county": "Lee County"
+  },
+  {
+    "name": "Smoke Rise",
+    "county": "Blount County"
+  },
+  {
+    "name": "Snead",
+    "county": "Blount County"
+  },
+  {
+    "name": "Somerville",
+    "county": "Morgan County"
+  },
+  {
+    "name": "South Vinemont",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Southside",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Spanish Fort",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Spring Garden",
+    "county": "Cherokee County"
+  },
+  {
+    "name": "Springville",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Spruce Pine",
+    "county": "Franklin County"
+  },
+  {
+    "name": "St. Florian",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "St. Stephens",
+    "county": "Washington County"
+  },
+  {
+    "name": "Standing Rock",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Stapleton",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Steele",
+    "county": "St. Clair County"
+  },
+  {
+    "name": "Sterrett",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Stevenson",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Stewartville",
+    "county": "Coosa County"
+  },
+  {
+    "name": "Stockton",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Sulligent",
+    "county": "Lamar County"
+  },
+  {
+    "name": "Sumiton",
+    "county": "Walker County"
+  },
+  {
+    "name": "Summerdale",
+    "county": "Baldwin County"
+  },
+  {
+    "name": "Susan Moore",
+    "county": "Blount County"
+  },
+  {
+    "name": "Sweet Water",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Sylacauga",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Sylvan Springs",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Sylvania",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Talladega",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Talladega Springs",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Tallassee",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Tarrant",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Taylor",
+    "county": "Houston County"
+  },
+  {
+    "name": "Theodore",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Thomaston",
+    "county": "Marengo County"
+  },
+  {
+    "name": "Thomasville",
+    "county": "Clarke County"
+  },
+  {
+    "name": "Thorsby",
+    "county": "Chilton County"
+  },
+  {
+    "name": "Tibbie",
+    "county": "Washington County"
+  },
+  {
+    "name": "Tidmore Bend",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Tillmans Corner",
+    "county": "Mobile County"
+  },
+  {
+    "name": "Town Creek",
+    "county": "Lawrence County"
+  },
+  {
+    "name": "Toxey",
+    "county": "Choctaw County"
+  },
+  {
+    "name": "Trafford",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Triana",
+    "county": "Madison County"
+  },
+  {
+    "name": "Trinity",
+    "county": "Morgan County"
+  },
+  {
+    "name": "Troy",
+    "county": "Pike County"
+  },
+  {
+    "name": "Trussville",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Tuscaloosa",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Tuscumbia",
+    "county": "Colbert County"
+  },
+  {
+    "name": "Tuskegee",
+    "county": "Macon County"
+  },
+  {
+    "name": "Twin",
+    "county": "Marion County"
+  },
+  {
+    "name": "Underwood-Petersville",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "Union",
+    "county": "Greene County"
+  },
+  {
+    "name": "Union Grove",
+    "county": "Marshall County"
+  },
+  {
+    "name": "Union Springs",
+    "county": "Bullock County"
+  },
+  {
+    "name": "Uniontown",
+    "county": "Perry County"
+  },
+  {
+    "name": "Uriah",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Valley",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Valley Grande",
+    "county": "Dallas County"
+  },
+  {
+    "name": "Valley Head",
+    "county": "DeKalb County"
+  },
+  {
+    "name": "Vance",
+    "county": "Tuscaloosa County"
+  },
+  {
+    "name": "Vandiver",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Vernon",
+    "county": "Lamar County"
+  },
+  {
+    "name": "Vestavia Hills",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Vina",
+    "county": "Franklin County"
+  },
+  {
+    "name": "Vincent",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Vinegar Bend",
+    "county": "Washington County"
+  },
+  {
+    "name": "Vredenburgh",
+    "county": "Monroe County"
+  },
+  {
+    "name": "Wadley",
+    "county": "Randolph County"
+  },
+  {
+    "name": "Waldo",
+    "county": "Talladega County"
+  },
+  {
+    "name": "Walnut Grove",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Warrior",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "Waterloo",
+    "county": "Lauderdale County"
+  },
+  {
+    "name": "Waverly",
+    "county": "Chambers County"
+  },
+  {
+    "name": "Weaver",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Webb",
+    "county": "Houston County"
+  },
+  {
+    "name": "Wedowee",
+    "county": "Randolph County"
+  },
+  {
+    "name": "Weogufka",
+    "county": "Coosa County"
+  },
+  {
+    "name": "West Blocton",
+    "county": "Bibb County"
+  },
+  {
+    "name": "West End-Cobb Town",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "West Jefferson",
+    "county": "Jefferson County"
+  },
+  {
+    "name": "West Point",
+    "county": "Cullman County"
+  },
+  {
+    "name": "Westover",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Wetumpka",
+    "county": "Elmore County"
+  },
+  {
+    "name": "Whatley",
+    "county": "Clarke County"
+  },
+  {
+    "name": "White Hall",
+    "county": "Lowndes County"
+  },
+  {
+    "name": "White Plains",
+    "county": "Calhoun County"
+  },
+  {
+    "name": "Whitesboro",
+    "county": "Etowah County"
+  },
+  {
+    "name": "Wilsonville",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Wilton",
+    "county": "Shelby County"
+  },
+  {
+    "name": "Winfield",
+    "county": "Marion County"
+  },
+  {
+    "name": "Woodland",
+    "county": "Randolph County"
+  },
+  {
+    "name": "Woodstock",
+    "county": "Bibb County"
+  },
+  {
+    "name": "Woodville",
+    "county": "Jackson County"
+  },
+  {
+    "name": "Yellow Bluff",
+    "county": "Wilcox County"
+  },
+  {
+    "name": "York",
+    "county": "Sumter County"
+  }
+]
