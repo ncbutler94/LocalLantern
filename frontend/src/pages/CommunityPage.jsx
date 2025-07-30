@@ -298,12 +298,12 @@ export default function CommunityPage() {
                     filteredCounties={availableCounties}
                     tempCity={selectedCity}
                     selectedCity={selectedCity}
-                    setSelectedCity={(val) => {
+                    onCityChange={(val) => {
                         dispatch({ type: 'city', value: val });
                         if (val) dispatch({ type: 'county', value: cityToCounty[val] || '' });
                     }}
                     selectedCounty={selectedCounty}
-                    setSelectedCounty={(val) => {
+                    onCountyChange={(val) => {
                         dispatch({ type: 'county', value: val });
                         if (!val) dispatch({ type: 'city', value: '' });
                     }}

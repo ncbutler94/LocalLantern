@@ -1,5 +1,5 @@
 # ↓ stop tracking dependency and build artefacts
-node_modules/
+**/node_modules/
 .env
 *.log
 dist/
