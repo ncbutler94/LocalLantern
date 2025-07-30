@@ -153,7 +153,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
 });
 
 /* ---------------------------------------------------------------------------
- * GET /api/community/categories – dropdown list (unchanged)
+ * GET /api/community/categories – dropdown list
  * ------------------------------------------------------------------------- */
 router.get('/categories', async (_req, res, next) => {
     try {
