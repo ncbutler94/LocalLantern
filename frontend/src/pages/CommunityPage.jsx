@@ -68,13 +68,12 @@ export default function CommunityPage() {
     const [openedPopupId, setOpenedPopupId] = useState(null);
     const [hoveredId,      setHoveredId]    = useState(null);
     const [showFilters,    setShowFilters]  = useState(true);
+    const [stepOneOpen,    setStepOneOpen]  = useState(false);
+    const [stepTwoOpen,    setStepTwoOpen]  = useState(false);
+    const [stepOneData,    setStepOneData]  = useState(null);
+    const [selectedPost,   setSelectedPost] = useState(null);
 
-    const [stepOneOpen, setStepOneOpen] = useState(false);
-    const [stepTwoOpen, setStepTwoOpen] = useState(false);
-    const [stepOneData, setStepOneData] = useState(null);
-
-    const [selectedPost, setSelectedPost] = useState(null);  // ⬅️ NEW
-
+    /* ---------- filters ---------- */
     const [filters, dispatch] = useReducer(filterReducer, initialFilters);
     const {
         search,
@@ -176,6 +175,12 @@ export default function CommunityPage() {
         });
     }, [communityPosts, selectedCity, selectedCounty, dateRange, search]);
 
+    /* ---------- card click (needs BEFORE popupContentById) ---------- */
+    const handleCardClick = useCallback((post) => {
+        setSelectedPost(post);
+        setOpenedPopupId(null);     // hide any open map popup
+    }, []);
+
     /* ---------- popup content ---------- */
     const popupContentById = useMemo(() => {
         const m = {};
@@ -187,11 +192,12 @@ export default function CommunityPage() {
                     hoveredId={hoveredId}
                     setHoveredId={setHoveredId}
                     onLocationClick={() => markerRefs.current[key]?.openPopup()}
+                    onCardClick={handleCardClick}
                 />
             );
         });
         return m;
-    }, [filteredPosts, hoveredId]);
+    }, [filteredPosts, hoveredId, handleCardClick]);
 
     /* ---------- marker click ---------- */
     const handleMarkerClick = useCallback(
@@ -206,12 +212,6 @@ export default function CommunityPage() {
         },
         [points]
     );
-
-    /* ---------- card click helper ---------- */
-    const handleCardClick = useCallback((post) => {
-        setSelectedPost(post);       // ⬅️ NEW
-        setOpenedPopupId(null);      // optional: hide any map popup
-    }, []);
 
     /* ---------- new-post flow ---------- */
     const openStepOne          = () => setStepOneOpen(true);
