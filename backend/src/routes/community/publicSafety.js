@@ -15,15 +15,11 @@ const bucket        = storage.bucket(process.env.GCS_BUCKET);
 const FOLDER_PREFIX = 'community/public-safety';
 const upload        = multer({ storage: multer.memoryStorage() });
 
-/* ─────────── Validation ─────────── */
+/* ─────────── Validation ───────────
+   (severity / alert_type / alert_type_other removed) */
 const validate = [
     body('title').trim().notEmpty().isLength({ max: 50 }),
-    body('severity')
-        .isIn(['info', 'caution', 'danger']),
-    body('expires_at')
-        .isISO8601()
-        .toDate()
-        .optional({ nullable: true }),
+    body('expires_at').isISO8601().toDate().optional({ nullable: true }),
     body('county').trim().notEmpty(),
     body('city').trim().optional({ nullable: true }),
 ];
@@ -45,7 +41,7 @@ router.post(
         let photoUrls = [];
         try {
             photoUrls = await Promise.all(
-                (req.files || []).map(file => {
+                (req.files || []).map((file) => {
                     const gcsName = `${FOLDER_PREFIX}/${Date.now()}_${file.originalname}`;
                     const blob    = bucket.file(gcsName);
                     const stream  = blob.createWriteStream({ metadata: { contentType: file.mimetype } });
@@ -68,10 +64,7 @@ router.post(
         const {
             title,
             description = '',
-            severity,
-            alert_type,
-            alert_type_other = null,
-            expires_at      = null,
+            expires_at  = null,
             city,
             county,
             latitude,
@@ -80,32 +73,31 @@ router.post(
         } = req.body;
 
         try {
-            const id = await db.transaction(async trx => {
+            const id = await db.transaction(async (trx) => {
                 /* a) community_posts */
                 const [postId] = await trx('community_posts').insert({
-                    user_id:    req.user.id,
-                    category:   'public-safety-alerts',
+                    user_id   : req.user.id,
+                    category  : 'public-safety-alerts',
                     title,
                     description,
                     visibility,
                     city,
                     county,
-                    latitude : latitude  ? parseFloat(latitude)  : null,
-                    longitude: longitude ? parseFloat(longitude) : null,
-                    posted_at: trx.fn.now()
+                    latitude  : latitude  ? parseFloat(latitude)  : null,
+                    longitude : longitude ? parseFloat(longitude) : null,
+                    posted_at : trx.fn.now(),
                 });
 
-                /* b) public_safety_alerts */
+                /* b) public_safety_alerts  (alert-type columns removed) */
                 await trx('public_safety_alerts').insert({
-                    id       : postId,
-                    user_id  : req.user.id,
+                    id        : postId,
+                    user_id   : req.user.id,
                     title,
-                    body     : description,
+                    body      : description,
                     city,
                     county,
-                    latitude : latitude  ? parseFloat(latitude)  : null,
-                    longitude: longitude ? parseFloat(longitude) : null,
-                    severity,
+                    latitude  : latitude  ? parseFloat(latitude)  : null,
+                    longitude : longitude ? parseFloat(longitude) : null,
                     expires_at,
                 });
 
@@ -131,7 +123,7 @@ router.post(
 );
 
 /* ─────────── GET /api/public-safety ───────────
-   Returns all active alerts, auto-filters out expired ones. */
+   Returns all active alerts, auto-filters expired ones. */
 router.get('/', async (req, res, next) => {
     try {
         const { city = '', county = '' } = req.query;
@@ -150,14 +142,11 @@ router.get('/', async (req, res, next) => {
                 'cp.description',
                 'cp.city',
                 'cp.county',
-                'psa.severity',
-                'psa.alert_type',
-                'psa.alert_type_other',
                 'psa.expires_at',
                 db.raw('JSON_ARRAYAGG(p.url) AS photos')
             )
             .groupBy('cp.id')
-            .where(qb => {
+            .where((qb) => {
                 /* remove expired alerts */
                 qb.whereNull('psa.expires_at').orWhere('psa.expires_at', '>', db.fn.now());
             });

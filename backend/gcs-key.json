@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "the-local-lantern",
+  "private_key_id": "165ef431a52d9849b87521aae592d81c9c218a2f",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCnZBpCJ9YFrdfo\nir3TBBvBrT0IiR3e+GJvDSgQxKvuDTYPvjR9GmPelIHmLOI00h4TZBHopmhAHMvi\nonxKfiMHXFtEqDK9HQiZYMSEnw2QJk63t1H2L7wtmZndAPSAq2R4IwjyW4jkiSeJ\ncfFj1bq8rzBAy1ujvSRgEMXdKFhnoUPdXsPZxvtowcIpV9SjUjrHpWut0xXuSAYe\nKMh5uelmmzW1uyUKbUhDIvCgmxjs38jif6an/APMl0m151fL+tUNubtK02tT7qp3\nYhm/C37mezQHxj3FdPAkpLh0OfErROsyptTjvO3jAKcZ/ANnZXlXHp4KFpIVdPBR\n6hwFEMSpAgMBAAECggEADSSwJqJl3M2LAtJ1B/b+PnF9tbg9eRLX+MgHzbRBmzgc\nlvUcfje2oIUY44PB8buPWr6sZM//JsyUCjwvpfI8SiFLdcs+q6h2UsO9PnwWJqvJ\nWcXKSNoz7IEvaoHfEOTUR1YZ51y+VZJ64SEKHwiKyHK5h1boX8WTz/q1LJG0ylMn\n4J5dEqVRprLf5hupX+/BaZRa1IiZGq8O22ZwCoKO6Skro/4wtXLvhu5wzRao8l/k\nWIXkYgBxqo6wb1e7GZvqoaCDzvyz4daST4yGqYauJNsGYcDH+uSNCX8UkomAmyxS\nqvLhzvQSTaRqsPxvSigg3jTTYKy55QDtXo9BSJYsoQKBgQDVnX0tmbjVr1Arc09E\nSggyqonz5MztzmhJywW5gKujCvVJVGtncj1N930kRTScAg2VPZcSZGMWYAJb6UDv\nnJ4qO9/ogcAEtbBFXnhItheJVwqSu/5wFVGTsS5SACqeTGOAbzNiIXpQPLbEKZAd\n629jyOuZJC7Mn8RrhS3Gze0PSQKBgQDImqw9nc4+Myb/kDPu3Cim1ROjEnNHlSq2\nAKbNSFAQp+vOHMdepHMQm66qtPZQyd7lM3t6niLPSfOVCkYoo5+kS1X6+3IXYqDq\nIaiXhEzLps0LftOs8d+FHj5ZSfzMNHU1l/ZGNgADuq/hHZ/NM84VyZ1FjwueMlhT\nuTJrP9wqYQKBgCJK8yKT8AlV6J/hFhOXcvN3T0g5LfDrVvCpyBR8pJE7HB+Wjtt/\ninnuxkdBWO3GopmX1p3cQdAAv8AzlPoigX20OQDhe4sGA/NO9C5wFR02PPtLdNBX\ni84S/qWpYy4gg0TGFVCmoTUqWgjpxzoWZr51LeVa2qx85ZKBQdUNkAYJAoGBAI+g\nxs+7C+7W2wZB7h0IPobsqomobSeEcrcrEkKKkuDKCfhh/JETt1rdzJpmxLElSFTc\nnn01egDmluNQHtl8BZIxalcv7wk1Ubcw8C/DxuRNAiRH4zDBYONDuypc4gYnTQBZ\nVDgC89G3ubO5bTAT9mr9FoC2IYBb1YfkYmgNqgohAoGAbqOj6RKvmbFlzB6JdqTX\nTqf6NTPrHG/3UBxb51ufdKcA/wbv5Hedg73pA8LA1nL9FngAsNFzUtN1Ss4I4dgf\nZ5PNQLXYY/ZF12aR4q/Zt83sX/1BI1F+1QLCEBa3Ha2Vw7LYS18fUiov08bMlVpk\ntBs4xfXrk6vTVr4jYgxJGGE=\n-----END PRIVATE KEY-----\n",
+  "client_email": "lantern-storage-sa@the-local-lantern.iam.gserviceaccount.com",
+  "client_id": "111785499850691511166",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/lantern-storage-sa%40the-local-lantern.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
