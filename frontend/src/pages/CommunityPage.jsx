@@ -1,4 +1,5 @@
 // src/pages/CommunityPage.jsx
+// ============================================================================
 import React, {
     useState,
     useMemo,
@@ -175,7 +176,7 @@ export default function CommunityPage() {
         });
     }, [communityPosts, selectedCity, selectedCounty, dateRange, search]);
 
-    /* ---------- card click (needs BEFORE popupContentById) ---------- */
+    /* ---------- card click (modal opener) ---------- */
     const handleCardClick = useCallback((post) => {
         setSelectedPost(post);
         setOpenedPopupId(null);     // hide any open map popup
@@ -277,6 +278,7 @@ export default function CommunityPage() {
                         setHoveredId={setHoveredId}
                         onCardClick={handleCardClick}
                         onLocationClick={handleLocationClick}
+                        /* … remaining props unchanged … */
                         selectedView={view}
                         onViewChange={(val) => {
                             dispatch({ type: 'view', value: val });
@@ -357,6 +359,7 @@ export default function CommunityPage() {
                 open={Boolean(selectedPost)}
                 post={selectedPost}
                 onClose={() => setSelectedPost(null)}
+                currentUser={user}            /* <- NEW: fixes repeated login prompt */
             />
         </>
     );
