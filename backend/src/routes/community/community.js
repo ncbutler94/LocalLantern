@@ -94,9 +94,6 @@ router.get('/', optionalAuth, async (req, res, next) => {
             db.raw('cc.label AS categoryLabel'),
             'lf.lost_or_found',
             'lf.reward',
-            'psa.severity',
-            'psa.alert_type',
-            'psa.alert_type_other',
             // volunteer-specific
             'vh.help_type',
             'vh.needed_date',

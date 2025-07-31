@@ -5,10 +5,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="85d913a2-29a9-4691-be92-ce88b393eda8" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/backend/gcs-key.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/PostDetailModal.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../.gitignore" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/combined.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/combined.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/error.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/error.log" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/src/routes/community/community.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/community.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/publicSafety.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/publicSafety.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityPanel.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityPanel.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/NewCommunityPosts/NewPublicSafetyForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/NewCommunityPosts/NewPublicSafetyForm.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/pages/CommunityPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/CommunityPage.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../package.json" beforeDir="false" />
@@ -43,21 +51,26 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;move-files-to-new-repo&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/Nate/Documents/The Local Lantern/the-local-lantern/TheLocalLantern&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "view-listing-card",
+    "last_opened_file_path": "C:/Users/Nate/Documents/The Local Lantern/the-local-lantern/TheLocalLantern/backend",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -76,7 +89,7 @@
       <workItem from="1753752490452" duration="1623000" />
       <workItem from="1753795585599" duration="2082000" />
       <workItem from="1753843498094" duration="598000" />
-      <workItem from="1753884264923" duration="1398000" />
+      <workItem from="1753884264923" duration="24370000" />
     </task>
     <servers />
   </component>
