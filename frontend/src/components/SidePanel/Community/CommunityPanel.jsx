@@ -1,6 +1,7 @@
 // src/components/SidePanel/Community/CommunityPanel.jsx
 // -----------------------------------------------------------------------------
-// + adds PostDetailModal and click-handling for cards
+// FIX: pass the logged‑in user to <PostDetailModal /> so the modal knows
+//      the viewer is authenticated.  This restores the like/comment UI.
 // -----------------------------------------------------------------------------
 
 import React, { useState, useEffect } from 'react';
@@ -15,12 +16,12 @@ import { ExpandLess, ExpandMore } from '@mui/icons-material';
 
 import CommunityFilter   from './CommunityFilter';
 import CommunityList     from './CommunityList';
-import PostDetailModal   from './PostDetailModal';          // ← NEW
+import PostDetailModal   from './PostDetailModal';
 import { useAuthModal }  from '../../../contexts/AuthModalContext';
 
 export default function CommunityPanel(props) {
     const {
-        user,
+        user,                    // ← already supplied by parent
         posts,
         hoveredId,
         setHoveredId,
@@ -31,10 +32,10 @@ export default function CommunityPanel(props) {
     } = props;
 
     /* — modal state — */
-    const [detailOpen, setDetailOpen]   = useState(false);
-    const [selectedPost, setSelected]   = useState(null);
+    const [detailOpen, setDetailOpen] = useState(false);
+    const [selectedPost, setSelected] = useState(null);
 
-    const handleCardClick = (post) => {   // ← passed to CommunityList
+    const handleCardClick = (post) => {
         setSelected(post);
         setDetailOpen(true);
     };
@@ -71,7 +72,7 @@ export default function CommunityPanel(props) {
                     overflow: 'hidden',
                 }}
             >
-                {/* Filters */}
+                {/* Filters --------------------------------------------------- */}
                 <Collapse in={showFilters}>
                     <Box sx={{ p: 2 }}>
                         <CommunityFilter {...props} />
@@ -87,7 +88,7 @@ export default function CommunityPanel(props) {
                     {showFilters ? 'Hide Filters' : 'Show Filters'}
                 </Button>
 
-                {/* Scrollable list */}
+                {/* Scrollable list ----------------------------------------- */}
                 <Box
                     sx={{
                         flex: 1,
@@ -103,7 +104,7 @@ export default function CommunityPanel(props) {
                         }),
                     }}
                 >
-                    {/* sticky sub-header */}
+                    {/* sticky sub‑header */}
                     <Box
                         sx={{
                             position: 'sticky',
@@ -132,17 +133,18 @@ export default function CommunityPanel(props) {
                             hoveredId={hoveredId}
                             setHoveredId={setHoveredId}
                             onLocationClick={onLocationClick}
-                            onCardClick={handleCardClick}        // ← wired in
+                            onCardClick={handleCardClick}
                         />
                     </Box>
                 </Box>
             </Box>
 
-            {/* Detail Modal */}
+            {/* Detail Modal (now receives `user`) ------------------------- */}
             <PostDetailModal
                 open={detailOpen}
                 post={selectedPost}
                 onClose={() => setDetailOpen(false)}
+                user={user}       /* ← key fix */
             />
         </>
     );
