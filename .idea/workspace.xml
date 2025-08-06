@@ -8,12 +8,10 @@
       <change beforePath="$PROJECT_DIR$/../.gitignore" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/combined.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/combined.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/error.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/error.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/community.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/community.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/app.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/src/routes/posts.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/posts.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityPanel.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityPanel.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/PostDetailModal.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/PostDetailModal.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../package.json" beforeDir="false" />
@@ -53,7 +51,7 @@
     &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;view-listing-card&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;profile-set-up&quot;,
     &quot;last_opened_file_path&quot;: &quot;C:/Users/Nate/Documents/The Local Lantern/the-local-lantern/TheLocalLantern/backend&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
@@ -94,7 +92,9 @@
       <workItem from="1754313889387" duration="6399000" />
       <workItem from="1754339303890" duration="7322000" />
       <workItem from="1754403643903" duration="13725000" />
-      <workItem from="1754445396140" duration="1414000" />
+      <workItem from="1754445396140" duration="7268000" />
+      <workItem from="1754490328161" duration="2982000" />
+      <workItem from="1754505014574" duration="8047000" />
     </task>
     <servers />
   </component>
