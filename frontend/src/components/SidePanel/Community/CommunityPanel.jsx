@@ -1,7 +1,7 @@
 // src/components/SidePanel/Community/CommunityPanel.jsx
 // -----------------------------------------------------------------------------
-// Layout tweaks: removed top margin, tightened maxHeight so the page
-// itself no longer scrolls when the list is long.
+// FIX: pass the logged‑in user to <PostDetailModal /> so the modal knows
+//      the viewer is authenticated.  This restores the like/comment UI.
 // -----------------------------------------------------------------------------
 
 import React, { useState, useEffect } from 'react';
@@ -14,28 +14,36 @@ import {
 } from '@mui/material';
 import { ExpandLess, ExpandMore } from '@mui/icons-material';
 
-import CommunityFilter from './CommunityFilter';
-import CommunityList   from './CommunityList';
-import { useAuthModal } from '../../../contexts/AuthModalContext';
+import CommunityFilter   from './CommunityFilter';
+import CommunityList     from './CommunityList';
+import PostDetailModal   from './PostDetailModal';
+import { useAuthModal }  from '../../../contexts/AuthModalContext';
 
 export default function CommunityPanel(props) {
     const {
-        user,
+        user,                    // ← already supplied by parent
         posts,
         hoveredId,
         setHoveredId,
         onLocationClick,
-        onCardClick,
         onNewPost,
         showFilters,
         onToggleFilters,
-        /* …all other props passthrough… */
     } = props;
 
+    /* — modal state — */
+    const [detailOpen, setDetailOpen] = useState(false);
+    const [selectedPost, setSelected] = useState(null);
+
+    const handleCardClick = (post) => {
+        setSelected(post);
+        setDetailOpen(true);
+    };
+
+    /* — defer “New Post” until after login — */
     const { open: openAuth } = useAuthModal();
     const [pendingNew, setPendingNew] = useState(false);
 
-    /* deferred “New Post” after login */
     useEffect(() => {
         if (pendingNew && user) {
             setPendingNew(false);
@@ -55,82 +63,89 @@ export default function CommunityPanel(props) {
     };
 
     return (
-        <Box
-            sx={{
-                /* removed mt so panel aligns with filter/search block */
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100%',
-                overflow: 'hidden',
-            }}
-        >
-            {/* ── Filters ─────────────────────────────────────────────── */}
-            <Collapse in={showFilters}>
-                <Box sx={{ p: 2 }}>
-                    <CommunityFilter {...props} />
-                </Box>
-                <Divider />
-            </Collapse>
-
-            <Button
-                startIcon={showFilters ? <ExpandLess /> : <ExpandMore />}
-                onClick={onToggleFilters}
-                sx={{ my: 1, alignSelf: 'center' }}
-            >
-                {showFilters ? 'Hide Filters' : 'Show Filters'}
-            </Button>
-
-            {/* ── Scrollable list ─────────────────────────────────────── */}
+        <>
             <Box
                 sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflowY: 'auto',
-                    border: 1,
-                    overscrollBehaviorY: 'contain',
-                    borderColor: 'divider',
-                    borderRadius: 2,
-                    /* keep inside viewport regardless of map offset */
-                         /* shrink a bit more when the filter block is hidden */
-                         maxHeight: (theme) => ({
-                             xs: `calc(100vh - ${showFilters ? 383 : 200}px)`,
-                             md: `calc(100vh - ${showFilters ? 383 : 200}px)`,
-                         }),
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    overflow: 'hidden',
                 }}
             >
-                {/* Sticky sub-header */}
+                {/* Filters --------------------------------------------------- */}
+                <Collapse in={showFilters}>
+                    <Box sx={{ p: 2 }}>
+                        <CommunityFilter {...props} />
+                    </Box>
+                    <Divider />
+                </Collapse>
+
+                <Button
+                    startIcon={showFilters ? <ExpandLess /> : <ExpandMore />}
+                    onClick={onToggleFilters}
+                    sx={{ my: 1, alignSelf: 'center' }}
+                >
+                    {showFilters ? 'Hide Filters' : 'Show Filters'}
+                </Button>
+
+                {/* Scrollable list ----------------------------------------- */}
                 <Box
                     sx={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 10,
-                        px: 2,
-                        py: 1,
-                        bgcolor: 'grey.100',
-                        borderBottom: 1,
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: 'auto',
+                        border: 1,
+                        overscrollBehaviorY: 'contain',
                         borderColor: 'divider',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
+                        borderRadius: 2,
+                        maxHeight: (theme) => ({
+                            xs: `calc(100vh - ${showFilters ? 383 : 200}px)`,
+                            md: `calc(100vh - ${showFilters ? 383 : 200}px)`,
+                        }),
                     }}
                 >
-                    <Typography variant="h6">Community Posts</Typography>
-                    <Button variant="contained" color="success" onClick={handleNewPostClick}>
-                        New Post
-                    </Button>
-                </Box>
+                    {/* sticky sub‑header */}
+                    <Box
+                        sx={{
+                            position: 'sticky',
+                            top: 0,
+                            zIndex: 10,
+                            px: 2,
+                            py: 1,
+                            bgcolor: 'grey.100',
+                            borderBottom: 1,
+                            borderColor: 'divider',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                        }}
+                    >
+                        <Typography variant="h6">Community Posts</Typography>
+                        <Button variant="contained" color="success" onClick={handleNewPostClick}>
+                            New Post
+                        </Button>
+                    </Box>
 
-                <Box sx={{ p: 2 }}>
-                    <CommunityList
-                        user={user}
-                        posts={posts}
-                        hoveredId={hoveredId}
-                        setHoveredId={setHoveredId}
-                        onLocationClick={onLocationClick}
-                        onCardClick={onCardClick}
-                    />
+                    <Box sx={{ p: 2 }}>
+                        <CommunityList
+                            user={user}
+                            posts={posts}
+                            hoveredId={hoveredId}
+                            setHoveredId={setHoveredId}
+                            onLocationClick={onLocationClick}
+                            onCardClick={handleCardClick}
+                        />
+                    </Box>
                 </Box>
             </Box>
-        </Box>
+
+            {/* Detail Modal (now receives `user`) ------------------------- */}
+            <PostDetailModal
+                open={detailOpen}
+                post={selectedPost}
+                onClose={() => setDetailOpen(false)}
+                user={user}       /* ← key fix */
+            />
+        </>
     );
 }

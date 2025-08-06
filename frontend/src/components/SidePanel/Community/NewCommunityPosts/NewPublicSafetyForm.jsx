@@ -11,14 +11,8 @@ import {
     Button,
     CircularProgress,
     Box,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
 } from '@mui/material';
-import WarningIcon  from '@mui/icons-material/Warning';
-import ReportIcon   from '@mui/icons-material/Report';
-import InfoIcon     from '@mui/icons-material/Info';
+
 import useBasePostForm, {
     MAX_TITLE,
     MAX_DESCRIPTION,
@@ -28,19 +22,17 @@ import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 
 export default function NewPublicSafetyForm({ onClose, onSubmit, onRefresh }) {
-    /* ─── shared base fields ─────────────────────────────────────────── */
+    /* ─── shared base fields ─────────────────────────────────────────────── */
     const base = useBasePostForm();
 
-    /* ─── public-safety specific fields ──────────────────────────────── */
-    const [severity, setSeverity]   = useState('info');
+    /* ─── public-safety specific fields (severity removed) ───────────────── */
     const [expiresAt, setExpiresAt] = useState(dayjs().add(24, 'hour'));
 
-    /* ─── validation ─────────────────────────────────────────────────── */
+    /* ─── validation ─────────────────────────────────────────────────────── */
     const needsTitle  = !base.title.trim();
     const needsCounty = !base.county.trim();
 
-    const isDisabled =
-        base.submitting || needsTitle || needsCounty;
+    const isDisabled = base.submitting || needsTitle || needsCounty;
 
     const tooltipMsg = needsTitle
         ? 'Title is required.'
@@ -48,7 +40,7 @@ export default function NewPublicSafetyForm({ onClose, onSubmit, onRefresh }) {
             ? 'County is required.'
             : '';
 
-    /* ─── submit ─────────────────────────────────────────────────────── */
+    /* ─── submit ─────────────────────────────────────────────────────────── */
     async function handlePost() {
         base.setAttemptedSubmit(true);
         base.setError('');
@@ -60,7 +52,6 @@ export default function NewPublicSafetyForm({ onClose, onSubmit, onRefresh }) {
 
             const fd = new FormData();
             fd.append('title',       base.title);
-            fd.append('severity',    severity);
             fd.append('description', base.description);
             fd.append('city',        base.city);
             fd.append('county',      base.county);
@@ -81,7 +72,7 @@ export default function NewPublicSafetyForm({ onClose, onSubmit, onRefresh }) {
         }
     }
 
-    /* ─── render ─────────────────────────────────────────────────────── */
+    /* ─── render ─────────────────────────────────────────────────────────── */
     return (
         <>
             <DialogTitle>New Public Safety Alert</DialogTitle>
@@ -104,27 +95,6 @@ export default function NewPublicSafetyForm({ onClose, onSubmit, onRefresh }) {
                 <Typography variant="caption">
                     {base.title.length} / {MAX_TITLE}
                 </Typography>
-
-                {/* Severity */}
-                <FormControl required sx={{ width: 180 }}>
-                    <InputLabel>Severity</InputLabel>
-                    <Select
-                        value={severity}
-                        label="Severity"
-                        size="small"
-                        onChange={(e) => setSeverity(e.target.value)}
-                    >
-                        <MenuItem value="info">
-                            <InfoIcon fontSize="small" sx={{ mr: 1 }} /> Info
-                        </MenuItem>
-                        <MenuItem value="caution">
-                            <WarningIcon fontSize="small" sx={{ mr: 1 }} /> Caution
-                        </MenuItem>
-                        <MenuItem value="danger">
-                            <ReportIcon fontSize="small" sx={{ mr: 1 }} /> Danger
-                        </MenuItem>
-                    </Select>
-                </FormControl>
 
                 {/* City / County */}
                 <CityCountySelect
