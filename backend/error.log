@@ -141,3 +141,25 @@
     at Upload.makeRequest (file:///C:/Users/Nate/Documents/The%20Local%20Lantern/the-local-lantern/TheLocalLantern/backend/node_modules/@google-cloud/storage/build/esm/src/resumable-upload.js:724:43)
     at AsyncRetry.retries (file:///C:/Users/Nate/Documents/The%20Local%20Lantern/the-local-lantern/TheLocalLantern/backend/node_modules/@google-cloud/storage/build/esm/src/resumable-upload.js:390:40)
     at RetryOperation.runAttempt [as _fn] (C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\async-retry\lib\index.js:42:15)
+2025-07-31T18:49:07.398Z error: InternalOAuthError: Failed to obtain access token
+    at OAuth2Strategy._createOAuthError (C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\passport-oauth2\lib\strategy.js:423:17)
+    at C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\passport-oauth2\lib\strategy.js:177:45
+    at C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\oauth\lib\oauth2.js:196:18
+    at ClientRequest.<anonymous> (C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\oauth\lib\oauth2.js:166:7)
+    at ClientRequest.emit (node:events:524:28)
+    at emitErrorEvent (node:_http_client:104:11)
+    at TLSSocket.socketErrorListener (node:_http_client:518:5)
+    at TLSSocket.emit (node:events:524:28)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+2025-07-31T20:22:26.858Z error: InternalOAuthError: Failed to obtain access token
+    at OAuth2Strategy._createOAuthError (C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\passport-oauth2\lib\strategy.js:423:17)
+    at C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\passport-oauth2\lib\strategy.js:177:45
+    at C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\oauth\lib\oauth2.js:196:18
+    at ClientRequest.<anonymous> (C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\node_modules\oauth\lib\oauth2.js:166:7)
+    at ClientRequest.emit (node:events:524:28)
+    at emitErrorEvent (node:_http_client:104:11)
+    at TLSSocket.socketErrorListener (node:_http_client:518:5)
+    at TLSSocket.emit (node:events:524:28)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)

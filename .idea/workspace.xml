@@ -8,9 +8,13 @@
       <change beforePath="$PROJECT_DIR$/../.gitignore" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/combined.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/combined.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/error.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/error.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/community.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/community.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/src/routes/posts.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/posts.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityPanel.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityPanel.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/PostDetailModal.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/PostDetailModal.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/CommunityPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/CommunityPage.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../package.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../public/favicon.ico" beforeDir="false" />
@@ -84,6 +88,13 @@
       <workItem from="1753843498094" duration="598000" />
       <workItem from="1753884264923" duration="24461000" />
       <workItem from="1753968219242" duration="19162000" />
+      <workItem from="1753996659994" duration="1973000" />
+      <workItem from="1754054940765" duration="5381000" />
+      <workItem from="1754098492377" duration="2020000" />
+      <workItem from="1754313889387" duration="6399000" />
+      <workItem from="1754339303890" duration="7322000" />
+      <workItem from="1754403643903" duration="13725000" />
+      <workItem from="1754445396140" duration="1414000" />
     </task>
     <servers />
   </component>
