@@ -1,10 +1,19 @@
 // src/components/SidePanel/Community/PostDetailModal.jsx
 // =============================================================================
-// 2025‑08‑08  ✅ Replies added (no layout removed)
-// 2025‑08‑11  🛠  Like‑state & counter fixes
+// 2025-08-06  ✨  Comment likes + “Most Liked / Newest” sort
+//             • <IconButton> ♥ on every comment & reply
+//             • optimistic UI with login gate identical to post-like
+//             • ?sort=popular|newest query; default popular
+//             • small selector above thread
 // -----------------------------------------------------------------------------
 
-import React, { useState, useEffect, useRef, Fragment, useMemo } from 'react';
+import React, {
+    useState,
+    useEffect,
+    useRef,
+    useMemo,
+    Fragment,
+} from 'react';
 import PropTypes from 'prop-types';
 import {
     Dialog,
@@ -17,6 +26,7 @@ import {
     IconButton,
     TextField,
     Link,
+    MenuItem,
 } from '@mui/material';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon       from '@mui/icons-material/Favorite';
@@ -36,63 +46,56 @@ import SearchIcon    from '@mui/icons-material/Search';
 
 import { useAuthModal } from '../../../contexts/AuthModalContext';
 
-/* ---------- helpers ---------- */
-const MAX_LEN = 1000;
+
+/* ───────────────── helpers ───────────────── */
+const MAX_LEN = 1_000;
 const safeNum = (v) => (Number.isFinite(+v) ? +v : 0);
 const toBool  = (v) =>
-    v === true ||
-    v === 1 ||
-    v === '1' ||
-    v === 't' ||
-    v === 'T' ||
-    v === 'true' ||
-    v === 'TRUE';
+    v === true || v === 1 || v === '1' || v === 't' ||
+    v === 'T'   || v === 'true' || v === 'TRUE';
 
 const timeAgo = (d = '') => {
     const diff = Date.now() - new Date(d).getTime();
-    const s = Math.floor(diff / 1000);
+    const s  = Math.floor(diff / 1000);
     if (s < 60) return `${s}s ago`;
-    const m = Math.floor(s / 60);
+    const m  = Math.floor(s / 60);
     if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
+    const h  = Math.floor(m / 60);
     if (h < 24) return `${h}h ago`;
-    const dd = Math.floor(h / 24);
-    if (dd < 30) return `${dd}d ago`;
-    const mo = Math.floor(dd / 30);
+    const d2 = Math.floor(h / 24);
+    if (d2 < 30) return `${d2}d ago`;
+    const mo = Math.floor(d2 / 30);
     if (mo < 12) return `${mo}mo ago`;
     return `${Math.floor(mo / 12)}y ago`;
 };
 
-/* ---------- badge map (unchanged) ---------- */
+/* ───────────────── badge map ───────────────── */
 const BADGE = {
-    announcement:            { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
-    announcements:           { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
-    discussion:              { label: 'Discussion',   color: '#2e7d32', Icon: ChatIcon },
-    'general-discussion':    { label: 'Discussion',   color: '#2e7d32', Icon: ChatIcon },
-    recommendation:          { label: 'Tip',          color: '#fdd835', Icon: LightbulbIcon },
-    'recommendations-tips':  { label: 'Tip',          color: '#fdd835', Icon: LightbulbIcon },
-    volunteer:               { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-help':        { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-requests':    { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-help-requests':{label:'Volunteer',     color:'#0097a7', Icon: PanToolIcon },
-    'lost-found':            { label: 'Lost / Found', color: '#fb8c00', Icon: SearchIcon },
-    'public-safety-alerts':  { label: 'Alert',        color: '#e53935', Icon: ReportIcon },
+    announcement:              { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
+    discussion:                { label: 'Discussion',   color: '#2e7d32', Icon: ChatIcon },
+    recommendation:            { label: 'Tip',          color: '#fdd835', Icon: LightbulbIcon },
+    volunteer:                 { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
+    'volunteer-help':          { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
+    'volunteer-requests':      { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
+    'volunteer-help-requests': { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
+    'lost-found':              { label: 'Lost / Found', color: '#fb8c00', Icon: SearchIcon },
+    'public-safety-alerts':    { label: 'Alert',        color: '#e53935', Icon: ReportIcon },
 };
 
 const Pill = ({ label, Icon, color }) => (
     <Box
         sx={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0.5,
-            px: 1,
-            py: 0.25,
-            bgcolor: color,
-            color: '#fff',
-            borderRadius: 12,
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            width: 'max-content',
+            display:        'inline-flex',
+            alignItems:     'center',
+            gap:            0.5,
+            px:             1,
+            py:             0.25,
+            bgcolor:        color,
+            color:          '#fff',
+            borderRadius:   12,
+            fontSize:       '0.75rem',
+            fontWeight:     600,
+            width:          'max-content',
         }}
     >
         <Icon sx={{ fontSize: 14 }} /> {label}
@@ -100,97 +103,77 @@ const Pill = ({ label, Icon, color }) => (
 );
 Pill.propTypes = { label: PropTypes.string, Icon: PropTypes.elementType, color: PropTypes.string };
 
-/* tiny three‑dot loader */
+/* tiny loader */
 const LoadingDots = () => (
-    <Box
-        sx={{
-            display: 'flex',
-            gap: 1,
-            '@keyframes b': { '0%,80%,100%': { transform: 'scale(0)' }, '40%': { transform: 'scale(1.0)' } },
-        }}
-    >
-        {[0, 1, 2].map((i) => (
-            <Box
-                key={i}
-                sx={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: '50%',
-                    bgcolor: 'primary.main',
-                    animation: 'b 1.4s infinite ease-in-out',
-                    animationDelay: `${i * 0.2}s`,
-                }}
-            />
+    <Box sx={{
+        display: 'flex', gap: 1,
+        '@keyframes b': {
+            '0%,80%,100%': { transform: 'scale(0)' },
+            '40%':         { transform: 'scale(1)' },
+        },
+    }}>
+        {[0, 1, 2].map(i => (
+            <Box key={i} sx={{
+                width:      14,
+                height:     14,
+                borderRadius: '50%',
+                bgcolor:    'primary.main',
+                animation:  'b 1.4s infinite ease-in-out',
+                animationDelay: `${i * 0.2}s`,
+            }} />
         ))}
     </Box>
 );
 
-/* 1‑4 image collage (unchanged) */
-function Collage({ pics, onClick, onReady }) {
-    const n = pics.length;
+/* collage */
+const Collage = ({ pics, onClick }) => {
+    const n   = pics.length;
     const tpl = useMemo(
         () =>
-            n === 1
-                ? { c: '1fr', r: 'auto' }
-                : n === 2
-                    ? { c: '1fr 1fr', r: 'auto' }
-                    : n === 3
-                        ? { c: '2fr 1fr', r: '1fr 1fr' }
-                        : { c: '1fr 1fr', r: '1fr 1fr' },
+            n === 1 ? { c: '1fr',     r: 'auto'     }
+                : n === 2 ? { c: '1fr 1fr', r: 'auto'     }
+                    : n === 3 ? { c: '2fr 1fr', r: '1fr 1fr' }
+                        :           { c: '1fr 1fr', r: '1fr 1fr' },
         [n],
     );
     const pos = (i) =>
-        n !== 3
-            ? {}
-            : i === 0
-                ? { gridRow: '1 / span 2', gridColumn: '1' }
-                : i === 1
-                    ? { gridRow: '1', gridColumn: '2' }
-                    : { gridRow: '2', gridColumn: '2' };
-
-    const once = useRef(false);
-    const done = () => {
-        if (!once.current) {
-            once.current = true;
-            onReady?.();
-        }
-    };
-
+        n !== 3 ? {} :
+            i === 0 ? { gridRow: '1 / span 2', gridColumn: '1' } :
+                i === 1 ? { gridRow: '1', gridColumn: '2' } :
+                    { gridRow: '2', gridColumn: '2' };
     return (
         <Box
             sx={{
-                display: 'grid',
-                gap: 0.5,
+                display:             'grid',
+                gap:                 0.5,
                 gridTemplateColumns: tpl.c,
-                gridTemplateRows: tpl.r,
-                width: '100%',
+                gridTemplateRows:    tpl.r,
+                width:               '100%',
             }}
         >
             {pics.slice(0, 4).map((src, i) => (
                 <Box
                     key={src}
+                    onClick={() => onClick(i)}
                     sx={{
-                        position: 'relative',
-                        width: '100%',
-                        pb: n === 1 ? '66.66%' : '100%',
-                        overflow: 'hidden',
-                        cursor: 'pointer',
+                        position:   'relative',
+                        width:      '100%',
+                        pb:         n === 1 ? '66.66%' : '100%',
+                        overflow:   'hidden',
+                        cursor:     'pointer',
                         borderRadius: 2,
                         ...pos(i),
                     }}
-                    onClick={() => onClick(i)}
                 >
                     <Box
                         component="img"
                         src={src}
                         alt=""
-                        onLoad={done}
-                        onError={done}
                         sx={{
                             position: 'absolute',
-                            inset: 0,
-                            width: '100%',
-                            height: '100%',
+                            inset:    0,
+                            width:    '100%',
+                            height:   '100%',
                             objectFit: 'cover',
                         }}
                     />
@@ -198,77 +181,88 @@ function Collage({ pics, onClick, onReady }) {
             ))}
         </Box>
     );
-}
-Collage.propTypes = {
-    pics: PropTypes.arrayOf(PropTypes.string).isRequired,
-    onClick: PropTypes.func.isRequired,
-    onReady: PropTypes.func,
 };
+Collage.propTypes = { pics: PropTypes.array.isRequired, onClick: PropTypes.func.isRequired };
 
 /* ───────────────── component ───────────────── */
 export default function PostDetailModal({ open, post, onClose, user, currentUser }) {
     const { open: openAuth } = useAuthModal();
     const viewer = user || currentUser || null;
 
-    /* -------------------------------- unpack -------------------------------- */
+    /* unpack post */
     const {
-        id: postId,
-        first_name = '',
-        last_name = '',
-        avatar_url = '',
-        date_created = '',
-        title = '',
-        description = '',
-        category = '',
-        lost_or_found = '',
-        photos = [],
-        likesCount: likesRawProp = 0,
-        viewerLiked: viewerLikedProp = 0,
+        id:            postId,
+        first_name = '', last_name = '', avatar_url = '',
+        date_created = '', title = '', description = '',
+        category = '',   lost_or_found = '', photos = [],
+        likesCount: likesRaw = 0, viewerLiked: viewerLikedRaw = 0,
     } = post ?? {};
 
-    /* -------------------------------- state -------------------------------- */
-    const [likes, setLikes] = useState(0);
-    const [liked, setLiked] = useState(false);
+    /* state */
+    const [likes, setLikes]               = useState(0);
+    const [liked, setLiked]               = useState(false);
 
-    /* keep state in sync whenever a different post is opened */
+    const [comments, setComments]         = useState([]);
+    const [loadingC, setLoadingC]         = useState(false);
+    const [sortKey, setSortKey]           = useState('popular');        // <─ NEW
+    const [showReplies, setShowReplies]   = useState(() => new Set());
+    const [replyOpen, setReplyOpen]       = useState(() => new Set());
+
+    const [validPhotos, setValidPhotos]   = useState([]);
+    const [imgChecked, setImgChecked]     = useState(false);
+
+    const [idx, setIdx]                   = useState(0);
+    const [lightbox, setLightbox]         = useState(false);
+    const [comment, setComment]           = useState('');
+    const inputRef                         = useRef(null);
+
+    /* like sync (post) */
     useEffect(() => {
-        setLikes(safeNum(likesRawProp));
-        setLiked(toBool(viewerLikedProp));
-    }, [likesRawProp, viewerLikedProp, postId]);
+        setLikes(safeNum(likesRaw));
+        setLiked(toBool(viewerLikedRaw));
+    }, [likesRaw, viewerLikedRaw, postId]);
 
-    /* comment / reply state (unchanged) */
-    const [comments, setComments] = useState([]);
-    const [loadingC, setLoadingC] = useState(false);
-    const [showReplies, setShowReplies] = useState(() => new Set());
-    const [replyEditorOpen, setReplyEditorOpen] = useState(() => new Set());
-    const [replyDrafts, setReplyDrafts] = useState({});
+    /* pre-validate images */
+    useEffect(() => {
+        let cancel = false;
+        if (!photos || photos.length === 0) {
+            setValidPhotos([]);
+            setImgChecked(true);
+            return;
+        }
+        setImgChecked(false);
+        let ok = [], processed = 0;
+        photos.forEach((src) => {
+            const img = new Image();
+            const done = () => {
+                if (++processed === photos.length && !cancel) {
+                    setValidPhotos(ok);
+                    setImgChecked(true);
+                }
+            };
+            img.onload  = () => { ok.push(src); done(); };
+            img.onerror = done;
+            img.src     = src;
+        });
+        return () => { cancel = true; };
+    }, [photos, postId]);
 
-    /* other state */
-    const [imgReady, setImgReady] = useState(photos.length === 0);
-    const [idx, setIdx] = useState(0);
-    const [lightbox, setLightbox] = useState(false);
-    const [expanded, setExpanded] = useState(() => new Set());
-    const [comment, setComment] = useState('');
-    const inputRef = useRef(null);
-
-    /* -------------------------- fetch comments -------------------------- */
+    /* fetch comments */
     useEffect(() => {
         if (!open || !postId) return;
         (async () => {
             setLoadingC(true);
             try {
-                const r = await fetch(`/api/posts/${postId}/comments?category=community_post`, {
-                    credentials: 'include',
-                });
+                const r = await fetch(
+                    `/api/posts/${postId}/comments?category=community_post&sort=${sortKey}`,
+                    { credentials: 'include' },
+                );
                 setComments(await r.json());
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
             setLoadingC(false);
         })();
-    }, [open, postId]);
+    }, [open, postId, sortKey]);
 
-    /* helpers to group replies */
     const repliesByParent = useMemo(() => {
         const m = new Map();
         comments.forEach((c) => {
@@ -281,104 +275,117 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
     }, [comments]);
     const topLevel = comments.filter((c) => !c.parent_id);
 
-    /* ------------------------------ likes ------------------------------ */
+    /* like handler (post) */
     const toggleLike = async () => {
         if (!viewer) return openAuth({ redirectTo: window.location.href });
         const next = !liked;
         setLiked(next);
         setLikes((l) => Math.max(0, l + (next ? 1 : -1)));
         try {
-            const res = await fetch(`/api/posts/${postId}/like`, {
-                method: 'POST',
+            const r = await fetch(`/api/posts/${postId}/like`, {
+                method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category: 'community_post' }),
+                body:    JSON.stringify({ category: 'community_post' }),
                 credentials: 'include',
             });
-            if (res.status === 401) {
-                openAuth({ redirectTo: window.location.href });
-                return;
-            }
-            const j = await res.json();
+            if (r.status === 401) { openAuth({ redirectTo: window.location.href }); return; }
+            const j = await r.json();
             setLikes(safeNum(j.likesCount));
             setLiked(toBool(j.liked));
         } catch (e) {
             console.error(e);
-            /* revert optimistic update on failure */
             setLiked(!next);
             setLikes((l) => Math.max(0, l + (next ? -1 : 1)));
         }
     };
 
-    /* ------------------------------ comments ------------------------------ */
-    const submitComment = async () => {
+    /* toggle comment like (NEW) */
+    const toggleCommentLike = async (commentId) => {
+        if (!viewer) return openAuth({ redirectTo: window.location.href });
+        setComments((cs) =>
+            cs.map((c) =>
+                c.id === commentId
+                    ? {
+                        ...c,
+                        viewerLiked: !c.viewerLiked,
+                        likesCount:  Math.max(0, c.likesCount + (c.viewerLiked ? -1 : 1)),
+                    }
+                    : c,
+            ),
+        );
+        try {
+            const r = await fetch(`/api/posts/comments/${commentId}/like`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+            if (r.status === 401) { openAuth({ redirectTo: window.location.href }); return; }
+            const j = await r.json();
+            setComments((cs) =>
+                cs.map((c) =>
+                    c.id === commentId
+                        ? {
+                            ...c,
+                            viewerLiked: j.liked,
+                            likesCount:  safeNum(j.likesCount),
+                        }
+                        : c,
+                ),
+            );
+        } catch (e) { console.error(e); }
+    };
+
+    /* new comment */
+    const postComment = async () => {
         const txt = comment.trim();
         if (!txt) return;
         if (!viewer) return openAuth({ redirectTo: window.location.href });
         try {
             const r = await fetch(`/api/posts/${postId}/comments`, {
-                method: 'POST',
+                method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: txt }),
+                body:    JSON.stringify({ content: txt, category: 'community_post' }),
                 credentials: 'include',
             });
-            if (r.status === 401) {
-                openAuth({ redirectTo: window.location.href });
-                return;
-            }
+            if (r.status === 401) { openAuth({ redirectTo: window.location.href }); return; }
             const newC = await r.json();
-            setComments((a) => [...a, newC]);
+            setComments((c) => [newC, ...c]);
             setComment('');
             inputRef.current?.focus();
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     };
 
-    const sendReply = async (parentId) => {
-        const txt = (replyDrafts[parentId] || '').trim();
-        if (!txt) return;
+    /* reply submission */
+    const postReply = async (parentId, txt, resetDraft) => {
+        const content = txt.trim();
+        if (!content) return;
         if (!viewer) return openAuth({ redirectTo: window.location.href });
         try {
             const r = await fetch(`/api/posts/${postId}/comments`, {
-                method: 'POST',
+                method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: txt, parent_id: parentId }),
+                body:    JSON.stringify({ content, parent_id: parentId, category: 'community_post' }),
                 credentials: 'include',
             });
-            if (r.status === 401) {
-                openAuth({ redirectTo: window.location.href });
-                return;
-            }
-            const newReply = await r.json();
-            setComments((a) => [...a, newReply]);
-            setReplyDrafts((d) => ({ ...d, [parentId]: '' }));
-            setReplyEditorOpen((s) => {
-                const n = new Set(s);
-                n.delete(parentId);
-                return n;
-            });
+            if (r.status === 401) { openAuth({ redirectTo: window.location.href }); return; }
+            const newR = await r.json();
+            setComments((c) => [newR, ...c]);
+            resetDraft('');
+            setReplyOpen((s) => { const n = new Set(s); n.delete(parentId); return n; });
             setShowReplies((s) => new Set(s).add(parentId));
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     };
 
-    /* badge */
+    /* badge props */
     const pillMeta = lost_or_found
         ? { label: lost_or_found === 'found' ? 'Found' : 'Lost', color: '#fb8c00', Icon: SearchIcon }
         : BADGE[category] ?? { label: category || 'Other', color: '#777', Icon: ReportIcon };
 
-    const busy = loadingC || !imgReady;
-    if (!open || !post) return null;
-
-    /* -------- comment component w/ replies -------- (unchanged) */
+    /* comment component */
     const CommentBlock = ({ c, level = 0 }) => {
-        const children = repliesByParent.get(c.id) || [];
-        const show = showReplies.has(c.id);
-        const replyOpen = replyEditorOpen.has(c.id);
-        const long = (c.content ?? '').length > 200;
-        const openLong = expanded.has(c.id);
-        const display = openLong || !long ? c.content : `${c.content.slice(0, 200)}…`;
+        const kids   = repliesByParent.get(c.id) || [];
+        const show   = showReplies.has(c.id);
+        const editor = replyOpen.has(c.id);
+        const [draft, setDraft] = useState('');
 
         return (
             <Box sx={{ display: 'flex', gap: 1.25, mb: 2, ml: level ? 4 : 0 }}>
@@ -387,49 +394,46 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                     <Typography variant="subtitle2">
                         {c.first_name} {c.last_name}
                     </Typography>
-                    <Typography
-                        variant="body2"
-                        sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                    >
-                        {display}
-                        {long && (
-                            <Button
-                                size="small"
-                                sx={{ ml: 0.5, p: 0, minWidth: 0, textTransform: 'none' }}
-                                onClick={() =>
-                                    setExpanded((s) => {
-                                        const n = new Set(s);
-                                        n.has(c.id) ? n.delete(c.id) : n.add(c.id);
-                                        return n;
-                                    })
-                                }
-                            >
-                                {openLong ? 'less' : 'more'}
-                            </Button>
-                        )}
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {c.content}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                         {timeAgo(c.created_at)}
                     </Typography>
 
-                    {/* tiny action row */}
-                    <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                        {viewer && (
-                            <Button
-                                size="small"
-                                sx={{ p: 0, minWidth: 0, textTransform: 'none' }}
-                                onClick={() =>
-                                    setReplyEditorOpen((s) => {
-                                        const n = new Set(s);
-                                        n.has(c.id) ? n.delete(c.id) : n.add(c.id);
-                                        return n;
-                                    })
+                    <Box sx={{ display: 'flex', gap: 1, mt: 0.5, alignItems: 'center' }}>
+                        {/* like button (NEW) */}
+                        <IconButton
+                            size="small"
+                            onClick={() => toggleCommentLike(c.id)}
+                        >
+                            {c.viewerLiked ? (
+                                <FavoriteIcon color="error" fontSize="small" />
+                            ) : (
+                                <FavoriteBorderIcon fontSize="small" />
+                            )}
+                        </IconButton>
+                        <Typography variant="caption">{c.likesCount}</Typography>
+
+                        <Button
+                            size="small"
+                            sx={{ p: 0, minWidth: 0, textTransform: 'none' }}
+                            onClick={() => {
+                                if (!viewer) {
+                                    openAuth({ redirectTo: window.location.href });
+                                    return;
                                 }
-                            >
-                                Reply
-                            </Button>
-                        )}
-                        {children.length > 0 && (
+                                setReplyOpen((s) => {
+                                    const n = new Set(s);
+                                    n.has(c.id) ? n.delete(c.id) : n.add(c.id);
+                                    return n;
+                                });
+                            }}
+                        >
+                            Reply
+                        </Button>
+
+                        {kids.length > 0 && (
                             <Button
                                 size="small"
                                 sx={{ p: 0, minWidth: 0, textTransform: 'none' }}
@@ -441,51 +445,49 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                                     })
                                 }
                             >
-                                {show
-                                    ? 'Hide replies'
-                                    : `View ${children.length} ${children.length === 1 ? 'reply' : 'replies'}`}
+                                {show ? `Hide replies (${kids.length})` : `Replies (${kids.length})`}
                             </Button>
                         )}
                     </Box>
 
-                    {/* reply composer */}
-                    {replyOpen && viewer && (
-                        <Box sx={{ display: 'flex', gap: 1, mt: 1, alignItems: 'flex-start' }}>
+                    {editor && viewer && (
+                        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                             <Avatar src={viewer.avatar_url} sx={{ width: 28, height: 28 }}>
                                 {viewer.first_name?.[0]}
                             </Avatar>
                             <Box
                                 sx={{
-                                    flex: 1,
-                                    display: 'flex',
-                                    alignItems: 'flex-end',
-                                    border: 1,
-                                    borderColor: 'divider',
-                                    borderRadius: 2,
-                                    px: 1,
+                                    flex:          1,
+                                    display:       'flex',
+                                    alignItems:    'flex-start',
+                                    border:        1,
+                                    borderColor:   'divider',
+                                    borderRadius:  2,
+                                    px:            1,
                                 }}
                             >
-                                <TextField
-                                    multiline
-                                    fullWidth
-                                    variant="standard"
+                                <textarea
+                                    value={draft}
                                     placeholder="Write a reply"
-                                    InputProps={{ disableUnderline: true }}
-                                    minRows={1}
-                                    maxRows={3}
-                                    value={replyDrafts[c.id] || ''}
+                                    rows={1}
                                     onChange={(e) =>
-                                        setReplyDrafts((d) => ({
-                                            ...d,
-                                            [c.id]: e.target.value.slice(0, MAX_LEN),
-                                        }))
+                                        setDraft(e.target.value.slice(0, MAX_LEN))
                                     }
-                                    sx={{ flex: 1 }}
+                                    style={{
+                                        flex:       1,
+                                        font:       'inherit',
+                                        border:     'none',
+                                        outline:    'none',
+                                        resize:     'none',
+                                        padding:    '6px 0',
+                                        lineHeight: '1.5',
+                                        background: 'transparent',
+                                    }}
                                 />
                                 <IconButton
                                     color="primary"
-                                    disabled={!(replyDrafts[c.id] || '').trim()}
-                                    onClick={() => sendReply(c.id)}
+                                    disabled={draft.trim() === ''}
+                                    onClick={() => postReply(c.id, draft, setDraft)}
                                 >
                                     <SendIcon />
                                 </IconButton>
@@ -493,32 +495,34 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                         </Box>
                     )}
 
-                    {/* nested replies */}
-                    {show && children.map((r) => <CommentBlock key={r.id} c={r} level={1} />)}
+                    {show && kids.map((k) => (
+                        <CommentBlock key={k.id} c={k} level={1} />
+                    ))}
                 </Box>
             </Box>
         );
     };
     CommentBlock.propTypes = { c: PropTypes.object.isRequired, level: PropTypes.number };
 
-    /* ------------------------------ RENDER ------------------------------ */
+    if (!open || !post) return null;
+    const busy = loadingC || !imgChecked;
+
     return (
         <Dialog
             open={open}
             onClose={(_, r) => r !== 'backdropClick' && onClose()}
-            fullWidth
             maxWidth="xl"
+            fullWidth
             PaperProps={{ sx: { height: { xs: '90vh', md: '80vh' }, overflow: 'hidden' } }}
         >
-            {/* X close */}
             <IconButton
                 onClick={onClose}
                 sx={{
-                    position: 'absolute',
-                    top: 8,
-                    right: 8,
-                    zIndex: 3,
-                    bgcolor: 'rgba(0,0,0,0.05)',
+                    position:  'absolute',
+                    top:       8,
+                    right:     8,
+                    zIndex:    3,
+                    bgcolor:   'rgba(0,0,0,0.05)',
                     '&:hover': { bgcolor: 'rgba(0,0,0,0.1)' },
                 }}
             >
@@ -530,32 +534,52 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                     p: 0,
                     height: '100%',
                     display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', md: 'minmax(0,1fr) 380px' },
-                    gridTemplateAreas: { xs: `"post" "comments"`, md: `"post comments"` },
+                    gridTemplateColumns: {
+                        xs: '1fr',
+                        md: 'minmax(0,1fr) 380px',
+                    },
+                    gridTemplateAreas: {
+                        xs: `"post" "comments"`,
+                        md: `"post comments"`,
+                    },
                     position: 'relative',
                 }}
             >
                 {busy && (
                     <Box
                         sx={{
-                            position: 'absolute',
-                            inset: 0,
-                            bgcolor: 'rgba(255,255,255,0.92)',
-                            backdropFilter: 'blur(2px)',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            zIndex: 2,
+                            position:         'absolute',
+                            inset:             0,
+                            bgcolor:           'rgba(255,255,255,0.92)',
+                            backdropFilter:   'blur(2px)',
+                            display:          'flex',
+                            alignItems:       'center',
+                            justifyContent:   'center',
+                            zIndex:            2,
                         }}
                     >
                         <LoadingDots />
                     </Box>
                 )}
 
-                {/* post pane (unchanged layout) */}
-                <Box sx={{ gridArea: 'post', overflowY: 'auto', px: 5, py: { xs: 3, md: 4 } }}>
-                    <Box sx={{ maxWidth: '100%', mx: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {/* author */}
+                {/* post column -------------------------------------------------- */}
+                <Box
+                    sx={{
+                        gridArea:     'post',
+                        overflowY:    'auto',
+                        px:           5,
+                        py:           { xs: 3, md: 4 },
+                    }}
+                >
+                    <Box
+                        sx={{
+                            maxWidth:        '100%',
+                            mx:              'auto',
+                            display:         'flex',
+                            flexDirection:   'column',
+                            gap:             validPhotos.length ? 3 : 2,
+                        }}
+                    >
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                             <Avatar src={avatar_url}>{first_name[0]}</Avatar>
                             <Box>
@@ -576,52 +600,76 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                             </Typography>
                         )}
 
-                        <Typography
-                            variant="body1"
-                            sx={{ whiteSpace: 'pre-line', mt: 1, mb: 2, pl: 0.5, pr: 0.5 }}
-                        >
-                            {description}
-                        </Typography>
+                        {description && (
+                            <Typography
+                                variant="body1"
+                                sx={{ whiteSpace: 'pre-line' }}
+                            >
+                                {description}
+                            </Typography>
+                        )}
 
-                        {photos.length > 0 && (
-                            <Box sx={{ mt: 1 }}>
-                                <Collage
-                                    pics={photos}
-                                    onClick={(i) => {
-                                        setIdx(i);
-                                        setLightbox(true);
-                                    }}
-                                    onReady={() => setImgReady(true)}
-                                />
-                            </Box>
+                        {validPhotos.length > 0 && (
+                            <Collage
+                                pics={validPhotos}
+                                onClick={(i) => {
+                                    setIdx(i);
+                                    setLightbox(true);
+                                }}
+                            />
                         )}
                     </Box>
                 </Box>
 
-                {/* comments + replies pane */}
+                {/* comments column --------------------------------------------- */}
                 <Paper
                     elevation={0}
                     sx={{
-                        gridArea: 'comments',
-                        bgcolor: 'grey.50',
-                        borderLeft: { md: '2px solid' },
+                        gridArea:    'comments',
+                        bgcolor:     'grey.50',
+                        borderLeft:  { md: '2px solid' },
                         borderColor: 'divider',
-                        display: 'flex',
+                        display:     'flex',
                         flexDirection: 'column',
-                        minHeight: 0,
+                        minHeight:   0,
                     }}
                 >
-                    <Box sx={{ px: 2, pt: 2, pb: 1, borderBottom: 1, borderColor: 'divider' }}>
-                        <Typography variant="subtitle1" fontWeight={600}>
+                    {/* header + sort selector */}
+                    <Box
+                        sx={{
+                            px: 2,
+                            pt: 2,
+                            pb: 1,
+                            borderBottom: 1,
+                            borderColor:  'divider',
+                            display:      'flex',
+                            alignItems:   'center',
+                            gap:          2,
+                        }}
+                    >
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ flex: 1 }}>
                             Comments ({topLevel.length})
                         </Typography>
+
+                        <TextField
+                            select
+                            size="small"
+                            variant="standard"
+                            value={sortKey}
+                            onChange={(e) => setSortKey(e.target.value)}
+                            sx={{ minWidth: 120 }}
+                        >
+                            <MenuItem value="popular">Most Liked</MenuItem>
+                            <MenuItem value="newest">Newest</MenuItem>
+                        </TextField>
                     </Box>
 
+                    {/* thread */}
                     <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1 }}>
                         {loadingC ? (
                             <LoadingDots />
                         ) : topLevel.length === 0 ? (
-                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
                                 No comments yet.
                             </Typography>
                         ) : (
@@ -629,7 +677,7 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                         )}
                     </Box>
 
-                    {/* action bar (likes) */}
+                    {/* action bar ------------------------------------------------ */}
                     <Box
                         sx={{
                             borderTop: 1,
@@ -643,11 +691,19 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                         }}
                     >
                         <IconButton onClick={toggleLike}>
-                            {liked ? <FavoriteIcon color="error" /> : <FavoriteBorderIcon />}
+                            {liked ? (
+                                <FavoriteIcon color="error" />
+                            ) : (
+                                <FavoriteBorderIcon />
+                            )}
                         </IconButton>
                         <Typography variant="caption">{likes}</Typography>
 
-                        <IconButton onClick={() => document.getElementById('comment-input')?.focus()}>
+                        <IconButton
+                            onClick={() =>
+                                document.getElementById('comment-input')?.focus()
+                            }
+                        >
                             <CommentIcon />
                         </IconButton>
                         <Typography variant="caption">{topLevel.length}</Typography>
@@ -663,46 +719,51 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                         >
                             <ShareIcon />
                         </IconButton>
-                        <Typography variant="caption">0</Typography>
                     </Box>
 
-                    {/* composer (unchanged) */}
+                    {/* composer -------------------------------------------------- */}
                     <Box
                         sx={{
-                            borderTop: 1,
+                            borderTop:   1,
                             borderColor: 'divider',
-                            p: 1,
-                            display: 'flex',
+                            p:           1,
+                            display:     'flex',
                             flexDirection: 'column',
-                            gap: 0.5,
-                            bgcolor: 'background.paper',
+                            gap:         0.5,
+                            bgcolor:     'background.paper',
                         }}
                     >
                         {viewer ? (
                             <Fragment>
-                                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                                    <Avatar src={viewer.avatar_url}>{viewer.first_name?.[0]}</Avatar>
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <Avatar src={viewer.avatar_url}>
+                                        {viewer.first_name?.[0]}
+                                    </Avatar>
                                     <Box
                                         sx={{
-                                            flex: 1,
-                                            display: 'flex',
-                                            alignItems: 'flex-end',
-                                            border: 1,
-                                            borderColor: 'divider',
-                                            borderRadius: 2,
-                                            px: 1,
+                                            flex:          1,
+                                            display:       'flex',
+                                            alignItems:    'flex-end',
+                                            border:        1,
+                                            borderColor:   'divider',
+                                            borderRadius:  2,
+                                            px:            1,
                                         }}
                                     >
                                         <TextField
                                             id="comment-input"
                                             multiline
-                                            fullWidth
                                             variant="standard"
+                                            fullWidth
                                             placeholder="Leave a comment"
                                             InputProps={{ disableUnderline: true }}
                                             inputRef={inputRef}
                                             value={comment}
-                                            onChange={(e) => setComment(e.target.value.slice(0, MAX_LEN))}
+                                            onChange={(e) =>
+                                                setComment(
+                                                    e.target.value.slice(0, MAX_LEN),
+                                                )
+                                            }
                                             minRows={1}
                                             maxRows={4}
                                             sx={{ flex: 1 }}
@@ -710,14 +771,14 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                                         <IconButton
                                             color="primary"
                                             disabled={comment.trim() === ''}
-                                            onClick={submitComment}
+                                            onClick={postComment}
                                         >
                                             <SendIcon />
                                         </IconButton>
                                     </Box>
                                 </Box>
                                 {comment && (
-                                    <Typography variant="caption" align="right" sx={{ pr: 1 }}>
+                                    <Typography variant="caption" align="right">
                                         {MAX_LEN - comment.length} characters left
                                     </Typography>
                                 )}
@@ -726,8 +787,10 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                             <Typography variant="body2">
                                 <Link
                                     component="button"
-                                    onClick={() => openAuth({ redirectTo: window.location.href })}
                                     sx={{ fontWeight: 600 }}
+                                    onClick={() =>
+                                        openAuth({ redirectTo: window.location.href })
+                                    }
                                 >
                                     Log in
                                 </Link>{' '}
@@ -736,76 +799,89 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
                         )}
                     </Box>
                 </Paper>
-            </DialogContent>
 
-            {/* light‑box (unchanged) */}
-            <Dialog open={lightbox} onClose={() => setLightbox(false)} maxWidth="lg" fullWidth>
-                <DialogContent sx={{ p: 0, bgcolor: 'grey.900', position: 'relative' }}>
-                    <IconButton
-                        onClick={() => setLightbox(false)}
+                {/* lightbox ---------------------------------------------------- */}
+                <Dialog
+                    open={lightbox}
+                    onClose={() => setLightbox(false)}
+                    maxWidth="lg"
+                    fullWidth
+                >
+                    <DialogContent
                         sx={{
-                            position: 'absolute',
-                            top: 8,
-                            right: 8,
-                            color: '#fff',
-                            bgcolor: 'rgba(0,0,0,0.45)',
-                            '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' },
+                            p: 0,
+                            bgcolor:  'grey.900',
+                            position: 'relative',
                         }}
                     >
-                        <CloseIcon sx={{ fontSize: 34 }} />
-                    </IconButton>
-                    {photos.length > 0 && (
-                        <Box
+                        <IconButton
+                            onClick={() => setLightbox(false)}
                             sx={{
-                                position: 'relative',
-                                height: '80vh',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
+                                position:  'absolute',
+                                top:       8,
+                                right:     8,
+                                color:     '#fff',
+                                bgcolor:   'rgba(0,0,0,0.45)',
+                                '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' },
                             }}
                         >
+                            <CloseIcon sx={{ fontSize: 34 }} />
+                        </IconButton>
+                        {validPhotos.length > 0 && (
                             <Box
-                                component="img"
-                                src={photos[idx]}
-                                alt=""
-                                sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                            />
-                            {photos.length > 1 && (
-                                <>
-                                    <IconButton
-                                        size="large"
-                                        disabled={idx === 0}
-                                        onClick={() => setIdx((i) => i - 1)}
-                                        sx={{
-                                            position: 'absolute',
-                                            left: 16,
-                                            color: '#fff',
-                                            bgcolor: 'rgba(0,0,0,0.45)',
-                                            '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' },
-                                        }}
-                                    >
-                                        <ArrowBackIosNew />
-                                    </IconButton>
-                                    <IconButton
-                                        size="large"
-                                        disabled={idx === photos.length - 1}
-                                        onClick={() => setIdx((i) => i + 1)}
-                                        sx={{
-                                            position: 'absolute',
-                                            right: 16,
-                                            color: '#fff',
-                                            bgcolor: 'rgba(0,0,0,0.45)',
-                                            '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' },
-                                        }}
-                                    >
-                                        <ArrowForwardIos />
-                                    </IconButton>
-                                </>
-                            )}
-                        </Box>
-                    )}
-                </DialogContent>
-            </Dialog>
+                                sx={{
+                                    position:     'relative',
+                                    height:       '80vh',
+                                    display:      'flex',
+                                    alignItems:   'center',
+                                    justifyContent: 'center',
+                                }}
+                            >
+                                <Box
+                                    component="img"
+                                    src={validPhotos[idx]}
+                                    alt=""
+                                    sx={{
+                                        maxWidth:  '100%',
+                                        maxHeight: '100%',
+                                        objectFit: 'contain',
+                                    }}
+                                />
+                                {validPhotos.length > 1 && (
+                                    <>
+                                        <IconButton
+                                            disabled={idx === 0}
+                                            onClick={() => setIdx((i) => i - 1)}
+                                            sx={{
+                                                position:  'absolute',
+                                                left:      16,
+                                                color:     '#fff',
+                                                bgcolor:   'rgba(0,0,0,0.45)',
+                                                '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' },
+                                            }}
+                                        >
+                                            <ArrowBackIosNew />
+                                        </IconButton>
+                                        <IconButton
+                                            disabled={idx === validPhotos.length - 1}
+                                            onClick={() => setIdx((i) => i + 1)}
+                                            sx={{
+                                                position:  'absolute',
+                                                right:     16,
+                                                color:     '#fff',
+                                                bgcolor:   'rgba(0,0,0,0.45)',
+                                                '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' },
+                                            }}
+                                        >
+                                            <ArrowForwardIos />
+                                        </IconButton>
+                                    </>
+                                )}
+                            </Box>
+                        )}
+                    </DialogContent>
+                </Dialog>
+            </DialogContent>
         </Dialog>
     );
 }
