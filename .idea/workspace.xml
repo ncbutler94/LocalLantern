@@ -5,13 +5,21 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="85d913a2-29a9-4691-be92-ce88b393eda8" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/ReplyEditor.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../.idea/the-local-lantern.iml" beforeDir="false" afterPath="$PROJECT_DIR$/../.idea/the-local-lantern.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/.env" beforeDir="false" afterPath="$PROJECT_DIR$/backend/.env" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/combined.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/combined.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/error.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/error.log" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/src/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/community.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/community.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/lostAndFound.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/lostAndFound.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/src/routes/posts.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/posts.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/NewCommunityPosts/NewLostAndFoundForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/NewCommunityPosts/NewLostAndFoundForm.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/PostDetailModal.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/PostDetailModal.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../package.json" beforeDir="false" />
@@ -94,7 +102,17 @@
       <workItem from="1754403643903" duration="13725000" />
       <workItem from="1754445396140" duration="7268000" />
       <workItem from="1754490328161" duration="2982000" />
-      <workItem from="1754505014574" duration="8047000" />
+      <workItem from="1754505014574" duration="9773000" />
+      <workItem from="1754597003807" duration="2078000" />
+      <workItem from="1754672170124" duration="592000" />
+      <workItem from="1754706281839" duration="66000" />
+      <workItem from="1754766580984" duration="4969000" />
+      <workItem from="1754772753005" duration="9000" />
+      <workItem from="1754772942026" duration="2278000" />
+      <workItem from="1754788546631" duration="4042000" />
+      <workItem from="1754876159446" duration="76000" />
+      <workItem from="1754877067808" duration="403000" />
+      <workItem from="1754879860664" duration="310000" />
     </task>
     <servers />
   </component>

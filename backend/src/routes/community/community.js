@@ -114,6 +114,13 @@ router.get('/', optionalAuth, async (req, res, next) => {
         /* ──────── column selection ──────── */
         const select = [
             'cp.*',
+            // Force empty strings instead of nulls to stop `.trim()` crashes in UI:
+            db.raw('COALESCE(cp.title, "")        AS title'),
+            db.raw('COALESCE(cp.description, "")  AS description'),
+            db.raw('COALESCE(cp.city, "")         AS city'),
+            db.raw('COALESCE(cp.county, "")       AS county'),
+            db.raw('COALESCE(cp.street_address, "") AS street_address'),
+
             'u.first_name',
             'u.last_name',
             'u.avatar_url',
