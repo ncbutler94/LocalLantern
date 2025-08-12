@@ -1,10 +1,9 @@
 // src/components/SidePanel/Community/CommunityList.jsx
 // ==========================================================================
-//  2025‑08‑07  ✅ FINAL WITH LOADER
-//      • “Controlled” mode (parent supplies `posts`) now shows the centred
-//        loader whenever the parent sets `loading={true}`.
-//      • “Uncontrolled” mode (component fetches its own data) still shows
-//        the loader while each page request is in‑flight.
+//  2025‑08‑07  ✅ FINAL WITH LOADER + DEFERRED EMPTY-STATE
+//      • Shows the centred 3‑dot loader while fetching.
+//      • Prevents immediate “No Posts Found” flash on first mount
+//        (covers parent‑controlled case where posts = [] initially).
 // --------------------------------------------------------------------------
 
 import React, {
@@ -327,7 +326,7 @@ const LoadingDots = () => (
             />
         ))}
     </Box>
-); // same animation used in PostDetailModal :contentReference[oaicite:2]{index=2}
+);
 
 /* ───────── main list component ───────── */
 const PAGE_SIZE = 30;
@@ -352,6 +351,13 @@ export default function CommunityList({
     const [hasMore, setHasMore] = useState(true);
 
     const sentinelRef = useRef(null);
+
+    /* NEW: defer “empty” for a brief window so loader shows first */
+    const [deferEmpty, setDeferEmpty] = useState(true);
+    useEffect(() => {
+        const t = setTimeout(() => setDeferEmpty(false), 500);
+        return () => clearTimeout(t);
+    }, []);
 
     /* fetch helper (uncontrolled) */
     const fetchPage = async (p) => {
@@ -396,8 +402,10 @@ export default function CommunityList({
     }, [controlled, hasMore, uLoading, page]);
 
     /* pick data & busy state */
-    const list = controlled ? posts : rows;
-    const busy = controlled ? loading : uLoading;
+    const list = controlled ? (Array.isArray(posts) ? posts : []) : rows;
+
+    // In controlled mode, treat the first 500ms (deferEmpty) with empty list as “loading”
+    const busy = controlled ? (loading || (deferEmpty && list.length === 0)) : uLoading;
 
     /* memoised card grid */
     const renderedGrid = useMemo(
@@ -455,7 +463,7 @@ export default function CommunityList({
             )}
 
             {/* empty‑state when idle */}
-            {!busy && list.length === 0 && (
+            {!busy && list.length === 0 && !deferEmpty && (
                 <Box
                     sx={{
                         position: 'absolute',

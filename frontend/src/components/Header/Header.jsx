@@ -1,6 +1,7 @@
 // src/components/Header/Header.jsx
 // -----------------------------------------------------------------------------
-// Community-marker icon now **before** the text and bumped up to 28 px.
+// Community-marker and Business-marker icons before text, both 28 px.
+// Adds explicit routing so “Businesses” goes to /business.
 // -----------------------------------------------------------------------------
 
 import React, { useState } from 'react';
@@ -24,17 +25,18 @@ import TabBar        from '../TabBar/TabBar';
 import defaultAvatar from '../../assets/profile/default-avatar.png';
 import logo          from '../../assets/LocalLanternLogo.png';
 import communityMarker from '../../assets/mapMarkers/community/community-marker.png';
+import businessMarker  from '../../assets/mapMarkers/businesses/businesses-marker.png';
 
 import LoginForm     from '../Login/Login';
 import { useAuthModal } from '../../contexts/AuthModalContext';
 
 /* -------------------------------------------------------------------------- */
-// Tab definitions — Community tab gets an inline marker **before** the text.
+// Tab definitions — Community & Businesses tabs get inline markers.
 /* -------------------------------------------------------------------------- */
 const rawTabs = [
     'All',
     'Community',
-    'Businesses',
+    'Businesses', // updated text
     'Events',
     'Jobs',
     'Services',
@@ -43,24 +45,31 @@ const rawTabs = [
     'Real Estate',
 ];
 
-const TABS = rawTabs.map((t) =>
-    t === 'Community'
-        ? {
+const TABS = rawTabs.map((t) => {
+    if (t === 'Community') {
+        return {
             value: t,
             label: (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <Box
-                        component="img"
-                        src={communityMarker}
-                        alt="Community marker icon"
-                        sx={{ height: 28, width: 28 }}
-                    />
+                    <Box component="img" src={communityMarker} alt="Community marker icon" sx={{ height: 28, width: 28 }} />
                     {t}
                 </Box>
             ),
-        }
-        : { value: t, label: t }
-);
+        };
+    }
+    if (t === 'Businesses') {
+        return {
+            value: t,
+            label: (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <Box component="img" src={businessMarker} alt="Business marker icon" sx={{ height: 28, width: 28 }} />
+                    {t}
+                </Box>
+            ),
+        };
+    }
+    return { value: t, label: t };
+});
 
 export default function Header({ user, onLogin, onLogout, activeTab, onTabChange }) {
     const navigate = useNavigate();
@@ -88,6 +97,17 @@ export default function Header({ user, onLogin, onLogout, activeTab, onTabChange
     const handleNav = (path) => {
         closeMenu();
         navigate(path);
+    };
+
+    /* -------------------------- tab navigation glue ------------------------- */
+    const handleTabChange = (val) => {
+        onTabChange(val);
+        // Only Businesses lives on its own route; all other tabs live on "/"
+        if (val === 'Businesses') {
+            navigate('/business');
+        } else {
+            navigate('/'); // Home hosts All/Community/Events/Jobs/...
+        }
     };
 
     /* ------------------------------ auth dialog ------------------------------ */
@@ -121,9 +141,12 @@ export default function Header({ user, onLogin, onLogout, activeTab, onTabChange
                             src={logo}
                             alt="Local Lantern Logo"
                             sx={{ height: 110, mr: 2, cursor: 'pointer' }}
-                            onClick={() => onTabChange('All')}
+                            onClick={() => {
+                                onTabChange('All');
+                                navigate('/');
+                            }}
                         />
-                        <TabBar tabs={TABS} activeTab={activeTab} onTabChange={onTabChange} />
+                        <TabBar tabs={TABS} activeTab={activeTab} onTabChange={handleTabChange} />
                     </Box>
 
                     {/* 3) right spacer */}
@@ -143,7 +166,10 @@ export default function Header({ user, onLogin, onLogout, activeTab, onTabChange
                         }}
                         onClick={handleAvatarClick}
                     >
-                        <Avatar src={user?.avatar_url || defaultAvatar} alt={user ? `${user.first_name} ${user.last_name}` : 'Guest'} />
+                        <Avatar
+                            src={user?.avatar_url || defaultAvatar}
+                            alt={user ? `${user.first_name} ${user.last_name}` : 'Guest'}
+                        />
                         {user ? (
                             <Typography variant="body1">
                                 {user.first_name} {user.last_name}
