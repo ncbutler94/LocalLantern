@@ -1,10 +1,8 @@
-// backend/src/config/db.js
-import knex from 'knex';
-import knexfile from '../../knexfile.cjs';
+// backend/src/db.js
+import knexConstructor from 'knex';
+import config from '../../knexfile.cjs';
 
-const environment   = process.env.NODE_ENV || 'development';
-const configOptions = knexfile[environment];
+const env = process.env.NODE_ENV || 'development';
+const knex = knexConstructor(config[env] || config);
 
-const db = knex(configOptions);
-
-export default db;
+export default knex;

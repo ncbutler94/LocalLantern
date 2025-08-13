@@ -5,24 +5,21 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="85d913a2-29a9-4691-be92-ce88b393eda8" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/businesses/businesses-marker.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessCard.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessList.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessPanel.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/hooks/business/useBusinessData.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/pages/BusinessPage.jsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/routes/businesses/businesses.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/src/routes/uploads.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/api/businesses/businesses.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/AddBusinessModal.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../.gitignore" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../.idea/the-local-lantern.iml" beforeDir="false" afterPath="$PROJECT_DIR$/../.idea/the-local-lantern.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Header/Header.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Header/Header.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Map/MapView.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Map/MapView.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Businesses/BusinessesFilter.jsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Businesses/BusinessesList.jsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/CommunityList.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/BusinessesPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Map/BusinessMap.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Home.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/Home.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/app.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/app.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/config/db.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/config/db.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/BusinessPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/BusinessPage.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../package.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../public/favicon.ico" beforeDir="false" />
@@ -59,26 +56,30 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;profile-set-up&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/Nate/Documents/The Local Lantern/the-local-lantern/TheLocalLantern/backend&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "create-business",
+    "javascript.nodejs.core.library.configured.version": "22.13.0",
+    "javascript.nodejs.core.library.typings.version": "22.13.17",
+    "last_opened_file_path": "C:/Users/Nate/Documents/The Local Lantern/the-local-lantern/TheLocalLantern/backend",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "ts.external.directory.path": "C:\\Program Files\\JetBrains\\WebStorm 2025.1\\plugins\\javascript-plugin\\jsLanguageServicesImpl\\external",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\src\routes\business" />
       <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\frontend\src\assets\mapMarkers\businesses" />
     </key>
   </component>
@@ -122,7 +123,9 @@
       <workItem from="1754877067808" duration="403000" />
       <workItem from="1754879860664" duration="310000" />
       <workItem from="1754920536475" duration="9540000" />
-      <workItem from="1754961107121" duration="1240000" />
+      <workItem from="1754961107121" duration="12213000" />
+      <workItem from="1755009367550" duration="9679000" />
+      <workItem from="1755032573121" duration="8978000" />
     </task>
     <servers />
   </component>

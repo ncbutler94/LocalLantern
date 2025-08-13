@@ -1,10 +1,9 @@
-// backend/src/app.js
 import 'dotenv/config';
-import express            from 'express';
-import cors               from 'cors';
-import cookieParser       from 'cookie-parser';
-import session            from 'express-session';
-import passport           from './config/passport.js';
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import session from 'express-session';
+import passport from './config/passport.js';
 
 import communityRoutes         from './routes/community/community.js';
 import lostAndFoundRouter      from './routes/community/lostAndFound.js';
@@ -14,29 +13,32 @@ import publicSafetyRouter      from './routes/community/publicSafety.js';
 import recommendationsRouter   from './routes/community/recommendations.js';
 import volunteerHelpRouter     from './routes/community/volunteerHelp.js';
 
-import authRoutes        from './routes/auth.js';
-import userRoutes        from './routes/user.js';
-import publicRoutes      from './routes/public.js';
+import authRoutes   from './routes/auth.js';
+import userRoutes   from './routes/user.js';
+import publicRoutes from './routes/public.js';
+import postsRouter  from './routes/posts.js';
 
-// NEW (already in your project): posts router has comment likes & replies
-import postsRouter       from './routes/posts.js';
+import logger from './utils/logger.js';
+import { Client as GoogleMapsClient } from '@googlemaps/google-maps-services-js';
+import { Storage } from '@google-cloud/storage';
 
-import authenticateToken from './middleware/auth.js';
-import logger            from './utils/logger.js';
+/* ── Businesses router (handle default/named/CJS) ── */
+import * as businessesModule from './routes/businesses/businesses.js';
+const businessesRouter = businessesModule.default || businessesModule.router || businessesModule;
 
-import { Client } from '@googlemaps/google-maps-services-js';
-
-const app    = express();
+const app = express();
 const isProd = process.env.NODE_ENV === 'production';
 
-/* ─────────────────────────── Core middleware ─────────────────────────── */
-app.use(
-    cors({
-        origin: 'http://localhost:3000',
-        credentials: true,
-    })
-);
-app.use(express.json());
+/* ───────────────────────── Core middleware ───────────────────────── */
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+app.use(cors({ origin: allowedOrigins, credentials: true }));
+if (isProd) app.set('trust proxy', 1);
+
+app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 app.use(
     session({
@@ -46,49 +48,51 @@ app.use(
         saveUninitialized: false,
         proxy: isProd,
         cookie: {
-            secure:   isProd,
+            secure: isProd,
             httpOnly: true,
             sameSite: isProd ? 'none' : 'lax',
-            maxAge:   7 * 24 * 60 * 60 * 1000,
-        },
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        }
     })
 );
 app.use(passport.initialize());
 
-/* ─────────────────────── Public & community routes ────────────────────── */
-app.use('/public',               publicRoutes);
-app.use('/api/community',        communityRoutes);
-app.use('/api/lost-and-found',   lostAndFoundRouter);
-app.use('/api/announcements',    announcementsRouter);
+/* ───────────────────── Public & community routes ─────────────────── */
+app.use('/public',                 publicRoutes);
+app.use('/api/community',          communityRoutes);
+app.use('/api/lost-and-found',     lostAndFoundRouter);
+app.use('/api/announcements',      announcementsRouter);
 app.use('/api/general-discussion', generalDiscussionRouter);
-app.use('/api/public-safety',    publicSafetyRouter);
-app.use('/api/recommendations',  recommendationsRouter);
-app.use('/api/volunteer-help',   volunteerHelpRouter);
+app.use('/api/public-safety',      publicSafetyRouter);
+app.use('/api/recommendations',    recommendationsRouter);
+app.use('/api/volunteer-help',     volunteerHelpRouter);
 
-/* ───────────────────── Google Geocode proxy (street‑only) ─────────────── */
-const mapsClient = new Client({});
+/* ✅ Mount auth + users so /users/profile and auth endpoints work */
+app.use('/auth',  authRoutes);
+app.use('/users', userRoutes);
+
+/* 🚀 Businesses API */
+app.use('/api/businesses', businessesRouter);
+
+/* ───────────────────── Google Geocode proxy (street‑only) ────────── */
+const mapsClient = new GoogleMapsClient({});
 
 app.post('/api/geocode-google', async (req, res) => {
     const { address = '' } = req.body;
-    console.log('[/api/geocode-google] payload.address:', address);
-
-    const query = address.trim();
+    const query = (address || '').trim();
     if (!query) return res.status(400).json({ error: 'empty_query' });
 
     try {
         const response = await mapsClient.geocode({
-            params: { address: query, key: process.env.GOOGLE_API_KEY },
+            params: { address: query, key: process.env.GOOGLE_API_KEY }
         });
 
-        const results = response.data.results;
+        const results = response.data.results || [];
         if (!results.length) return res.status(404).json({ error: 'not_found' });
 
-        const top   = results[0];
+        const top = results[0];
         const types = top.types || [];
-        const isStreet =
-            types.includes('street_address') ||
-            types.includes('premise') ||
-            types.includes('route');
+        const isStreet = types.includes('street_address') || types.includes('premise') || types.includes('route');
 
         if (!isStreet) return res.status(404).json({ error: 'not_found' });
 
@@ -100,20 +104,47 @@ app.post('/api/geocode-google', async (req, res) => {
     }
 });
 
-/* ───────────────────────────── Auth & user ────────────────────────────── */
-app.use('/auth',  authRoutes);
-app.use('/users', userRoutes);
+/* ───────────────────── Signed URL uploads (GCS) ─────────────────────
+   Body: { folder: "logo_photos" | "cover_photos", fileName, contentType }
+   Returns: { uploadUrl, publicUrl, objectPath }
+--------------------------------------------------------------------- */
+const storage = new Storage(); // uses GOOGLE_APPLICATION_CREDENTIALS
+const GCS_BUCKET = process.env.GCS_BUCKET;
 
-/* ───────────── Posts router (incl. comment likes / replies / images) ──── */
-app.use('/api/posts', postsRouter); // mounted once
+app.post('/api/uploads/signed-url', async (req, res) => {
+    try {
+        if (!GCS_BUCKET) return res.status(500).json({ error: 'GCS_BUCKET_not_set' });
 
-/* ───────────────────────────── Tenor proxy (NEW) ──────────────────────── */
-/**
- * Why proxy? Keeps TENOR_API_KEY server‑side and lets us set sensible defaults:
- *  - contentfilter: medium (stricter than Tenor’s default “off”)
- *  - media_filter:  gif,tinygif,mp4,tinymp4 (smaller payloads)
- * Docs: search endpoint + params (q,key,client_key,limit,media_filter,contentfilter,locale,country,pos).
- */
+        const { folder, fileName, contentType } = req.body || {};
+        if (!folder || !fileName || !contentType) {
+            return res.status(400).json({ error: 'folder, fileName, contentType required' });
+        }
+
+        const safeName = String(fileName).replace(/\s+/g, '-').toLowerCase();
+        const objectPath = ['businesses', folder, `${Date.now()}-${safeName}`].join('/');
+
+        const [uploadUrl] = await storage
+            .bucket(GCS_BUCKET)
+            .file(objectPath)
+            .getSignedUrl({
+                version: 'v4',
+                action: 'write',
+                expires: Date.now() + 10 * 60 * 1000, // 10 minutes
+                contentType
+            });
+
+        const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET}/${objectPath}`;
+        return res.json({ uploadUrl, publicUrl, objectPath });
+    } catch (err) {
+        logger.error(err);
+        return res.status(500).json({ error: 'signed_url_error' });
+    }
+});
+
+/* Posts (kept) */
+app.use('/api/posts', postsRouter);
+
+/* Tenor helpers (kept) */
 const TENOR_BASE = 'https://tenor.googleapis.com/v2';
 const TENOR_CLIENT_KEY = process.env.TENOR_CLIENT_KEY || 'thelocallantern_web';
 
@@ -137,14 +168,14 @@ app.get('/api/tenor/search', async (req, res) => {
         const limit          = clamp(Number(req.query.limit || 20), 1, 50);
         const pos            = (req.query.pos || '').toString();
         const media_filter   = (req.query.media_filter || 'gif,tinygif,mp4,tinymp4').toString();
-        const contentfilter  = (req.query.contentfilter || 'medium').toString(); // safer default
+        const contentfilter  = (req.query.contentfilter || 'medium').toString();
         const locale         = (req.query.locale || 'en_US').toString();
         const country        = (req.query.country || 'US').toString();
-        const searchfilter   = (req.query.searchfilter || '').toString(); // e.g., 'sticker'
+        const searchfilter   = (req.query.searchfilter || '').toString();
 
         const url = buildTenorUrl('/search', {
             q, key, client_key: TENOR_CLIENT_KEY, limit, pos,
-            media_filter, contentfilter, locale, country, searchfilter,
+            media_filter, contentfilter, locale, country, searchfilter
         });
 
         const r = await fetch(url);
@@ -170,7 +201,7 @@ app.get('/api/tenor/featured', async (req, res) => {
 
         const url = buildTenorUrl('/featured', {
             key, client_key: TENOR_CLIENT_KEY, limit, pos,
-            media_filter, contentfilter, locale, country,
+            media_filter, contentfilter, locale, country
         });
 
         const r = await fetch(url);
@@ -189,9 +220,7 @@ app.get('/api/tenor/suggestions', async (req, res) => {
 
         const q     = (req.query.q || '').toString().trim();
         const limit = clamp(Number(req.query.limit || 8), 1, 50);
-        const url   = buildTenorUrl('/search_suggestions', {
-            q, key, client_key: TENOR_CLIENT_KEY, limit
-        });
+        const url   = buildTenorUrl('/search_suggestions', { q, key, client_key: TENOR_CLIENT_KEY, limit });
 
         const r = await fetch(url);
         const data = await r.json();
@@ -201,22 +230,17 @@ app.get('/api/tenor/suggestions', async (req, res) => {
         return res.status(500).json({ error: 'tenor_suggestions_error' });
     }
 });
-/* ──────────────────────────────────────────────────────────────────────── */
 
-/* ──────────────── Protected test endpoint (unchanged) ─────────────────── */
-app.get('/protected', authenticateToken, (req, res) => {
-    res.json({ message: 'Protected route', user: req.user });
-});
+/* Health */
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-/* ───────────────────────── Central error handler ──────────────────────── */
+/* Central error handler */
 app.use((err, req, res, _next) => {
     logger.error(err);
     if (err.code === 'EBADCSRFTOKEN') {
         return res.status(403).json({ message: 'Invalid CSRF token' });
     }
-    res
-        .status(err.status || 500)
-        .json({ message: err.message || 'Server error' });
+    res.status(err.status || 500).json({ message: err.message || 'Server error' });
 });
 
 export default app;

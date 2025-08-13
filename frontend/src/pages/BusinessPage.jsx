@@ -1,10 +1,11 @@
 // src/pages/BusinessPage.jsx
 import React, { useEffect, useMemo, useReducer, useRef, useState, useCallback } from 'react';
-import { Box, CircularProgress } from '@mui/material';
+import { Box, CircularProgress, Snackbar, Alert } from '@mui/material';
 
 import BusinessMap from '../components/Map/BusinessMap';
 import BusinessPanel from '../components/SidePanel/Business/BusinessPanel';
 import BusinessCard from '../components/SidePanel/Business/BusinessCard';
+import AddBusinessModal from '../components/SidePanel/Business/AddBusinessModal';
 
 import useBusinessData from '../hooks/business/useBusinessData';
 
@@ -33,10 +34,12 @@ export default function BusinessPage() {
 
     const [user, setUser] = useState(null);
     useEffect(() => {
+        let alive = true;
         fetch('/users/profile')
             .then((res) => (res.ok ? res.json() : null))
-            .then(setUser)
-            .catch(() => setUser(null));
+            .then((u) => { if (alive) setUser(u); })
+            .catch(() => { if (alive) setUser(null); });
+        return () => { alive = false; };
     }, []);
 
     const [openedPopupId, setOpenedPopupId] = useState(null);
@@ -50,22 +53,19 @@ export default function BusinessPage() {
     const [center, setCenter] = useState(DEFAULT_CENTER);
     const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
 
-    // city ⇄ county helpers (same as Community)
     const cityToCounty = useMemo(() => {
         const m = {};
         cityCountyMap.forEach(({ name, county }) => { m[name] = county.replace(/ County$/, ''); });
         return m;
     }, []);
     const availableCities = useMemo(
-        () =>
-            selectedCounty
-                ? cityData.filter((c) => cityToCounty[c.name] === selectedCounty).map((c) => c.name)
-                : cityData.map((c) => c.name),
+        () => selectedCounty
+            ? cityData.filter((c) => cityToCounty[c.name] === selectedCounty).map((c) => c.name)
+            : cityData.map((c) => c.name),
         [selectedCounty, cityToCounty]
     );
     const availableCounties = useMemo(() => countyData.map((c) => c.name), []);
 
-    // Map pan/zoom on city/county (mirrors Community)
     useEffect(() => {
         if (selectedCity) {
             const obj = cityData.find((c) => c.name === selectedCity);
@@ -85,12 +85,10 @@ export default function BusinessPage() {
         setZoomLevel(ZOOM[level] ?? 14);
     }, []);
 
-    // Fetch list + geojson
     const { businesses, points, isLoading, refetch } = useBusinessData({
         search, city: selectedCity, county: selectedCounty, category, sort
     });
 
-    // Client-side list filtering (mirrors Community pattern)
     const filteredBusinesses = useMemo(() => {
         const term = search.trim().toLowerCase();
         return businesses.filter((b) => {
@@ -144,8 +142,8 @@ export default function BusinessPage() {
         setTimeout(() => markerRefs.current[id]?.openPopup(), 200);
     }, [points]);
 
-    // Expanded categories (adds more options + "Other")
-    const categories = useMemo(() => [
+    // Expanded categories (includes "Other")
+    const categoriesList = useMemo(() => [
         'Coffee', 'Restaurant', 'Bakery', 'Bar/Nightlife',
         'Grocery', 'Retail', 'Auto', 'Gas Station',
         'Home Services', 'Construction', 'HVAC', 'Plumbing', 'Electrical',
@@ -161,10 +159,17 @@ export default function BusinessPage() {
         'Other',
     ], []);
 
-    // Placeholder — wire to a modal later
-    const handleAddBusiness = useCallback(() => {
-        console.log('Add Business clicked');
-    }, []);
+    // Add Business modal
+    const [addOpen, setAddOpen] = useState(false);
+    const [toast, setToast] = useState({ open: false, msg: '' });
+
+    const openAddBusiness = () => setAddOpen(true);
+    const closeAddBusiness = () => setAddOpen(false);
+
+    const handleSubmitted = async (newBiz) => {
+        setToast({ open: true, msg: 'Business submitted. We’ll verify and publish it soon.' });
+        await refetch();
+    };
 
     return (
         <Box display="flex" flexDirection={{ xs: 'column', md: 'row' }} height="91vh" overflow="hidden">
@@ -192,17 +197,17 @@ export default function BusinessPage() {
                 )}
             </Box>
 
-            {/* Side Panel (container + loader + empty-state) */}
+            {/* Side Panel */}
             <Box width={{ xs:'100%', sm:'55%', md:'60%', lg:'65%' }} p={2} pb={0} sx={{ overflowY: 'auto' }}>
                 <BusinessPanel
                     user={user}
                     businesses={filteredBusinesses}
-                    loading={isLoading}              /* feed loader */
+                    loading={isLoading}
                     hoveredId={hoveredId}
                     setHoveredId={setHoveredId}
                     onCardClick={handleCardClick}
                     onLocationClick={handleLocationClick}
-                    onAddBusiness={handleAddBusiness}
+                    onAddBusiness={openAddBusiness}     // ← open modal
 
                     searchTerm={search}
                     onSearchTermChange={(val) => dispatch({ type: 'search', value: val })}
@@ -230,7 +235,7 @@ export default function BusinessPage() {
                     }}
 
                     selectedCategory={category}
-                    categories={categories}
+                    categories={categoriesList}
                     onCategoryChange={(val) => {
                         dispatch({ type: 'category', value: val });
                         refetch();
@@ -250,6 +255,25 @@ export default function BusinessPage() {
                     onToggleFilters={() => setShowFilters((f) => !f)}
                 />
             </Box>
+
+            {/* Add Business Modal */}
+            <AddBusinessModal
+                open={addOpen}
+                onClose={closeAddBusiness}
+                onSubmitted={handleSubmitted}
+                user={user}
+                categories={categoriesList}
+            />
+
+            {/* Toast */}
+            <Snackbar
+                open={toast.open}
+                autoHideDuration={3000}
+                onClose={() => setToast({ open: false, msg: '' })}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert severity="success" variant="filled">{toast.msg}</Alert>
+            </Snackbar>
         </Box>
     );
 }
