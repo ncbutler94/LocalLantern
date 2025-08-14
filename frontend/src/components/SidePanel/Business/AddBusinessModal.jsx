@@ -20,8 +20,10 @@ import FormatUnderlinedIcon from '@mui/icons-material/FormatUnderlined';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import Cropper from 'react-easy-crop';
 
-// Correct relative path from /SidePanel/Business
+// paths from /components/SidePanel/Business
 import CityCountySelect from '../../Common/CityCountySelect/CityCountySelect';
+import cities from '../../../data/alabamaCities.json';
+import counties from '../../../data/alabamaCounties.json';
 
 const NAME_MAX = 250;
 const DESC_MAX = 2000;
@@ -33,6 +35,57 @@ const stripHtmlToText = (html = '') =>
 const isEmail = (s) => /\S+@\S+\.\S+/.test((s || '').trim());
 const isPhone = (s) => /^[0-9+()\-.\s]{7,}$/.test((s || '').trim());
 const isUrl   = (s) => !s || /^https?:\/\/.+/i.test((s || '').trim());
+
+/** Try Google Maps JS API geocoder first; fall back to backend proxy if available. */
+async function geocodeAddress({ street, city, county, state = 'AL', country = 'US' }) {
+    // 1) Browser Google Maps JS API
+    try {
+        const g = window?.google?.maps;
+        if (g?.Geocoder) {
+            const geocoder = new g.Geocoder();
+            const address = [street, city, state].filter(Boolean).join(', ');
+            const componentRestrictions = { country };
+            return await new Promise((resolve) => {
+                geocoder.geocode({ address, componentRestrictions }, (results, status) => {
+                    if (status === 'OK' && results?.[0]) {
+                        const { lat, lng } = results[0].geometry.location;
+                        resolve({ lat: lat(), lng: lng(), formatted: results[0].formatted_address });
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+        }
+    } catch (_) {}
+
+    // 2) Optional backend proxy
+    try {
+        const res = await fetch('/api/geocode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ street, city, state, county, country }),
+        });
+        if (res.ok) {
+            const j = await res.json();
+            if (j?.lat && j?.lng) return { lat: Number(j.lat), lng: Number(j.lng), formatted: j.formatted };
+        }
+    } catch (_) {}
+
+    return null;
+}
+
+function centroidFromCityCounty(city, county) {
+    if (city) {
+        const c = cities.find((x) => x.name === city);
+        if (c?.coordinates?.length === 2) return { lat: c.coordinates[0], lng: c.coordinates[1] };
+    }
+    if (county) {
+        const k = counties.find((x) => x.name === county);
+        if (k?.coordinates?.length === 2) return { lat: k.coordinates[0], lng: k.coordinates[1] };
+    }
+    // Alabama center fallback
+    return { lat: 32.806671, lng: -86.79113 };
+}
 
 /* ---------- form state ---------- */
 const initialState = () => ({
@@ -79,9 +132,10 @@ function validateStep(step, s) {
         else if (!isPhone(s.phone)) errs.phone = 'Invalid phone number';
     }
     if (step === 1) {
-        if (!s.city.trim()) errs.city = 'City required';
+        // Address is optional, but county is still required
         if (!s.county.trim()) errs.county = 'County required';
-        if (!s.street_address.trim()) errs.street_address = 'Street address required';
+        // If they enter a street address, require city (so we can validate correctly)
+        if (s.street_address.trim() && !s.city.trim()) errs.city = 'City required when using a street address';
     }
     if (step === 2) {
         if (!stripHtmlToText(s.description)) errs.description = 'Tell people about your business';
@@ -103,7 +157,7 @@ function useObjectUrl(file) {
     return url;
 }
 
-/* ---------- tiny rich‑text editor ---------- */
+/* ---------- tiny rich-text editor ---------- */
 function RichTextEditor({ value, onChange, maxChars = DESC_MAX, placeholder = 'What makes your business special?' }) {
     const ref = useRef(null);
     const [count, setCount] = useState(stripHtmlToText(value).length);
@@ -182,7 +236,7 @@ function RichTextEditor({ value, onChange, maxChars = DESC_MAX, placeholder = 'W
     );
 }
 
-/* ---------- image edit dialog (crop/resize) ---------- */
+/* ---------- image editing helpers + dialog ---------- */
 async function createImage(src) {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -226,10 +280,10 @@ function ImageEditorDialog({
                                src,
                                title = 'Adjust Image',
                                aspect = 1,
-                               shape = 'rect',       // 'rect' | 'round'
-                               suggestedWidth,       // optional output max width (resized if larger)
+                               shape = 'rect',
+                               suggestedWidth,
                                onCancel,
-                               onApply,              // (blob) => void
+                               onApply,
                            }) {
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1.2);
@@ -240,7 +294,6 @@ function ImageEditorDialog({
     const handleApply = async () => {
         if (!croppedAreaPixels) return;
         let blob = await getCroppedBlob(src, croppedAreaPixels, shape);
-        // optional downscale for very large images
         if (blob && suggestedWidth) {
             const tmpUrl = URL.createObjectURL(blob);
             const img = await createImage(tmpUrl);
@@ -278,13 +331,7 @@ function ImageEditorDialog({
             <DialogActions sx={{ px: 3, pb: 2 }}>
                 <Box sx={{ mr: 'auto', minWidth: 180 }}>
                     <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>Zoom</Typography>
-                    <Slider
-                        value={zoom}
-                        min={1}
-                        max={3}
-                        step={0.01}
-                        onChange={(_, v) => setZoom(v)}
-                    />
+                    <Slider value={zoom} min={1} max={3} step={0.01} onChange={(_, v) => setZoom(v)} />
                 </Box>
                 <Button onClick={onCancel}>Cancel</Button>
                 <Button variant="contained" onClick={handleApply}>Apply</Button>
@@ -345,9 +392,10 @@ export default function AddBusinessModal({
             open: true,
             type,
             src: url,
-            aspect: type === 'logo' ? 1 : 16 / 9,
+            // Wider cover ratio ≈3:1 so crop matches card presentation
+            aspect: type === 'logo' ? 1 : 3,
             shape: type === 'logo' ? 'round' : 'rect',
-            suggestedWidth: type === 'logo' ? 512 : 1600,
+            suggestedWidth: type === 'logo' ? 512 : 2400,
         });
     };
 
@@ -371,13 +419,6 @@ export default function AddBusinessModal({
             dispatch({ type: 'coverFile', value: file });
         }
         handleEditorCancel();
-    };
-
-    const handleNext = () => {
-        const errs = validateStep(step, state);
-        setErrors(errs);
-        if (Object.keys(errs).length) return;
-        setStep((s) => s + 1);
     };
 
     const handleBack = () => setStep((s) => Math.max(0, s - 1));
@@ -431,8 +472,30 @@ export default function AddBusinessModal({
             signal: abortRef.current.signal,
         });
         if (!put.ok) throw new Error('Upload failed');
-        return publicUrl; // public, thanks to bucket-level public access
+        return publicUrl;
     }
+
+    // Validate step (with async address check on Step 1 if needed)
+    const handleNext = async () => {
+        const errs = validateStep(step, state);
+        setErrors(errs);
+        if (Object.keys(errs).length) return;
+
+        // If leaving the Location step and an address is present, validate it now
+        if (step === 1 && state.street_address.trim()) {
+            const geo = await geocodeAddress({
+                street: state.street_address.trim(),
+                city: state.city.trim(),
+                county: state.county.trim(),
+            });
+            if (!geo) {
+                setErrors((e) => ({ ...e, street_address: 'Address not found. Please check the city/county and address.' }));
+                return;
+            }
+        }
+
+        setStep((s) => s + 1);
+    };
 
     const handleSubmit = async () => {
         const errs = validateStep(2, state);
@@ -442,6 +505,24 @@ export default function AddBusinessModal({
 
         try {
             setSubmitting(true);
+
+            // 0) Resolve coordinates
+            let coords;
+            if (state.street_address.trim()) {
+                const geo = await geocodeAddress({
+                    street: state.street_address.trim(),
+                    city: state.city.trim(),
+                    county: state.county.trim(),
+                });
+                if (!geo) {
+                    setSubmitting(false);
+                    setErrors((e) => ({ ...e, street_address: 'Address not found. Please correct it or clear the address.' }));
+                    return;
+                }
+                coords = { lat: geo.lat, lng: geo.lng };
+            } else {
+                coords = centroidFromCityCounty(state.city.trim(), state.county.trim());
+            }
 
             // 1) upload images if present
             let logoUrl = null;
@@ -456,9 +537,11 @@ export default function AddBusinessModal({
                 contact_email: state.ownerEmail.trim(),
                 phone: state.phone.trim(),
                 website: state.website.trim(),
-                street_address: state.street_address.trim(),
-                city: state.city.trim(),
-                county: state.county.trim(),
+                street_address: state.street_address.trim() || null,
+                city: state.city.trim() || null,
+                county: state.county.trim() || null,
+                latitude: coords.lat,
+                longitude: coords.lng,
                 description: state.description.trim(), // HTML
                 logo_url: logoUrl,
                 cover_url: coverUrl,
@@ -650,16 +733,15 @@ export default function AddBusinessModal({
                                 countyError={errors.county || ''}
                             />
 
-                            {/* Street Address — truly full width */}
+                            {/* Street Address — OPTIONAL now */}
                             <Box sx={{ mt: 2 }}>
                                 <TextField
                                     fullWidth
-                                    required
-                                    label="Street Address"
+                                    label="Street Address (Optional)"
                                     value={state.street_address}
                                     onChange={(e) => dispatch({ type: 'street_address', value: e.target.value })}
                                     error={!!errors.street_address}
-                                    helperText={errors.street_address || ''}
+                                    helperText={errors.street_address || 'Enter only if you want a precise pin at your door.'}
                                     sx={{ width: '100%', minWidth: 0 }}
                                 />
                             </Box>

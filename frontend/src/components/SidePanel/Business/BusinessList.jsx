@@ -1,4 +1,3 @@
-// src/components/SidePanel/Business/BusinessList.jsx
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 import BusinessCard from './BusinessCard';

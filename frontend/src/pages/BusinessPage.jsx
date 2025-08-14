@@ -187,6 +187,7 @@ export default function BusinessPage() {
                     markerRefs={markerRefs}
                     center={center}
                     zoomLevel={zoomLevel}
+                    hoveredId={hoveredId}
                     onMarkerClick={handleMarkerClick}
                     openedPopupId={openedPopupId}
                     popupContentById={popupContentById}
@@ -207,7 +208,7 @@ export default function BusinessPage() {
                     setHoveredId={setHoveredId}
                     onCardClick={handleCardClick}
                     onLocationClick={handleLocationClick}
-                    onAddBusiness={openAddBusiness}     // ← open modal
+                    onAddBusiness={openAddBusiness}
 
                     searchTerm={search}
                     onSearchTermChange={(val) => dispatch({ type: 'search', value: val })}

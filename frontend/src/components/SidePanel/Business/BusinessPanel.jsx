@@ -1,4 +1,3 @@
-// src/components/SidePanel/Business/BusinessPanel.jsx
 import React, { memo } from 'react';
 import {
     Box, Button, Typography, Collapse, Divider,
@@ -112,7 +111,7 @@ export default function BusinessPanel({
                                 >
                                     {(sortOptions.length ? sortOptions : [
                                         { value: 'newest', label: 'Newest' },
-                                        { value: 'popular', label: 'Most Popular' },
+                                        { value: 'Most Popular', label: 'Most Popular' },
                                     ]).map(opt => (
                                         <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                                     ))}
