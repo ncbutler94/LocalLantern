@@ -14,7 +14,7 @@ import useBasePostForm, {
     MAX_TITLE,
     MAX_DESCRIPTION
 } from '../Common/useBasePostForm';
-import useAddressHelpers from '../Common/useAddressHelpers';
+import useAddressHelpers from '../../Common/useAddressHelpers';
 import CityCountySelect  from '../../../Common/CityCountySelect/CityCountySelect';
 
 const MAX_REWARD_LENGTH = 11;
