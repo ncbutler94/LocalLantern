@@ -9,15 +9,12 @@
       <change beforePath="$PROJECT_DIR$/../.idea/the-local-lantern.iml" beforeDir="false" afterPath="$PROJECT_DIR$/../.idea/the-local-lantern.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Map/BusinessMap.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Map/BusinessMap.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/businesses/businesses.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/businesses/businesses.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/AddBusinessModal.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/AddBusinessModal.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessCard.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessCard.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessList.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessPanel.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Business/BusinessPanel.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/Common/useAddressHelpers.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Common/useAddressHelpers.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/NewCommunityPosts/NewLostAndFoundForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SidePanel/Community/NewCommunityPosts/NewLostAndFoundForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/hooks/business/useBusinessData.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/hooks/business/useBusinessData.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/pages/BusinessPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/BusinessPage.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/CommunityPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/CommunityPage.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../package.json" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/../public/favicon.ico" beforeDir="false" />
@@ -126,7 +123,14 @@
       <workItem from="1755009367550" duration="9679000" />
       <workItem from="1755032573121" duration="19350000" />
       <workItem from="1755093308667" duration="10067000" />
-      <workItem from="1755179038005" duration="376000" />
+      <workItem from="1755179038005" duration="12336000" />
+      <workItem from="1755287527652" duration="8772000" />
+      <workItem from="1755315220755" duration="816000" />
+      <workItem from="1755322870582" duration="2224000" />
+      <workItem from="1755359895846" duration="2288000" />
+      <workItem from="1755396763839" duration="93000" />
+      <workItem from="1755397779958" duration="2634000" />
+      <workItem from="1755533344754" duration="13120000" />
     </task>
     <servers />
   </component>

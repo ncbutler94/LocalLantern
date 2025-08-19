@@ -55,14 +55,20 @@ export default function CommunityPage() {
     /* ---------- refs ---------- */
     const mapRef     = useRef(null);
     const markerRefs = useRef({});
+    const openPopupTimeoutRef = useRef(null);
 
     /* ---------- user ---------- */
     const [user, setUser] = useState(null);
     useEffect(() => {
-        fetch('/users/profile')
+        const ac = new AbortController();
+        let alive = true;
+        fetch('/users/profile', { signal: ac.signal })
             .then((res) => (res.ok ? res.json() : null))
-            .then(setUser)
-            .catch(() => setUser(null));
+            .then((u) => { if (alive) setUser(u); })
+            .catch((err) => {
+                if (err?.name !== 'AbortError' && alive) setUser(null);
+            });
+        return () => { alive = false; ac.abort(); };
     }, []);
 
     /* ---------- UI state ---------- */
@@ -209,7 +215,10 @@ export default function CommunityPage() {
             setCenter([lat + 0.02, lng]);
             setZoomLevel(14);
             setOpenedPopupId(id);
-            setTimeout(() => markerRefs.current[id]?.openPopup(), 200);
+            if (openPopupTimeoutRef.current) clearTimeout(openPopupTimeoutRef.current);
+            openPopupTimeoutRef.current = setTimeout(() => {
+                markerRefs.current[id]?.openPopup();
+            }, 200);
         },
         [points]
     );
@@ -222,10 +231,24 @@ export default function CommunityPage() {
     /* ---------- categories ---------- */
     const [categories, setCategories] = useState([]);
     useEffect(() => {
-        fetch('/api/community/categories')
+        const ac = new AbortController();
+        let alive = true;
+        fetch('/api/community/categories', { signal: ac.signal })
             .then((r) => r.json())
-            .then(setCategories)
-            .catch(console.error);
+            .then((data) => { if (alive) setCategories(data); })
+            .catch((err) => {
+                if (err?.name !== 'AbortError') console.error(err);
+            });
+        return () => { alive = false; ac.abort(); };
+    }, []);
+
+    /* ---------- cleanup: pending timers ---------- */
+    useEffect(() => {
+        return () => {
+            if (openPopupTimeoutRef.current) {
+                clearTimeout(openPopupTimeoutRef.current);
+            }
+        };
     }, []);
 
     /* ---------- render ---------- */
@@ -237,34 +260,7 @@ export default function CommunityPage() {
                 height="91vh"
                 overflow="hidden"
             >
-                {/* Map Pane */}
-                <Box
-                    width={{ xs:'100%', sm:'45%', md:'40%', lg:'35%' }}
-                    mt={{ xs: 0, md: 6 }}
-                    p={2}
-                    position="relative"
-                    minHeight={{ xs: 300, md: 'auto' }}
-                >
-                    <MapView
-                        data={points}
-                        mapRef={mapRef}
-                        markerRefs={markerRefs}
-                        center={center}
-                        zoomLevel={zoomLevel}
-                        onMarkerClick={handleMarkerClick}
-                        openedPopupId={openedPopupId}
-                        popupContentById={popupContentById}
-                        onPopupClose={() => setOpenedPopupId(null)}
-                    />
-                    {isLoading && (
-                        <CircularProgress
-                            size={48}
-                            sx={{ position: 'absolute', top: 32, left: 32 }}
-                        />
-                    )}
-                </Box>
-
-                {/* Side Panel */}
+                {/* Side Panel (LEFT on md+, TOP on xs) */}
                 <Box
                     width={{ xs:'100%', sm:'55%', md:'60%', lg:'65%' }}
                     p={2}
@@ -342,6 +338,33 @@ export default function CommunityPage() {
                     />
                 </Box>
 
+                {/* Map Pane (RIGHT on md+, BOTTOM on xs) */}
+                <Box
+                    width={{ xs:'100%', sm:'45%', md:'40%', lg:'35%' }}
+                    mt={{ xs: 0, md: 6 }}
+                    p={2}
+                    position="relative"
+                    minHeight={{ xs: 300, md: 'auto' }}
+                >
+                    <MapView
+                        data={points}
+                        mapRef={mapRef}
+                        markerRefs={markerRefs}
+                        center={center}
+                        zoomLevel={zoomLevel}
+                        onMarkerClick={handleMarkerClick}
+                        openedPopupId={openedPopupId}
+                        popupContentById={popupContentById}
+                        onPopupClose={() => setOpenedPopupId(null)}
+                    />
+                    {isLoading && (
+                        <CircularProgress
+                            size={48}
+                            sx={{ position: 'absolute', top: 32, left: 32 }}
+                        />
+                    )}
+                </Box>
+
                 {/* new-post dialog flow */}
                 <NewPostDialogs
                     stepOneOpen={stepOneOpen}
@@ -359,7 +382,7 @@ export default function CommunityPage() {
                 open={Boolean(selectedPost)}
                 post={selectedPost}
                 onClose={() => setSelectedPost(null)}
-                currentUser={user}            /* <- NEW: fixes repeated login prompt */
+                currentUser={user}            /* <- keeps login prompt from repeating */
             />
         </>
     );
