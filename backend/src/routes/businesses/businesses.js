@@ -1,11 +1,11 @@
-// backend/src/routes/businesses/businesses.js
+// backend/src/routes/businesses.js
 import express from 'express';
 import crypto from 'crypto';
 import knex from '../../config/db.js';
 
 const router = express.Router();
 
-/** Make a unique, URL‑safe slug from a business name */
+/** Make a unique, URL-safe slug from a business name */
 async function makeSlug(name) {
     const base = String(name)
         .toLowerCase()
@@ -115,7 +115,6 @@ router.post('/', async (req, res) => {
         const token = crypto.randomBytes(24).toString('hex');
         const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
 
-        // this table is optional — safe to remove if you don’t use it
         try {
             await knex('business_claims').insert({
                 business_id: insertedId,
@@ -130,6 +129,96 @@ router.post('/', async (req, res) => {
     } catch (err) {
         console.error('[POST /api/businesses] error:', err);
         return res.status(500).json({ error: 'server_error' });
+    }
+});
+
+/* ===========================================================
+   Reviews Endpoints
+   =========================================================== */
+
+/** POST /api/businesses/:id/reviews — create or update a review */
+router.post('/:id/reviews', async (req, res) => {
+    try {
+        const businessId = Number(req.params.id);
+        const userId = req.user?.id; // assumes auth middleware attaches req.user
+        const { rating, comment = '' } = req.body || {};
+
+        if (!userId) {
+            return res.status(401).json({ ok: false, error: 'unauthorized' });
+        }
+
+        const num = Number(rating);
+        if (!(num >= 0.5 && num <= 5 && Math.abs(num * 2 - Math.round(num * 2)) < 1e-9)) {
+            return res.status(400).json({ ok: false, error: 'Rating must be 0.5–5.0 in 0.5 steps' });
+        }
+        const half = Math.round(num * 2); // 1..10
+
+        await knex('business_reviews')
+            .insert({
+                business_id: businessId,
+                user_id: userId,
+                rating_half_stars: half,
+                comment,
+            })
+            .onConflict(['business_id', 'user_id'])
+            .merge({ rating_half_stars: half, comment, updated_at: knex.fn.now() });
+
+        const business = await knex('businesses')
+            .select('rating_half_stars', 'review_count')
+            .where({ id: businessId })
+            .first();
+
+        return res.json({ ok: true, business });
+    } catch (err) {
+        console.error('[POST /api/businesses/:id/reviews] error:', err);
+        return res.status(500).json({ ok: false, error: 'server_error' });
+    }
+});
+
+/** GET /api/businesses/:id/reviews — fetch reviews for a business */
+router.get('/:id/reviews', async (req, res) => {
+    try {
+        const businessId = Number(req.params.id);
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const pageSize = Math.min(50, Number(req.query.pageSize) || 20);
+
+        const rows = await knex('business_reviews')
+            .select('id', 'user_id', 'rating_half_stars', 'comment', 'created_at', 'updated_at')
+            .where({ business_id: businessId })
+            .orderBy('created_at', 'desc')
+            .offset((page - 1) * pageSize)
+            .limit(pageSize);
+
+        return res.json({ ok: true, items: rows });
+    } catch (err) {
+        console.error('[GET /api/businesses/:id/reviews] error:', err);
+        return res.status(500).json({ ok: false, error: 'server_error' });
+    }
+});
+
+/** DELETE /api/businesses/:id/reviews/me — remove current user’s review */
+router.delete('/:id/reviews/me', async (req, res) => {
+    try {
+        const businessId = Number(req.params.id);
+        const userId = req.user?.id;
+
+        if (!userId) {
+            return res.status(401).json({ ok: false, error: 'unauthorized' });
+        }
+
+        await knex('business_reviews')
+            .where({ business_id: businessId, user_id: userId })
+            .del();
+
+        const business = await knex('businesses')
+            .select('rating_half_stars', 'review_count')
+            .where({ id: businessId })
+            .first();
+
+        return res.json({ ok: true, business });
+    } catch (err) {
+        console.error('[DELETE /api/businesses/:id/reviews/me] error:', err);
+        return res.status(500).json({ ok: false, error: 'server_error' });
     }
 });
 

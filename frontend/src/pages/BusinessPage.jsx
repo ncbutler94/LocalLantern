@@ -31,15 +31,17 @@ function filterReducer(state, { type, value }) {
 export default function BusinessPage() {
     const mapRef = useRef(null);
     const markerRefs = useRef({});
+    const openPopupTimeoutRef = useRef(null);
 
     const [user, setUser] = useState(null);
     useEffect(() => {
+        const ac = new AbortController();
         let alive = true;
-        fetch('/users/profile')
+        fetch('/users/profile', { signal: ac.signal })
             .then((res) => (res.ok ? res.json() : null))
             .then((u) => { if (alive) setUser(u); })
-            .catch(() => { if (alive) setUser(null); });
-        return () => { alive = false; };
+            .catch((err) => { if (alive && err?.name !== 'AbortError') setUser(null); });
+        return () => { alive = false; ac.abort(); };
     }, []);
 
     const [openedPopupId, setOpenedPopupId] = useState(null);
@@ -139,7 +141,10 @@ export default function BusinessPage() {
         setCenter([lat + 0.02, lng]);
         setZoomLevel(14);
         setOpenedPopupId(id);
-        setTimeout(() => markerRefs.current[id]?.openPopup(), 200);
+        if (openPopupTimeoutRef.current) clearTimeout(openPopupTimeoutRef.current);
+        openPopupTimeoutRef.current = setTimeout(() => {
+            markerRefs.current[id]?.openPopup();
+        }, 200);
     }, [points]);
 
     // Expanded categories (includes "Other")
@@ -171,34 +176,18 @@ export default function BusinessPage() {
         await refetch();
     };
 
+    // Cleanup any pending popup timers
+    useEffect(() => {
+        return () => {
+            if (openPopupTimeoutRef.current) {
+                clearTimeout(openPopupTimeoutRef.current);
+            }
+        };
+    }, []);
+
     return (
         <Box display="flex" flexDirection={{ xs: 'column', md: 'row' }} height="91vh" overflow="hidden">
-            {/* Map Pane */}
-            <Box
-                width={{ xs: '100%', sm: '45%', md: '40%', lg: '35%' }}
-                mt={{ xs: 0, md: 6 }}
-                p={2}
-                position="relative"
-                minHeight={{ xs: 300, md: 'auto' }}
-            >
-                <BusinessMap
-                    data={points}
-                    mapRef={mapRef}
-                    markerRefs={markerRefs}
-                    center={center}
-                    zoomLevel={zoomLevel}
-                    hoveredId={hoveredId}
-                    onMarkerClick={handleMarkerClick}
-                    openedPopupId={openedPopupId}
-                    popupContentById={popupContentById}
-                    onPopupClose={() => setOpenedPopupId(null)}
-                />
-                {isLoading && (
-                    <CircularProgress size={48} sx={{ position: 'absolute', top: 32, left: 32 }} />
-                )}
-            </Box>
-
-            {/* Side Panel */}
+            {/* Side Panel (LEFT on md+, TOP on xs) */}
             <Box width={{ xs:'100%', sm:'55%', md:'60%', lg:'65%' }} p={2} pb={0} sx={{ overflowY: 'auto' }}>
                 <BusinessPanel
                     user={user}
@@ -255,6 +244,31 @@ export default function BusinessPage() {
                     showFilters={showFilters}
                     onToggleFilters={() => setShowFilters((f) => !f)}
                 />
+            </Box>
+
+            {/* Map Pane (RIGHT on md+, BOTTOM on xs) */}
+            <Box
+                width={{ xs: '100%', sm: '45%', md: '40%', lg: '35%' }}
+                mt={{ xs: 0, md: 6 }}
+                p={2}
+                position="relative"
+                minHeight={{ xs: 300, md: 'auto' }}
+            >
+                <BusinessMap
+                    data={points}
+                    mapRef={mapRef}
+                    markerRefs={markerRefs}
+                    center={center}
+                    zoomLevel={zoomLevel}
+                    hoveredId={hoveredId}
+                    onMarkerClick={handleMarkerClick}
+                    openedPopupId={openedPopupId}
+                    popupContentById={popupContentById}
+                    onPopupClose={() => setOpenedPopupId(null)}
+                />
+                {isLoading && (
+                    <CircularProgress size={48} sx={{ position: 'absolute', top: 32, left: 32 }} />
+                )}
             </Box>
 
             {/* Add Business Modal */}

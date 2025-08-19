@@ -1,9 +1,90 @@
 // src/components/SidePanel/Business/BusinessCard.jsx
 import React from 'react';
 import {
-    Card, CardContent, CardMedia, Typography, Box, Chip, Avatar, Stack
+    Card, CardContent, Typography, Box, Chip, Avatar, Stack, Link,
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
+import StarIcon from '@mui/icons-material/Star';
+import StarHalfIcon from '@mui/icons-material/StarHalf';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
+
+// Category icons
+import BusinessIcon from '@mui/icons-material/Business';
+import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
+import RestaurantIcon from '@mui/icons-material/Restaurant';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
+import SpaIcon from '@mui/icons-material/Spa';
+import ConstructionIcon from '@mui/icons-material/Construction';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import PetsIcon from '@mui/icons-material/Pets';
+import RealEstateAgentIcon from '@mui/icons-material/RealEstateAgent';
+import FitnessCenterIcon from '@mui/icons-material/FitnessCenter';
+import SchoolIcon from '@mui/icons-material/School';
+import ColorLensIcon from '@mui/icons-material/ColorLens';
+import ComputerIcon from '@mui/icons-material/Computer';
+import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
+import ChurchIcon from '@mui/icons-material/Church';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import YardIcon from '@mui/icons-material/Yard';
+
+// --- Unified layout constants ---
+const HERO_ASPECT = '16 / 9';      // keep the exact cover area size
+const BODY_MIN_HEIGHT = 220;       // same content height as before
+const TITLE_LINES = 2;             // long names wrap to 2 lines
+const SNIPPET_CHARS = 70;
+const SNIPPET_LINES = 2;
+
+function stripHtmlToText(html = '') {
+    return (html || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getCategoryIcon(category = '') {
+    const k = category.toLowerCase();
+    if (k.includes('clean')) return <CleaningServicesIcon fontSize="small" />;
+    if (k.includes('food') || k.includes('restaurant') || k.includes('cafe') || k.includes('bar')) return <RestaurantIcon fontSize="small" />;
+    if (k.includes('retail') || k.includes('shop') || k.includes('store')) return <StorefrontIcon fontSize="small" />;
+    if (k.includes('auto') || k.includes('car')) return <DirectionsCarIcon fontSize="small" />;
+    if (k.includes('beauty') || k.includes('salon') || k.includes('spa')) return <SpaIcon fontSize="small" />;
+    if (k.includes('construction') || k.includes('contractor') || k.includes('build')) return <ConstructionIcon fontSize="small" />;
+    if (k.includes('health') || k.includes('medical') || k.includes('clinic')) return <LocalHospitalIcon fontSize="small" />;
+    if (k.includes('pet') || k.includes('animal')) return <PetsIcon fontSize="small" />;
+    if (k.includes('real')) return <RealEstateAgentIcon fontSize="small" />;
+    if (k.includes('fitness') || k.includes('gym') || k.includes('yoga')) return <FitnessCenterIcon fontSize="small" />;
+    if (k.includes('school') || k.includes('education') || k.includes('tutor')) return <SchoolIcon fontSize="small" />;
+    if (k.includes('art') || k.includes('design') || k.includes('craft')) return <ColorLensIcon fontSize="small" />;
+    if (k.includes('tech') || k.includes('it') || k.includes('computer')) return <ComputerIcon fontSize="small" />;
+    if (k.includes('nonprofit') || k.includes('charity')) return <VolunteerActivismIcon fontSize="small" />;
+    if (k.includes('church') || k.includes('faith') || k.includes('ministry')) return <ChurchIcon fontSize="small" />;
+    if (k.includes('photo')) return <PhotoCameraIcon fontSize="small" />;
+    if (k.includes('lawn') || k.includes('landscap') || k.includes('yard')) return <YardIcon fontSize="small" />;
+    return <BusinessIcon fontSize="small" />;
+}
+
+function StarRow({ halfStars = 0, count = 0 }) {
+    const hs = Math.max(0, Math.min(10, Number(halfStars) || 0));
+    const rating = (hs / 2).toFixed(1);
+    const label = `${rating} out of 5 from ${count} ${count === 1 ? 'review' : 'reviews'}`;
+
+    return (
+        <Box display="flex" alignItems="center" gap={0.5} aria-label={label} title={label} sx={{ mb: 0.25 }}>
+            {Array.from({ length: 5 }).map((_, i) => {
+                const threshold = (i + 1) * 2;
+                if (hs >= threshold) return <StarIcon key={i} fontSize="small" sx={{ color: 'warning.main' }} />;
+                if (hs === threshold - 1) return <StarHalfIcon key={i} fontSize="small" sx={{ color: 'warning.main' }} />;
+                return <StarBorderIcon key={i} fontSize="small" sx={{ color: 'warning.main' }} />;
+            })}
+            <Typography variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
+                {rating} • {count} {count === 1 ? 'review' : 'reviews'}
+            </Typography>
+        </Box>
+    );
+}
 
 export default function BusinessCard({
                                          biz,
@@ -14,102 +95,186 @@ export default function BusinessCard({
                                      }) {
     const cover =
         biz.cover_url || biz.coverUrl ||
-        (Array.isArray(biz.photos) ? biz.photos[0] : '') ||
-        '';
+        (Array.isArray(biz.photos) ? biz.photos[0] : '') || '';
 
-    const logo =
-        biz.logo_url || biz.logoUrl || '';
-
+    const logo = biz.logo_url || biz.logoUrl || '';
     const hasAddress = Boolean((biz.street_address || '').trim());
 
-    // "City, County County" (append "County" when needed)
     const rawCity = (biz.city || '').trim();
     const rawCounty = (biz.county || '').trim();
     const countyDisplay = rawCounty
-        ? (/\bcounty$/i.test(rawCounty) ? rawCounty : `${rawCounty} County`)
+        ? /\bcounty$/i.test(rawCounty)
+            ? rawCounty
+            : `${rawCounty} County`
         : '';
     const cityCounty = rawCity
         ? (countyDisplay ? `${rawCity}, ${countyDisplay}` : rawCity)
         : countyDisplay;
+
+    const halfStars =
+        typeof biz.rating_half_stars === 'number'
+            ? biz.rating_half_stars
+            : (typeof biz.avg_rating === 'number' ? Math.round(biz.avg_rating * 2) : 0);
+    const reviewCount = biz.review_count ?? 0;
+
+    const descPlain = stripHtmlToText(biz.description || '');
+    const showMore = descPlain.length > SNIPPET_CHARS;
+    const snippet = showMore ? descPlain.slice(0, SNIPPET_CHARS).trim() : descPlain;
 
     return (
         <Card
             onMouseEnter={() => setHoveredId?.(biz.id)}
             onMouseLeave={() => setHoveredId?.(null)}
             sx={{
-                mb: 2,
+                height: '100%',
                 cursor: 'pointer',
-                '&:hover .locationRow': { color: 'primary.main' }, // same highlight as before
+                borderRadius: 2,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                '&:hover .locationRow': { color: 'primary.main' },
             }}
             onClick={() => onCardClick?.(biz)}
         >
-            {cover && (
-                <CardMedia
-                    component="img"
-                    height="140"
-                    image={cover}
-                    alt={biz.name}
-                />
-            )}
-
-            <CardContent sx={{ pb: 1.5 }}>
-                {/* Header row: avatar + name (left), category (right) */}
-                <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                    <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
-                        <Avatar
-                            src={logo || undefined}
-                            alt={biz.name}
-                            sx={{ width: 40, height: 40 }}
-                        >
+            {/* HERO / cover image (uniform 16:9) */}
+            <Box sx={{ width: '100%', aspectRatio: HERO_ASPECT, bgcolor: 'action.hover', overflow: 'hidden' }}>
+                {cover ? (
+                    <Box
+                        component="img"
+                        src={cover}
+                        alt={`${biz.name} cover`}
+                        sx={{
+                            width: '100%',
+                            height: '100%',
+                            // ⬇️ Show the entire photo; no cropping
+                            objectFit: 'contain',
+                            objectPosition: 'center',
+                            display: 'block',
+                        }}
+                    />
+                ) : (
+                    <Box sx={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                        <Avatar src={logo || undefined} alt={biz.name} sx={{ width: 140, height: 140, fontSize: 40 }}>
                             {(biz.name || 'B').slice(0, 1)}
                         </Avatar>
-                        <Typography variant="h6" noWrap title={biz.name}>
+                    </Box>
+                )}
+            </Box>
+
+            <CardContent
+                sx={{
+                    pb: 0.75,
+                    flexGrow: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: BODY_MIN_HEIGHT,
+                }}
+            >
+                {/* Header block: Avatar + Title (2-line clamp), Chip on its own row */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0 }}>
+                    {cover ? (
+                        <Avatar src={logo || undefined} alt={biz.name} sx={{ width: 56, height: 56 }}>
+                            {(biz.name || 'B').slice(0, 1)}
+                        </Avatar>
+                    ) : null}
+
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography
+                            variant="h6"
+                            title={biz.name}
+                            sx={{
+                                m: 0,
+                                display: '-webkit-box',
+                                WebkitLineClamp: TITLE_LINES,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                wordBreak: 'break-word',
+                                overflowWrap: 'anywhere',
+                                lineHeight: 1.2,
+                            }}
+                        >
                             {biz.name}
                         </Typography>
-                    </Stack>
 
-                    {biz.category && <Chip size="small" label={biz.category} />}
+                        {biz.category && (
+                            <Chip
+                                size="small"
+                                variant="outlined"
+                                icon={getCategoryIcon(biz.category)}
+                                label={biz.category}
+                                sx={{
+                                    mt: 0.5,
+                                    maxWidth: '100%',
+                                    alignSelf: 'flex-start',
+                                    '.MuiChip-label': {
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                    },
+                                }}
+                            />
+                        )}
+                    </Box>
                 </Box>
 
-                {/* Description (preserve formatting, show up to ~4 lines) */}
-                {biz.description && (
-                    <Box
+                {/* Rating */}
+                <StarRow halfStars={halfStars} count={reviewCount} />
+
+                {/* Description (2-line clamp) */}
+                {!!snippet && (
+                    <Typography
+                        variant="body2"
                         sx={{
                             mt: 0.25,
                             color: 'text.secondary',
                             display: '-webkit-box',
-                            WebkitLineClamp: 4,
+                            WebkitLineClamp: SNIPPET_LINES,
                             WebkitBoxOrient: 'vertical',
                             overflow: 'hidden',
-                            '& ul, & ol': { pl: 2, mb: 0 },
-                            '& p': { m: 0 },
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere',
+                            hyphens: 'auto',
                         }}
-                        // backend should sanitize; we render HTML so lists/bold/etc. remain
-                        dangerouslySetInnerHTML={{ __html: biz.description }}
-                    />
+                    >
+                        {snippet}
+                        {showMore && '... '}
+                        {showMore && (
+                            <Link
+                                component="button"
+                                underline="hover"
+                                color="primary"
+                                onClick={(e) => { e.stopPropagation(); onCardClick?.(biz); }}
+                                sx={{ fontWeight: 500 }}
+                            >
+                                more
+                            </Link>
+                        )}
+                    </Typography>
                 )}
 
-                {/* Location block — address (if present) above city/county, aligned with the same left edge */}
+                {/* Location (single-line truncation for each row) */}
                 <Box
                     className="locationRow"
                     onMouseEnter={(e) => { e.stopPropagation(); setHoveredId?.(biz.id); }}
                     onMouseLeave={(e) => { e.stopPropagation(); setHoveredId?.(null); }}
                     onClick={(e) => { e.stopPropagation(); onLocationClick?.(); }}
-                    sx={{
-                        mt: 1.25,
-                        color: 'text.secondary',
-                        cursor: 'pointer',
-                    }}
+                    sx={{ mt: 'auto', pt: 0.75, color: 'text.secondary', cursor: 'pointer' }}
                 >
                     <Box display="flex" alignItems="flex-start" gap={0.75}>
                         <PlaceIcon fontSize="small" sx={{ mt: '2px' }} />
-                        <Box>
+                        <Box sx={{ minWidth: 0 }}>
                             {hasAddress && (
-                                <Typography variant="body2" sx={{ color: 'inherit', m: 0 }}>
+                                <Typography
+                                    variant="body2"
+                                    sx={{ color: 'inherit', m: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                >
                                     {biz.street_address}
                                 </Typography>
                             )}
-                            <Typography variant="body2" sx={{ color: 'inherit', m: 0 }}>
+                            <Typography
+                                variant="body2"
+                                sx={{ color: 'inherit', m: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                            >
                                 {cityCounty}
                             </Typography>
                         </Box>
