@@ -6,6 +6,7 @@ import BusinessMap from '../components/Map/BusinessMap';
 import BusinessPanel from '../components/SidePanel/Business/BusinessPanel';
 import BusinessCard from '../components/SidePanel/Business/BusinessCard';
 import AddBusinessModal from '../components/SidePanel/Business/AddBusinessModal';
+import BusinessDetailModal from '../components/SidePanel/Business/BusinessDetailModal';
 
 import useBusinessData from '../hooks/business/useBusinessData';
 
@@ -30,7 +31,7 @@ function filterReducer(state, { type, value }) {
 
 export default function BusinessPage() {
     const mapRef = useRef(null);
-    const markerRefs = useRef({});
+    const markerRefs = useRef({ });
     const openPopupTimeoutRef = useRef(null);
 
     const [user, setUser] = useState(null);
@@ -147,7 +148,6 @@ export default function BusinessPage() {
         }, 200);
     }, [points]);
 
-    // Expanded categories (includes "Other")
     const categoriesList = useMemo(() => [
         'Coffee', 'Restaurant', 'Bakery', 'Bar/Nightlife',
         'Grocery', 'Retail', 'Auto', 'Gas Station',
@@ -164,7 +164,6 @@ export default function BusinessPage() {
         'Other',
     ], []);
 
-    // Add Business modal
     const [addOpen, setAddOpen] = useState(false);
     const [toast, setToast] = useState({ open: false, msg: '' });
 
@@ -176,7 +175,6 @@ export default function BusinessPage() {
         await refetch();
     };
 
-    // Cleanup any pending popup timers
     useEffect(() => {
         return () => {
             if (openPopupTimeoutRef.current) {
@@ -187,7 +185,7 @@ export default function BusinessPage() {
 
     return (
         <Box display="flex" flexDirection={{ xs: 'column', md: 'row' }} height="91vh" overflow="hidden">
-            {/* Side Panel (LEFT on md+, TOP on xs) */}
+            {/* Side Panel */}
             <Box width={{ xs:'100%', sm:'55%', md:'60%', lg:'65%' }} p={2} pb={0} sx={{ overflowY: 'auto' }}>
                 <BusinessPanel
                     user={user}
@@ -246,7 +244,7 @@ export default function BusinessPage() {
                 />
             </Box>
 
-            {/* Map Pane (RIGHT on md+, BOTTOM on xs) */}
+            {/* Map Pane */}
             <Box
                 width={{ xs: '100%', sm: '45%', md: '40%', lg: '35%' }}
                 mt={{ xs: 0, md: 6 }}
@@ -271,7 +269,6 @@ export default function BusinessPage() {
                 )}
             </Box>
 
-            {/* Add Business Modal */}
             <AddBusinessModal
                 open={addOpen}
                 onClose={closeAddBusiness}
@@ -280,7 +277,6 @@ export default function BusinessPage() {
                 categories={categoriesList}
             />
 
-            {/* Toast */}
             <Snackbar
                 open={toast.open}
                 autoHideDuration={3000}
@@ -289,6 +285,12 @@ export default function BusinessPage() {
             >
                 <Alert severity="success" variant="filled">{toast.msg}</Alert>
             </Snackbar>
+
+            <BusinessDetailModal
+                open={Boolean(selectedBiz)}
+                biz={selectedBiz}
+                onClose={() => setSelectedBiz(null)}
+            />
         </Box>
     );
 }
