@@ -1,14 +1,13 @@
 // src/components/SidePanel/Business/BusinessCard.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import {
-    Card, CardContent, Typography, Box, Chip, Avatar, Stack, Link,
+    Card, CardContent, Typography, Box, Chip, Avatar, Link,
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import StarIcon from '@mui/icons-material/Star';
 import StarHalfIcon from '@mui/icons-material/StarHalf';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 
-// Category icons
 import BusinessIcon from '@mui/icons-material/Business';
 import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
@@ -28,10 +27,9 @@ import ChurchIcon from '@mui/icons-material/Church';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import YardIcon from '@mui/icons-material/Yard';
 
-// --- Unified layout constants ---
-const HERO_ASPECT = '16 / 9';      // keep the exact cover area size
-const BODY_MIN_HEIGHT = 220;       // same content height as before
-const TITLE_LINES = 2;             // long names wrap to 2 lines
+const HERO_ASPECT = '16 / 9';
+const BODY_MIN_HEIGHT = 220;
+const TITLE_LINES = 2;
 const SNIPPET_CHARS = 70;
 const SNIPPET_LINES = 2;
 
@@ -80,7 +78,7 @@ function StarRow({ halfStars = 0, count = 0 }) {
                 return <StarBorderIcon key={i} fontSize="small" sx={{ color: 'warning.main' }} />;
             })}
             <Typography variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
-                {rating} • {count} {count === 1 ? 'review' : 'reviews'}
+                {rating} ({count} {count === 1 ? 'review)' : 'reviews)'})
             </Typography>
         </Box>
     );
@@ -93,6 +91,8 @@ export default function BusinessCard({
                                          onLocationClick,
                                          onCardClick,
                                      }) {
+    const [overAddress, setOverAddress] = useState(false);
+
     const cover =
         biz.cover_url || biz.coverUrl ||
         (Array.isArray(biz.photos) ? biz.photos[0] : '') || '';
@@ -121,6 +121,8 @@ export default function BusinessCard({
     const showMore = descPlain.length > SNIPPET_CHARS;
     const snippet = showMore ? descPlain.slice(0, SNIPPET_CHARS).trim() : descPlain;
 
+    const isHovered = hoveredId === biz.id;
+
     return (
         <Card
             onMouseEnter={() => setHoveredId?.(biz.id)}
@@ -132,7 +134,11 @@ export default function BusinessCard({
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
-                '&:hover .locationRow': { color: 'primary.main' },
+                border: 1,
+                borderColor: isHovered ? 'primary.main' : 'divider',            // like Community cards
+                bgcolor: isHovered && !overAddress ? 'grey.100' : 'background.paper', // gray highlight except over address
+                transition: (theme) => theme.transitions.create(['background-color','border-color'], { duration: 120 }),
+                '&:hover .locationRow': { color: 'primary.main' },               // keep blue on address hover
             }}
             onClick={() => onCardClick?.(biz)}
         >
@@ -146,7 +152,6 @@ export default function BusinessCard({
                         sx={{
                             width: '100%',
                             height: '100%',
-                            // ⬇️ Show the entire photo; no cropping
                             objectFit: 'contain',
                             objectPosition: 'center',
                             display: 'block',
@@ -170,7 +175,7 @@ export default function BusinessCard({
                     minHeight: BODY_MIN_HEIGHT,
                 }}
             >
-                {/* Header block: Avatar + Title (2-line clamp), Chip on its own row */}
+                {/* Header block */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0 }}>
                     {cover ? (
                         <Avatar src={logo || undefined} alt={biz.name} sx={{ width: 56, height: 56 }}>
@@ -220,7 +225,7 @@ export default function BusinessCard({
                 {/* Rating */}
                 <StarRow halfStars={halfStars} count={reviewCount} />
 
-                {/* Description (2-line clamp) */}
+                {/* Description */}
                 {!!snippet && (
                     <Typography
                         variant="body2"
@@ -252,11 +257,11 @@ export default function BusinessCard({
                     </Typography>
                 )}
 
-                {/* Location (single-line truncation for each row) */}
+                {/* Location (blue only; never gray‑fill the card while hovered here) */}
                 <Box
                     className="locationRow"
-                    onMouseEnter={(e) => { e.stopPropagation(); setHoveredId?.(biz.id); }}
-                    onMouseLeave={(e) => { e.stopPropagation(); setHoveredId?.(null); }}
+                    onMouseEnter={(e) => { e.stopPropagation(); setHoveredId?.(biz.id); setOverAddress(true); }}
+                    onMouseLeave={(e) => { e.stopPropagation(); setHoveredId?.(null); setOverAddress(false); }}
                     onClick={(e) => { e.stopPropagation(); onLocationClick?.(); }}
                     sx={{ mt: 'auto', pt: 0.75, color: 'text.secondary', cursor: 'pointer' }}
                 >

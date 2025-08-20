@@ -1,7 +1,8 @@
-// backend/src/routes/businesses.js
+// backend/src/routes/businesses/businesses.js
 import express from 'express';
 import crypto from 'crypto';
 import knex from '../../config/db.js';
+import authenticateToken from '../../middleware/auth.js';
 
 const router = express.Router();
 
@@ -52,6 +53,99 @@ router.get('/', async (req, res) => {
     } catch (err) {
         console.error('[GET /api/businesses] error:', err);
         res.status(500).json({ error: 'server_error' });
+    }
+});
+
+/** GET /api/businesses/:id — full profile + live rating stats */
+router.get('/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const b = await knex('businesses as b')
+            .leftJoin(
+                knex('business_reviews')
+                    .select('business_id')
+                    .avg({ avg_rating: knex.raw('rating_half_stars / 2.0') })
+                    .count({ review_count: '*' })
+                    .groupBy('business_id')
+                    .as('r'),
+                'b.id',
+                'r.business_id'
+            )
+            .select(
+                'b.*',
+                knex.raw('COALESCE(r.avg_rating, 0) as avg_rating'),
+                knex.raw('COALESCE(r.review_count, 0) as review_count')
+            )
+            .where('b.id', id)
+            .first();
+
+        if (!b) return res.status(404).json({ error: 'not_found' });
+
+        // parse JSON columns if stored as text
+        const parseJson = (t) => { try { return typeof t === 'string' ? JSON.parse(t) : t; } catch { return null; } };
+
+        const out = {
+            ...b,
+            hours_json: parseJson(b.hours_json) || null,
+            amenities_json: parseJson(b.amenities_json) || null,
+            gallery_urls: parseJson(b.gallery_urls) || [],
+        };
+
+        return res.json(out);
+    } catch (err) {
+        console.error('[GET /api/businesses/:id] error:', err);
+        return res.status(500).json({ error: 'server_error' });
+    }
+});
+
+/** GET /api/businesses/:id/locations — fetch all locations for a business */
+router.get('/:id/locations', async (req, res) => {
+    try {
+        const business_id = Number(req.params.id);
+        const rows = await knex('business_locations')
+            .select('*')
+            .where({ business_id })
+            .orderBy('is_primary', 'desc')
+            .orderBy('created_at', 'asc');
+        return res.json(rows);
+    } catch (err) {
+        console.error('[GET /api/businesses/:id/locations] error:', err);
+        return res.status(500).json({ error: 'server_error' });
+    }
+});
+
+/** POST /api/businesses/:id/locations — owner/admin adds a location (minimal) */
+router.post('/:id/locations', authenticateToken, async (req, res) => {
+    try {
+        const business_id = Number(req.params.id);
+        const {
+            nickname = null,
+            street_address = null,
+            city = null,
+            county = null,
+            latitude = null,
+            longitude = null,
+            phone = null,
+            hours_json = null,
+            is_primary = 0,
+        } = req.body || {};
+
+        const payload = {
+            business_id,
+            nickname, street_address, city, county, phone,
+            latitude: latitude == null ? null : Number(latitude),
+            longitude: longitude == null ? null : Number(longitude),
+            hours_json: hours_json ? JSON.stringify(hours_json) : null,
+            is_primary: is_primary ? 1 : 0,
+        };
+
+        const ret = await knex('business_locations').insert(payload).returning(['id']);
+        const insertedId = Array.isArray(ret) ? (typeof ret[0] === 'object' ? ret[0].id : ret[0]) : ret;
+        const row = await knex('business_locations').where({ id: insertedId }).first();
+        return res.json({ ok: true, location: row });
+    } catch (err) {
+        console.error('[POST /api/businesses/:id/locations] error:', err);
+        return res.status(500).json({ error: 'server_error' });
     }
 });
 
@@ -133,19 +227,15 @@ router.post('/', async (req, res) => {
 });
 
 /* ===========================================================
-   Reviews Endpoints
+   Reviews Endpoints (unchanged behavior; single review per user)
    =========================================================== */
-
-/** POST /api/businesses/:id/reviews — create or update a review */
-router.post('/:id/reviews', async (req, res) => {
+router.post('/:id/reviews', authenticateToken, async (req, res) => {
     try {
         const businessId = Number(req.params.id);
-        const userId = req.user?.id; // assumes auth middleware attaches req.user
+        const userId = req.user?.id;
         const { rating, comment = '' } = req.body || {};
 
-        if (!userId) {
-            return res.status(401).json({ ok: false, error: 'unauthorized' });
-        }
+        if (!userId) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
         const num = Number(rating);
         if (!(num >= 0.5 && num <= 5 && Math.abs(num * 2 - Math.round(num * 2)) < 1e-9)) {
@@ -163,27 +253,25 @@ router.post('/:id/reviews', async (req, res) => {
             .onConflict(['business_id', 'user_id'])
             .merge({ rating_half_stars: half, comment, updated_at: knex.fn.now() });
 
-        const business = await knex('businesses')
-            .select('rating_half_stars', 'review_count')
-            .where({ id: businessId })
-            .first();
-
-        return res.json({ ok: true, business });
+        return res.json({ ok: true });
     } catch (err) {
         console.error('[POST /api/businesses/:id/reviews] error:', err);
         return res.status(500).json({ ok: false, error: 'server_error' });
     }
 });
 
-/** GET /api/businesses/:id/reviews — fetch reviews for a business */
 router.get('/:id/reviews', async (req, res) => {
     try {
         const businessId = Number(req.params.id);
         const page = Math.max(1, Number(req.query.page) || 1);
         const pageSize = Math.min(50, Number(req.query.pageSize) || 20);
+        const viewerId = Number(req.user?.id || 0);
 
-        const rows = await knex('business_reviews')
-            .select('id', 'user_id', 'rating_half_stars', 'comment', 'created_at', 'updated_at')
+        const rows = await knex('business_reviews as r')
+            .select(
+                'r.id', 'r.user_id', 'r.rating_half_stars', 'r.comment', 'r.created_at', 'r.updated_at',
+                knex.raw('r.user_id = ? AS is_me', [viewerId]),
+            )
             .where({ business_id: businessId })
             .orderBy('created_at', 'desc')
             .offset((page - 1) * pageSize)
@@ -196,29 +284,45 @@ router.get('/:id/reviews', async (req, res) => {
     }
 });
 
-/** DELETE /api/businesses/:id/reviews/me — remove current user’s review */
-router.delete('/:id/reviews/me', async (req, res) => {
+router.delete('/:id/reviews/me', authenticateToken, async (req, res) => {
     try {
         const businessId = Number(req.params.id);
         const userId = req.user?.id;
-
-        if (!userId) {
-            return res.status(401).json({ ok: false, error: 'unauthorized' });
-        }
+        if (!userId) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
         await knex('business_reviews')
             .where({ business_id: businessId, user_id: userId })
             .del();
 
-        const business = await knex('businesses')
-            .select('rating_half_stars', 'review_count')
-            .where({ id: businessId })
-            .first();
-
-        return res.json({ ok: true, business });
+        return res.json({ ok: true });
     } catch (err) {
         console.error('[DELETE /api/businesses/:id/reviews/me] error:', err);
         return res.status(500).json({ ok: false, error: 'server_error' });
+    }
+});
+
+/* -----------------------------------------------------------
+   Deals
+   ----------------------------------------------------------- */
+router.get('/:id/deals', async (req, res) => {
+    try {
+        const businessId = Number(req.params.id);
+        const now = knex.fn.now();
+        const rows = await knex('business_deals')
+            .select('*')
+            .where({ business_id: businessId, active: 1 })
+            .andWhere(function () {
+                this.whereNull('starts_at').orWhere('starts_at', '<=', now);
+            })
+            .andWhere(function () {
+                this.whereNull('ends_at').orWhere('ends_at', '>=', now);
+            })
+            .orderBy('created_at', 'desc');
+
+        return res.json(rows);
+    } catch (err) {
+        console.error('[GET /api/businesses/:id/deals] error:', err);
+        return res.status(500).json({ error: 'server_error' });
     }
 });
 
