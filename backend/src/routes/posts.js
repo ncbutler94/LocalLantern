@@ -1,6 +1,7 @@
 // backend/src/routes/posts.js
 // =============================================================================
 // POST likes + threaded comments + comment‑likes + comment‑image upload (GCS)
+// + Reposts toggle (new)
 // -----------------------------------------------------------------------------
 //
 // Requires (install once in backend):
@@ -10,9 +11,8 @@
 //   GCP_PROJECT_ID=<your project id>
 //   GCS_BUCKET=<your bucket name>   // same bucket you use for post photos
 //
-// DB (run a migration once if not present):
-//   comment_photos: id, comment_id(FK post_comments.id), url, position
-//   (DDL shown at bottom of file)
+// DB (tables this router touches):
+//   post_likes, post_comments, comment_likes, comment_photos, post_reposts
 //
 // =============================================================================
 
@@ -29,7 +29,7 @@ const router = express.Router();
 /* ── Multer: keep in memory; 5 MB limit ─────────────────────────────────── */
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits:  { fileSize: 5 * 1024 * 1024 },
+    limits : { fileSize: 5 * 1024 * 1024 },
 });
 
 /* ── Google Cloud Storage setup ─────────────────────────────────────────── */
@@ -38,10 +38,10 @@ const bucket  = storage.bucket(process.env.GCS_BUCKET);
 const COMMENT_PHOTO_DIR = 'comment_photos';
 
 async function uploadCommentImage(file) {
-    const ext     = path.extname(file.originalname) || '';
-    const key     = `${COMMENT_PHOTO_DIR}/${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
-    const blob    = bucket.file(key);
-    const stream  = blob.createWriteStream({ metadata: { contentType: file.mimetype } });
+    const ext    = path.extname(file.originalname) || '';
+    const key    = `${COMMENT_PHOTO_DIR}/${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
+    const blob   = bucket.file(key);
+    const stream = blob.createWriteStream({ metadata: { contentType: file.mimetype } });
 
     await new Promise((resolve, reject) => {
         stream.on('error', reject);
@@ -53,7 +53,7 @@ async function uploadCommentImage(file) {
 }
 
 /* ────────────────────────────────────────────────────────────────
- * 1) POST /api/posts/:postId/like  (unchanged)
+ * 1) POST /api/posts/:postId/like  (toggle)
  * ──────────────────────────────────────────────────────────────── */
 router.post('/:postId/like', authenticateToken, async (req, res, next) => {
     const { id: user_id } = req.user;
@@ -80,7 +80,30 @@ router.post('/:postId/like', authenticateToken, async (req, res, next) => {
 });
 
 /* ────────────────────────────────────────────────────────────────
- * 2) POST /api/posts/comments/:commentId/like  (toggle)
+ * 2) POST /api/posts/:postId/repost  (toggle)   ← NEW
+ * ──────────────────────────────────────────────────────────────── */
+router.post('/:postId/repost', authenticateToken, async (req, res, next) => {
+    const { id: user_id } = req.user;
+    const post_id = Number(req.params.postId);
+
+    try {
+        const existing = await db('post_reposts').where({ post_id, user_id }).first();
+
+        if (existing) {
+            await db('post_reposts').where({ id: existing.id }).del();
+        } else {
+            await db('post_reposts').insert({ post_id, user_id });
+        }
+
+        const [{ count }] = await db('post_reposts').where({ post_id }).count('* as count');
+        return res.json({ reposted: !existing, repostsCount: Number(count) || 0 });
+    } catch (err) {
+        return next(err);
+    }
+});
+
+/* ────────────────────────────────────────────────────────────────
+ * 3) POST /api/posts/comments/:commentId/like  (toggle)
  * ──────────────────────────────────────────────────────────────── */
 router.post('/comments/:commentId/like', authenticateToken, async (req, res, next) => {
     const { id: user_id } = req.user;
@@ -104,7 +127,7 @@ router.post('/comments/:commentId/like', authenticateToken, async (req, res, nex
 });
 
 /* ────────────────────────────────────────────────────────────────
- * 3) POST /api/posts/:postId/comments   (now accepts image)
+ * 4) POST /api/posts/:postId/comments  (text + optional image)
  *    Accepts JSON or multipart/form-data:
  *      - fields: content, parent_id?, category?
  *      - file:   image?  (1 image)
@@ -112,12 +135,11 @@ router.post('/comments/:commentId/like', authenticateToken, async (req, res, nex
 router.post(
     '/:postId/comments',
     authenticateToken,
-    upload.single('image'),                // ← NEW: handle optional image
+    upload.single('image'),
     async (req, res, next) => {
         const { id: user_id } = req.user;
         const post_id  = Number(req.params.postId);
 
-        // body may be JSON or multipart; normalize here
         const content   = (req.body?.content ?? '').toString();
         const parent_id = req.body?.parent_id ? Number(req.body.parent_id) : null;
         const category  = (req.body?.category || 'community_post').trim();
@@ -154,14 +176,14 @@ router.post(
                 const comment_id =
                     typeof insertRes[0] === 'object' ? insertRes[0].id : insertRes[0];
 
-                // 2) if an image came in, push to GCS and write comment_photos row
+                // 2) optional image
                 let imageUrl = null;
                 if (req.file) {
                     imageUrl = await uploadCommentImage(req.file);
                     await trx('comment_photos').insert({ comment_id, url: imageUrl, position: 0 });
                 }
 
-                // 3) hydrate + include initial like flags and image
+                // 3) hydrate newly created row
                 const row = await trx('post_comments as pc')
                     .join('users as u', 'pc.user_id', 'u.id')
                     .select(
@@ -196,7 +218,7 @@ router.post(
 );
 
 /* ────────────────────────────────────────────────────────────────
- * 4) GET /api/posts/:postId/comments   (popular/newest + image)
+ * 5) GET /api/posts/:postId/comments  (popular/newest + image)
  * ──────────────────────────────────────────────────────────────── */
 router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
     const post_id  = Number(req.params.postId);
@@ -218,24 +240,19 @@ router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
                 'u.first_name',
                 'u.last_name',
                 'u.avatar_url',
-                // like counts & viewer-liked flag
                 db.raw('(SELECT COUNT(*) FROM comment_likes WHERE comment_id = pc.id) AS likesCount'),
                 db.raw(
                     'EXISTS (SELECT 1 FROM comment_likes WHERE comment_id = pc.id AND user_id = ?) AS viewerLiked',
                     [viewerId]
                 ),
-                // single image url (if present)
                 db.raw(
                     '(SELECT url FROM comment_photos WHERE comment_id = pc.id ORDER BY position ASC, id ASC LIMIT 1) AS image'
                 ),
             )
             .where({ 'pc.post_id': post_id, 'pc.category': category })
             .modify((q) => {
-                if (sortKey === 'newest') {
-                    q.orderBy('pc.created_at', 'desc');
-                } else {
-                    q.orderBy('likesCount', 'desc').orderBy('pc.created_at', 'desc');
-                }
+                if (sortKey === 'newest') q.orderBy('pc.created_at', 'desc');
+                else q.orderBy('likesCount', 'desc').orderBy('pc.created_at', 'desc');
             });
 
         return res.json(rows);
@@ -245,19 +262,3 @@ router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
 });
 
 export default router;
-
-/* ---------------------------------------------------------------------------
-   Knex migration (create once if not already present)
-
-   // 20250808_add_comment_photos.js  (CJS or ESM style as used in your project)
-   exports.up = (knex) =>
-     knex.schema.createTable('comment_photos', (t) => {
-       t.increments('id').primary();
-       t.integer('comment_id').unsigned().notNullable()
-         .references('id').inTable('post_comments').onDelete('CASCADE');
-       t.string('url', 600).notNullable();
-       t.integer('position').defaultTo(0);
-     });
-
-   exports.down = (knex) => knex.schema.dropTableIfExists('comment_photos');
---------------------------------------------------------------------------- */

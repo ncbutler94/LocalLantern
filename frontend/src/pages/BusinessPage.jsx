@@ -1,21 +1,29 @@
 // src/pages/BusinessPage.jsx
-import React, { useEffect, useMemo, useReducer, useRef, useState, useCallback } from 'react';
-import { Box, CircularProgress, Snackbar, Alert } from '@mui/material';
+import React, {
+    useEffect,
+    useMemo,
+    useReducer,
+    useRef,
+    useState,
+    useCallback,
+} from 'react';
+import { Box, CircularProgress, Snackbar, Alert, Fade } from '@mui/material';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import BusinessMap from '../components/Map/BusinessMap';
 import BusinessPanel from '../components/SidePanel/Business/BusinessPanel';
 import BusinessCard from '../components/SidePanel/Business/BusinessCard';
 import AddBusinessModal from '../components/SidePanel/Business/AddBusinessModal';
-import BusinessDetailModal from '../components/SidePanel/Business/BusinessDetailModal';
+import BusinessProfile from '../components/SidePanel/Business/BusinessProfile';
 
 import useBusinessData from '../hooks/business/useBusinessData';
 
-import cityData      from '../data/alabamaCities.json';
-import countyData    from '../data/alabamaCounties.json';
+import cityData from '../data/alabamaCities.json';
+import countyData from '../data/alabamaCounties.json';
 import cityCountyMap from '../data/cityCountyMap.json';
 
 const DEFAULT_CENTER = [32.806671, -86.79113];
-const DEFAULT_ZOOM   = 7.5;
+const DEFAULT_ZOOM = 7.5;
 
 /* ---------- reducer ---------- */
 const initialFilters = {
@@ -30,8 +38,12 @@ function filterReducer(state, { type, value }) {
 }
 
 export default function BusinessPage() {
+    const { businessId } = useParams();
+    const isProfileOpen = !!businessId;
+    const navigate = useNavigate();
+
     const mapRef = useRef(null);
-    const markerRefs = useRef({ });
+    const markerRefs = useRef({});
     const openPopupTimeoutRef = useRef(null);
 
     const [user, setUser] = useState(null);
@@ -41,17 +53,19 @@ export default function BusinessPage() {
         fetch('/users/profile', { signal: ac.signal })
             .then((res) => (res.ok ? res.json() : null))
             .then((u) => { if (alive) setUser(u); })
-            .catch((err) => { if (alive && err?.name !== 'AbortError') setUser(null); });
+            .catch(() => { if (alive) setUser(null); })
+            .finally(() => {});
         return () => { alive = false; ac.abort(); };
     }, []);
 
     const [openedPopupId, setOpenedPopupId] = useState(null);
     const [hoveredId, setHoveredId] = useState(null);
     const [showFilters, setShowFilters] = useState(true);
-    const [selectedBiz, setSelectedBiz] = useState(null);
 
     const [filters, dispatch] = useReducer(filterReducer, initialFilters);
-    const { search, category, sort, city: selectedCity, county: selectedCounty } = filters;
+    const {
+        search, category, sort, city: selectedCity, county: selectedCounty,
+    } = filters;
 
     const [center, setCenter] = useState(DEFAULT_CENTER);
     const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
@@ -62,9 +76,9 @@ export default function BusinessPage() {
         return m;
     }, []);
     const availableCities = useMemo(
-        () => selectedCounty
+        () => (selectedCounty
             ? cityData.filter((c) => cityToCounty[c.name] === selectedCounty).map((c) => c.name)
-            : cityData.map((c) => c.name),
+            : cityData.map((c) => c.name)),
         [selectedCounty, cityToCounty]
     );
     const availableCounties = useMemo(() => countyData.map((c) => c.name), []);
@@ -89,7 +103,7 @@ export default function BusinessPage() {
     }, []);
 
     const { businesses, points, isLoading, refetch } = useBusinessData({
-        search, city: selectedCity, county: selectedCounty, category, sort
+        search, city: selectedCity, county: selectedCounty, category, sort,
     });
 
     const filteredBusinesses = useMemo(() => {
@@ -102,10 +116,10 @@ export default function BusinessPage() {
             }
             if (category && b.category !== category) return false;
             if (term) {
-                const stop = new Set(['the','for','an','a','and','of','to','in','on']);
+                const stop = new Set(['the', 'for', 'an', 'a', 'and', 'of', 'to', 'in', 'on']);
                 const words = term.split(/\s+/).filter((w) => w && !stop.has(w));
                 if (words.length) {
-                    const haystack = (`${b.name ?? ''} ${b.description ?? ''}`).toLowerCase();
+                    const haystack = `${b.name ?? ''} ${b.description ?? ''}`.toLowerCase();
                     if (!words.some((w) => haystack.includes(w))) return false;
                 }
             }
@@ -114,9 +128,9 @@ export default function BusinessPage() {
     }, [businesses, selectedCity, selectedCounty, category, search]);
 
     const handleCardClick = useCallback((biz) => {
-        setSelectedBiz(biz);
         setOpenedPopupId(null);
-    }, []);
+        navigate(`/business/${biz.id}`);
+    }, [navigate]);
 
     const popupContentById = useMemo(() => {
         const m = {};
@@ -148,21 +162,17 @@ export default function BusinessPage() {
         }, 200);
     }, [points]);
 
-    const categoriesList = useMemo(() => [
-        'Coffee', 'Restaurant', 'Bakery', 'Bar/Nightlife',
-        'Grocery', 'Retail', 'Auto', 'Gas Station',
-        'Home Services', 'Construction', 'HVAC', 'Plumbing', 'Electrical',
-        'Landscaping', 'Cleaning',
-        'Tech/IT Services', 'Marketing/Advertising', 'Photography/Video',
-        'Salon/Barber', 'Spa & Wellness', 'Gym',
-        'Healthcare/Clinic', 'Pharmacy',
-        'Pet Care', 'Childcare', 'Education/Tutoring',
-        'Nonprofit', 'Church/Faith',
-        'Legal Services', 'Accounting/Tax', 'Real Estate',
-        'Travel & Tourism', 'Entertainment', 'Arts & Crafts',
-        'Manufacturing', 'Agriculture', 'Transportation/Logistics',
-        'Other',
-    ], []);
+    const categoriesList = useMemo(
+        () => [
+            'Coffee', 'Restaurant', 'Bakery', 'Bar/Nightlife', 'Grocery', 'Retail', 'Auto', 'Gas Station',
+            'Home Services', 'Construction', 'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'Cleaning',
+            'Tech/IT Services', 'Marketing/Advertising', 'Photography/Video', 'Salon/Barber', 'Spa & Wellness',
+            'Gym', 'Healthcare/Clinic', 'Pharmacy', 'Pet Care', 'Childcare', 'Education/Tutoring', 'Nonprofit',
+            'Church/Faith', 'Legal Services', 'Accounting/Tax', 'Real Estate', 'Travel & Tourism', 'Entertainment',
+            'Arts & Crafts', 'Manufacturing', 'Agriculture', 'Transportation/Logistics', 'Other',
+        ],
+        []
+    );
 
     const [addOpen, setAddOpen] = useState(false);
     const [toast, setToast] = useState({ open: false, msg: '' });
@@ -170,23 +180,38 @@ export default function BusinessPage() {
     const openAddBusiness = () => setAddOpen(true);
     const closeAddBusiness = () => setAddOpen(false);
 
-    const handleSubmitted = async (newBiz) => {
+    const handleSubmitted = useCallback(async () => {
         setToast({ open: true, msg: 'Business submitted. We’ll verify and publish it soon.' });
         await refetch();
-    };
+    }, [refetch]);
 
     useEffect(() => {
-        return () => {
-            if (openPopupTimeoutRef.current) {
-                clearTimeout(openPopupTimeoutRef.current);
-            }
-        };
+        return () => { if (openPopupTimeoutRef.current) clearTimeout(openPopupTimeoutRef.current); };
     }, []);
 
     return (
-        <Box display="flex" flexDirection={{ xs: 'column', md: 'row' }} height="91vh" overflow="hidden">
+        <Box
+            sx={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                height: '91vh',
+                overflow: 'hidden',
+            }}
+        >
             {/* Side Panel */}
-            <Box width={{ xs:'100%', sm:'55%', md:'60%', lg:'65%' }} p={2} pb={0} sx={{ overflowY: 'auto' }}>
+            <Box
+                width={{ xs: '100%', sm: '55%', md: '60%', lg: '65%' }}
+                p={2}
+                pb={0}
+                sx={{
+                    overflowY: 'auto',
+                    opacity: isProfileOpen ? 0 : 1,
+                    pointerEvents: isProfileOpen ? 'none' : 'auto',
+                    transition: 'opacity 180ms ease',
+                }}
+                aria-hidden={isProfileOpen ? 'true' : 'false'}
+            >
                 <BusinessPanel
                     user={user}
                     businesses={filteredBusinesses}
@@ -196,7 +221,6 @@ export default function BusinessPage() {
                     onCardClick={handleCardClick}
                     onLocationClick={handleLocationClick}
                     onAddBusiness={openAddBusiness}
-
                     searchTerm={search}
                     onSearchTermChange={(val) => dispatch({ type: 'search', value: val })}
                     onSearchClick={refetch}
@@ -208,7 +232,6 @@ export default function BusinessPage() {
                         dispatch({ type: 'county', value: '' });
                         refetch();
                     }}
-
                     filteredCities={availableCities}
                     filteredCounties={availableCounties}
                     selectedCity={selectedCity}
@@ -221,24 +244,21 @@ export default function BusinessPage() {
                         dispatch({ type: 'county', value: val });
                         if (!val) dispatch({ type: 'city', value: '' });
                     }}
-
                     selectedCategory={category}
                     categories={categoriesList}
                     onCategoryChange={(val) => {
                         dispatch({ type: 'category', value: val });
                         refetch();
                     }}
-
                     selectedSort={sort}
                     sortOptions={[
-                        { value: 'newest',  label: 'Newest' },
+                        { value: 'newest', label: 'Newest' },
                         { value: 'popular', label: 'Most Popular' },
                     ]}
                     onSortChange={(val) => {
                         dispatch({ type: 'sort', value: val });
                         refetch();
                     }}
-
                     showFilters={showFilters}
                     onToggleFilters={() => setShowFilters((f) => !f)}
                 />
@@ -251,6 +271,12 @@ export default function BusinessPage() {
                 p={2}
                 position="relative"
                 minHeight={{ xs: 300, md: 'auto' }}
+                sx={{
+                    opacity: isProfileOpen ? 0 : 1,
+                    pointerEvents: isProfileOpen ? 'none' : 'auto',
+                    transition: 'opacity 180ms ease',
+                }}
+                aria-hidden={isProfileOpen ? 'true' : 'false'}
             >
                 <BusinessMap
                     data={points}
@@ -269,6 +295,7 @@ export default function BusinessPage() {
                 )}
             </Box>
 
+            {/* Add Business */}
             <AddBusinessModal
                 open={addOpen}
                 onClose={closeAddBusiness}
@@ -277,20 +304,36 @@ export default function BusinessPage() {
                 categories={categoriesList}
             />
 
+            {/* Toast */}
             <Snackbar
                 open={toast.open}
                 autoHideDuration={3000}
                 onClose={() => setToast({ open: false, msg: '' })}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
-                <Alert severity="success" variant="filled">{toast.msg}</Alert>
+                <Alert severity="success" variant="filled">
+                    {toast.msg}
+                </Alert>
             </Snackbar>
 
-            <BusinessDetailModal
-                open={Boolean(selectedBiz)}
-                biz={selectedBiz}
-                onClose={() => setSelectedBiz(null)}
-            />
+            {/* ─────────────── Overlay: fade to white, show Business Profile ─────────────── */}
+            {!!businessId && (
+                <Fade in timeout={220}>
+                    <Box
+                        sx={{
+                            position: 'absolute', inset: 0, zIndex: 50,
+                            bgcolor: 'common.white',
+                            overflowY: 'auto',
+                        }}
+                    >
+                        <BusinessProfile
+                            businessId={businessId}
+                            onBack={() => navigate('/business')}
+                            user={user}
+                        />
+                    </Box>
+                </Fade>
+            )}
         </Box>
     );
 }
