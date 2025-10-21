@@ -78,7 +78,7 @@ function StarRow({ halfStars = 0, count = 0 }) {
                 return <StarBorderIcon key={i} fontSize="small" sx={{ color: 'warning.main' }} />;
             })}
             <Typography variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
-                {rating} ({count} {count === 1 ? 'review)' : 'reviews)'})
+                {rating} ({count} {count === 1 ? 'review)' : 'reviews'})
             </Typography>
         </Box>
     );

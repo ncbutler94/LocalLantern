@@ -1,23 +1,16 @@
+// src/hooks/business/useBusinessData.js
+// Fetch businesses + build GeoJSON for map. Show pending + verified.
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 
-/**
- * Fetch businesses + build GeoJSON for map.
- * Works with either:
- *   - Array response:        [ { ... } ]
- *   - Object response shape: { ok: true, items: [ ... ] }
- * Only includes businesses validated/verified (validation == 1 || verified == 1).
- * Cleans up requests to avoid destroy-function warnings.
- */
 export default function useBusinessData({ search, city, county, category, sort }) {
     const [businesses, setBusinesses] = useState([]);
     const [points, setPoints] = useState({ type: 'FeatureCollection', features: [] });
     const [isLoading, setIsLoading] = useState(false);
-
     const abortRef = useRef(null);
 
     const normalize = (row) => {
-        const validation = Number(row.validation ?? row.verified ?? 0);
         const lat = row.latitude != null ? Number(row.latitude) : null;
         const lng = row.longitude != null ? Number(row.longitude) : null;
         return {
@@ -28,42 +21,36 @@ export default function useBusinessData({ search, city, county, category, sort }
             county: row.county ?? '',
             latitude: lat,
             longitude: lng,
-            // prefer snake_case from backend, fall back to camelCase
             logoUrl: row.logo_url || row.logoUrl || '',
             coverUrl: row.cover_url || row.coverUrl || (Array.isArray(row.photos) ? row.photos[0] : ''),
             description: row.description ?? row.bio ?? '',
-            validation,
-            // optional metadata if present
+            status: row.status ?? null,
+            verified: row.verified ?? row.validation ?? 0,
             rating: Number(row.rating ?? 0),
             ratingCount: Number(row.rating_count ?? row.ratingCount ?? 0),
-            likesCount: Number(row.likesCount ?? 0),
-            slug: row.slug,
-            hours: row.hours,
             street_address: row.street_address,
             photos: row.photos,
         };
     };
 
-    const toFeatures = useCallback((items) =>
-        items
-            .filter((b) => b.latitude != null && b.longitude != null)
-            .map((b) => ({
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [Number(b.longitude), Number(b.latitude)] },
-                properties: {
-                    id: `b${b.id}`,
-                    category: b.category || 'business',
-                    logoUrl: b.logoUrl || '',
-                },
-            })), []
+    const toFeatures = useCallback(
+        (items) =>
+            items
+                .filter((b) => b.latitude != null && b.longitude != null)
+                .map((b) => ({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [Number(b.longitude), Number(b.latitude)] },
+                    properties: { id: `b${b.id}`, category: b.category || 'business', logoUrl: b.logoUrl || '' },
+                })),
+        []
     );
 
     const fetchData = useCallback(async () => {
         abortRef.current?.abort();
         const controller = new AbortController();
         abortRef.current = controller;
-
         setIsLoading(true);
+
         try {
             const { data } = await axios.get('/api/businesses', {
                 params: { search, city, county, category, sort },
@@ -71,8 +58,9 @@ export default function useBusinessData({ search, city, county, category, sort }
                 signal: controller.signal,
             });
 
-            const raw = Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : []);
-            const normalized = raw.map(normalize).filter((b) => Number(b.validation) === 1);
+            const raw = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+            // Show everything except hard-deleted
+            const normalized = raw.map(normalize).filter((b) => (b.status || 'pending') !== 'deleted');
 
             if (controller.signal.aborted) return;
             setBusinesses(normalized);
@@ -84,9 +72,7 @@ export default function useBusinessData({ search, city, county, category, sort }
             setBusinesses([]);
             setPoints({ type: 'FeatureCollection', features: [] });
         } finally {
-            if (!abortRef.current?.signal?.aborted) {
-                setIsLoading(false);
-            }
+            if (!abortRef.current?.signal?.aborted) setIsLoading(false);
         }
     }, [search, city, county, category, sort, toFeatures]);
 

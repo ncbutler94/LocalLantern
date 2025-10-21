@@ -1,18 +1,5 @@
 // src/components/SidePanel/Community/CommunityList.jsx
-// ==========================================================================
-//  2025‑08‑07  ✅ FINAL WITH LOADER + DEFERRED EMPTY-STATE
-//      • Shows the centred 3‑dot loader while fetching.
-//      • Prevents immediate “No Posts Found” flash on first mount
-//        (covers parent‑controlled case where posts = [] initially).
-// --------------------------------------------------------------------------
-
-import React, {
-    memo,
-    useMemo,
-    useState,
-    useEffect,
-    useRef,
-} from 'react';
+import React, { memo, useMemo, useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import {
     Box,
@@ -24,47 +11,44 @@ import {
     Link,
     CardActionArea,
 } from '@mui/material';
-import LocationOnIcon  from '@mui/icons-material/LocationOn';
-import CampaignIcon    from '@mui/icons-material/Campaign';
-import ChatBubbleIcon  from '@mui/icons-material/ChatBubble';
-import ReportIcon      from '@mui/icons-material/Report';
-import LightbulbIcon   from '@mui/icons-material/Lightbulb';
-import PanToolIcon     from '@mui/icons-material/PanTool';
-import SearchIcon      from '@mui/icons-material/Search';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import CampaignIcon from '@mui/icons-material/Campaign';
+import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
+import ReportIcon from '@mui/icons-material/Report';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
+import PanToolIcon from '@mui/icons-material/PanTool';
+import SearchIcon from '@mui/icons-material/Search';
 
-import ActionBar from '../../ActionBar/ActionBar';
+import ActionBar from '../../ActionBar/ActionBar'; // repo path: src/components/ActionBar/ActionBar.jsx
+import UserCardPopover from '../../Common/UserCardPopover';
+import SharePostDialog from '../../share/SharePostDialog';
 
-/* ───────── helper — time‑ago ───────── */
-const timeAgo = (d) => {
-    const diff = Date.now() - new Date(d).getTime();
-    const s = Math.floor(diff / 1000);
-    if (s < 60) return `${s}s ago`;
-    const m = Math.floor(s / 60);
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const dd = Math.floor(h / 24);
-    if (dd < 30) return `${dd}d ago`;
-    const mo = Math.floor(dd / 30);
-    if (mo < 12) return `${mo}mo ago`;
-    return `${Math.floor(mo / 12)}y ago`;
+/* ---------- helpers ---------- */
+const dateOnly = (d) => {
+    const dt = new Date(d);
+    return Number.isNaN(dt.valueOf())
+        ? ''
+        : dt.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        });
 };
 
-/* badge look‑up */
+/* ---------- badge lookup ---------- */
 const BADGE = {
-    announcement:            { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
-    announcements:           { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
-    discussion:              { label: 'Discussion',   color: '#2e7d32', Icon: ChatBubbleIcon },
-    'general-discussion':    { label: 'Discussion',   color: '#2e7d32', Icon: ChatBubbleIcon },
-    recommendation:          { label: 'Tip',          color: '#fdd835', Icon: LightbulbIcon },
-    'recommendations-tips':  { label: 'Tip',          color: '#fdd835', Icon: LightbulbIcon },
-    'volunteer-requests':    { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-help':        { label: 'Volunteer',    color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-help-requests':{label:'Volunteer',     color:'#0097a7', Icon: PanToolIcon },
-    'lost-found':            { label: 'Lost / Found', color: '#fb8c00', Icon: SearchIcon },
+    announcement: { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
+    announcements: { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
+    discussion: { label: 'Discussion', color: '#2e7d32', Icon: ChatBubbleIcon },
+    'general-discussion': { label: 'Discussion', color: '#2e7d32', Icon: ChatBubbleIcon },
+    recommendation: { label: 'Tip', color: '#fdd835', Icon: LightbulbIcon },
+    'recommendations-tips': { label: 'Tip', color: '#fdd835', Icon: LightbulbIcon },
+    'volunteer-requests': { label: 'Volunteer', color: '#0097a7', Icon: PanToolIcon },
+    'volunteer-help': { label: 'Volunteer', color: '#0097a7', Icon: PanToolIcon },
+    'volunteer-help-requests': { label: 'Volunteer', color: '#0097a7', Icon: PanToolIcon },
+    'lost-found': { label: 'Lost / Found', color: '#fb8c00', Icon: SearchIcon },
 };
 
-/* pill */
 const Pill = ({ label, Icon, color }) => (
     <Box
         sx={{
@@ -84,25 +68,29 @@ const Pill = ({ label, Icon, color }) => (
         <Icon sx={{ fontSize: 14 }} /> {label}
     </Box>
 );
-Pill.propTypes = { label: PropTypes.string, Icon: PropTypes.elementType, color: PropTypes.string };
 
-/* ───────── PostCard ───────── */
-const PostCard = memo(function PostCard({
-                                            post,
-                                            user,
-                                            hoveredId,
-                                            setHoveredId,
-                                            onLocationClick,
-                                            onCardClick,
-                                        }) {
+/* ============================================================================
+ * PostCard (used in panel list and map popups)
+ * ========================================================================== */
+export const PostCard = memo(function PostCard({
+                                                   post,
+                                                   user,
+                                                   hoveredId,
+                                                   setHoveredId,
+                                                   onLocationClick,
+                                                   onCardClick,
+                                                   onOpenUserCard,
+                                                   onOpenShare,
+                                               }) {
     const {
         id,
         first_name,
         last_name,
+        handle,
         avatar_url,
         date_created,
         title,
-        description = '',
+        description,
         lost_or_found,
         reward,
         city,
@@ -114,23 +102,32 @@ const PostCard = memo(function PostCard({
         likesCount = 0,
         viewerLiked = false,
         category,
+        repostsCount = 0,
+        viewerReposted = false,
     } = post;
 
     const [imgError, setImgError] = useState(false);
-    const mainPhoto = photos.find((p) => typeof p === 'string') || '';
+    const mainPhoto =
+        (Array.isArray(photos) && photos.find((p) => typeof p === 'string')) || '';
     const showImage = !!mainPhoto && !imgError;
 
-    const locationStr = [city, county].filter(Boolean).join(', ');
-    const hasAddress  = Boolean(street_address?.trim());
-    const granularity = hasAddress ? 'address' : city ? 'city' : 'county';
+    const countyLabel = county
+        ? String(county).toLowerCase().includes('county')
+            ? county
+            : `${county} County`
+        : '';
+    const locationStr = [city, countyLabel].filter(Boolean).join(', ');
 
-    const words   = description.trim().split(/\s+/);
-    const long    = words.length > 8;
-    const preview = long ? words.slice(0, 8).join(' ') : description;
+    const safeDesc =
+        typeof description === 'string' ? description : (description ?? '').toString();
+    const hasAddress = Boolean(street_address && String(street_address).trim());
+    const words = safeDesc.trim().split(/\s+/);
+    const long = words.length > 24;
+    const preview = long ? words.slice(0, 24).join(' ') : safeDesc;
 
     const renderBadge = () => {
         if (category === 'public-safety-alerts') {
-            return <Pill label="Alert" Icon={ReportIcon} color="#e53935" />;
+            return <Pill label="Public Safety" Icon={ReportIcon} color="#e53935" />;
         }
         if (lost_or_found) {
             return (
@@ -143,6 +140,11 @@ const PostCard = memo(function PostCard({
         }
         const meta = BADGE[category];
         return meta ? <Pill {...meta} /> : null;
+    };
+
+    const openUserCard = (e) => {
+        e.stopPropagation();
+        onOpenUserCard(e.currentTarget, post);
     };
 
     return (
@@ -158,19 +160,40 @@ const PostCard = memo(function PostCard({
                 overflow: 'hidden',
                 boxShadow: '0 1px 6px rgba(0,0,0,0.1)',
             }}
-            onMouseEnter={() => setHoveredId(id)}
-            onMouseLeave={() => setHoveredId(null)}
+            onMouseEnter={() => setHoveredId?.(id)}
+            onMouseLeave={() => setHoveredId?.(null)}
         >
             <CardHeader
-                avatar={<Avatar src={avatar_url}>{first_name?.[0]}</Avatar>}
+                avatar={
+                    <Avatar src={avatar_url} sx={{ cursor: 'pointer' }} onClick={openUserCard}>
+                        {first_name?.[0]}
+                    </Avatar>
+                }
                 title={
-                    <Typography variant="subtitle1" fontWeight={600}>
-                        {first_name} {last_name}
-                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Typography
+                            variant="subtitle1"
+                            fontWeight={600}
+                            sx={{ cursor: 'pointer' }}
+                            onClick={openUserCard}
+                        >
+                            {first_name} {last_name}
+                        </Typography>
+                        {!!handle && (
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ cursor: 'pointer' }}
+                                onClick={openUserCard}
+                            >
+                                @{handle}
+                            </Typography>
+                        )}
+                    </Box>
                 }
                 subheader={
                     <Typography variant="caption" color="text.secondary">
-                        {timeAgo(date_created)}
+                        {dateOnly(date_created)}
                     </Typography>
                 }
                 sx={{ pb: 0 }}
@@ -194,6 +217,7 @@ const PostCard = memo(function PostCard({
                                 borderRadius: 1,
                                 flexShrink: 0,
                             }}
+                            alt=""
                         />
                     )}
 
@@ -219,11 +243,12 @@ const PostCard = memo(function PostCard({
                         {preview && (
                             <Typography
                                 variant="body2"
+                                color="text.secondary"
                                 sx={{
                                     mt: 0.5,
                                     lineHeight: 1.4,
                                     display: '-webkit-box',
-                                    WebkitLineClamp: 2,
+                                    WebkitLineClamp: 3,
                                     WebkitBoxOrient: 'vertical',
                                     overflow: 'hidden',
                                 }}
@@ -260,7 +285,13 @@ const PostCard = memo(function PostCard({
                         color: 'text.secondary',
                         '&:hover': { color: 'primary.main' },
                     }}
-                    onClick={() => onLocationClick(latitude, longitude, granularity)}
+                    onClick={() =>
+                        onLocationClick(
+                            latitude,
+                            longitude,
+                            hasAddress ? 'address' : city ? 'city' : 'county'
+                        )
+                    }
                 >
                     <LocationOnIcon fontSize="small" />
                     <Box sx={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -271,7 +302,7 @@ const PostCard = memo(function PostCard({
                         )}
                         {locationStr && (
                             <Typography variant="caption" sx={{ wordBreak: 'break-word' }}>
-                                {locationStr} County
+                                {locationStr}
                             </Typography>
                         )}
                     </Box>
@@ -283,24 +314,19 @@ const PostCard = memo(function PostCard({
                     user={user}
                     postId={id}
                     initialLikes={likesCount}
-                    initiallyLiked={viewerLiked}
-                    onComment={() => console.log('comment', id)}
-                    onShare={() => console.log('share', id)}
+                    initiallyLiked={!!viewerLiked}
+                    initialReposts={repostsCount}
+                    initiallyReposted={!!viewerReposted}
+                    onComment={() => onCardClick(post)}
+                    onShare={() => onOpenShare(post)}
                 />
             </CardActions>
         </Card>
     );
 });
-PostCard.propTypes = {
-    post: PropTypes.object.isRequired,
-    user: PropTypes.object,
-    hoveredId: PropTypes.number,
-    setHoveredId: PropTypes.func.isRequired,
-    onLocationClick: PropTypes.func.isRequired,
-    onCardClick: PropTypes.func.isRequired,
-};
+PostCard.displayName = 'PostCard';
 
-/* ───────── loader ───────── */
+/* ---------- tiny loader ---------- */
 const LoadingDots = () => (
     <Box
         sx={{
@@ -328,72 +354,103 @@ const LoadingDots = () => (
     </Box>
 );
 
-/* ───────── main list component ───────── */
+/* ============================================================================
+ * Main list (controlled with `posts` or self-fetching with infinite scroll)
+ * ========================================================================== */
 const PAGE_SIZE = 30;
 
 export default function CommunityList({
                                           user,
-                                          posts,          // presence ⇒ controlled mode
-                                          loading = false,// parent‑supplied flag (controlled)
+                                          posts, // presence ⇒ controlled mode
+                                          loading = false, // parent flag in controlled mode
                                           hoveredId,
                                           setHoveredId,
                                           onLocationClick,
                                           onCardClick,
-                                          query = '',     // uncontrolled mode filter string
+                                          query = '', // uncontrolled mode filter string (e.g., "city=...&county=...")
+                                          columns = 'auto', // "auto" | "one"
                                       }) {
-    /* detect controlled vs uncontrolled */
     const controlled = typeof posts !== 'undefined';
 
-    /* state for uncontrolled mode */
-    const [rows, setRows]       = useState([]);
-    const [page, setPage]       = useState(0);
-    const [uLoading, setULoad]  = useState(true);
+    // uncontrolled state
+    const [rows, setRows] = useState([]);
+    const [page, setPage] = useState(0);
+    const [uLoading, setULoad] = useState(true);
     const [hasMore, setHasMore] = useState(true);
-
     const sentinelRef = useRef(null);
 
-    /* NEW: defer “empty” for a brief window so loader shows first */
     const [deferEmpty, setDeferEmpty] = useState(true);
+
+    // popovers/dialogs
+    const [userAnchor, setUserAnchor] = useState(null);
+    const [userForCard, setUserForCard] = useState(null);
+    const [shareOpen, setShareOpen] = useState(false);
+    const [sharePost, setSharePost] = useState(null);
+
+    const handleOpenUserCard = (el, post) => {
+        setUserAnchor(el);
+        setUserForCard({
+            id: post.user_id || post.id,
+            first_name: post.first_name,
+            last_name: post.last_name,
+            handle: post.handle,
+            avatar_url: post.avatar_url,
+        });
+    };
+    const handleViewProfile = (u) => window.location.assign(`/${u.handle || u.id}`);
+    const handleMessage = () =>
+        window.dispatchEvent(new CustomEvent('open-message-center', { detail: { userId: userForCard?.id } }));
+
+    const handleOpenShare = (post) => { setSharePost(post); setShareOpen(true); };
+
     useEffect(() => {
         const t = setTimeout(() => setDeferEmpty(false), 500);
         return () => clearTimeout(t);
     }, []);
 
-    /* fetch helper (uncontrolled) */
     const fetchPage = async (p) => {
         setULoad(true);
         try {
             const res = await fetch(
                 `/api/community?limit=${PAGE_SIZE}&offset=${p * PAGE_SIZE}${
                     query ? `&${query}` : ''
-                }`,
+                }`
             );
             const j = await res.json();
-            setRows((old) => [...old, ...j]);
-            setHasMore(j.length === PAGE_SIZE);
+            setRows((old) => [...old, ...(Array.isArray(j) ? j : [])]);
+            setHasMore(Array.isArray(j) && j.length === PAGE_SIZE);
             setPage(p);
         } catch (e) {
             console.error(e);
+        } finally {
+            setULoad(false);
         }
-        setULoad(false);
     };
 
-    /* (re)load when filters change (uncontrolled) */
+    // first page (uncontrolled)
     useEffect(() => {
-        if (controlled) return;
+        if (controlled) return undefined;
+        let alive = true;
         setRows([]);
         setPage(0);
         setHasMore(true);
-        fetchPage(0);
+        (async () => {
+            await fetchPage(0);
+        })();
+        return () => {
+            alive = false;
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [query, controlled]);
 
-    /* infinite scroll (uncontrolled) */
+    // infinite scroll (uncontrolled)
     useEffect(() => {
-        if (controlled || !hasMore || uLoading) return;
+        if (controlled || !hasMore || uLoading) return undefined;
         const io = new IntersectionObserver(
-            (e) => e[0].isIntersecting && fetchPage(page + 1),
-            { rootMargin: '600px' },
+            (entries) => {
+                if (entries[0].isIntersecting) fetchPage(page + 1);
+            },
+            { rootMargin: '600px' }
         );
         const el = sentinelRef.current;
         if (el) io.observe(el);
@@ -401,51 +458,52 @@ export default function CommunityList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [controlled, hasMore, uLoading, page]);
 
-    /* pick data & busy state */
     const list = controlled ? (Array.isArray(posts) ? posts : []) : rows;
+    const busy = controlled
+        ? loading || (deferEmpty && list.length === 0)
+        : uLoading;
 
-    // In controlled mode, treat the first 500ms (deferEmpty) with empty list as “loading”
-    const busy = controlled ? (loading || (deferEmpty && list.length === 0)) : uLoading;
-
-    /* memoised card grid */
     const renderedGrid = useMemo(
         () =>
-            list.map((p) => (
-                <Box
-                    key={p.id}
-                    sx={{
-                        flex: {
-                            xs: '0 0 100%',
-                            sm: '0 0 calc(50% - 16px)',
-                            lg: '0 0 calc(33.333% - 16px)',
-                        },
-                        m: 1,
-                    }}
-                >
-                    <PostCard
-                        post={p}
-                        user={user}
-                        hoveredId={hoveredId}
-                        setHoveredId={setHoveredId}
-                        onLocationClick={onLocationClick}
-                        onCardClick={onCardClick}
-                    />
-                </Box>
-            )),
-        [list, user, hoveredId, setHoveredId, onLocationClick, onCardClick],
+            list.map((p) => {
+                const key = p.key || `${p.category || 'post'}-${p.id}`;
+                return (
+                    <Box
+                        key={key}
+                        sx={{
+                            flex:
+                                columns === 'one'
+                                    ? '0 0 100%'
+                                    : {
+                                        xs: '0 0 100%',
+                                        sm: '0 0 calc(50% - 16px)',
+                                        lg: '0 0 calc(33.333% - 16px)',
+                                    },
+                            m: 1,
+                        }}
+                    >
+                        <PostCard
+                            post={p}
+                            user={user}
+                            hoveredId={hoveredId}
+                            setHoveredId={setHoveredId}
+                            onLocationClick={onLocationClick}
+                            onCardClick={onCardClick}
+                            onOpenUserCard={handleOpenUserCard}
+                            onOpenShare={handleOpenShare}
+                        />
+                    </Box>
+                );
+            }),
+        [list, user, hoveredId, setHoveredId, onLocationClick, onCardClick, columns]
     );
 
-    /* render */
     return (
         <Box sx={{ position: 'relative', minHeight: 240 }}>
             {list.length > 0 && (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap' }}>{renderedGrid}</Box>
             )}
-
-            {/* sentinel for infinite scroll (uncontrolled) */}
             {!controlled && <Box ref={sentinelRef} sx={{ height: 1 }} />}
-
-            {/* centred loader overlay */}
             {busy && (
                 <Box
                     sx={{
@@ -461,8 +519,6 @@ export default function CommunityList({
                     <LoadingDots />
                 </Box>
             )}
-
-            {/* empty‑state when idle */}
             {!busy && list.length === 0 && !deferEmpty && (
                 <Box
                     sx={{
@@ -478,20 +534,36 @@ export default function CommunityList({
                     </Typography>
                 </Box>
             )}
+
+            <UserCardPopover
+                anchorEl={userAnchor}
+                onClose={() => setUserAnchor(null)}
+                user={userForCard}
+                isSelf={user && user.handle === userForCard?.handle}
+                following={false}
+                onFollow={() => {}}
+                onMessage={handleMessage}
+                onViewProfile={handleViewProfile}
+            />
+
+            <SharePostDialog
+                open={shareOpen}
+                onClose={() => setShareOpen(false)}
+                viewer={user}
+                post={sharePost}
+            />
         </Box>
     );
 }
 
 CommunityList.propTypes = {
-    user:            PropTypes.object,
-    posts:           PropTypes.array,   // supply for controlled mode
-    loading:         PropTypes.bool,    // pass true during fetch in controlled mode
-    hoveredId:       PropTypes.number,
-    setHoveredId:    PropTypes.func.isRequired,
+    user: PropTypes.object,
+    posts: PropTypes.array,
+    loading: PropTypes.bool,
+    hoveredId: PropTypes.number,
+    setHoveredId: PropTypes.func.isRequired,
     onLocationClick: PropTypes.func.isRequired,
-    onCardClick:     PropTypes.func.isRequired,
-    query:           PropTypes.string,  // filters for uncontrolled mode
+    onCardClick: PropTypes.func.isRequired,
+    query: PropTypes.string,
+    columns: PropTypes.oneOf(['auto', 'one']),
 };
-
-/* export PostCard for reuse */
-export { PostCard };
