@@ -807,7 +807,6 @@ export default function PostDetailModal({ open, post, onClose, user, currentUser
         </Dialog>
     );
 }
-
 PostDetailModal.propTypes = {
     open: PropTypes.bool.isRequired,
     post: PropTypes.object,
