@@ -52,39 +52,54 @@ router.post(
 
             /* 2️⃣ single-transaction insert -------------------------------------- */
             const newId = await db.transaction(async trx => {
+                // normalize strings so they are NEVER null
+                const title        = String(req.body.title || '').trim();
+                const description  = String(req.body.description || '').trim();
+                const streetAddr   = String(req.body.street_address || '').trim();
+                const city         = String(req.body.city || '').trim();
+                const county       = String(req.body.county || '').trim();
+                const visibility   = String(req.body.visibility || 'public').trim();
+                const lostFound    = String(req.body.lost_or_found || '').trim();
+                const reward       = lostFound === 'lost' && req.body.reward != null
+                    ? String(req.body.reward).trim()
+                    : null;
+
+                const lat = req.body.latitude  ? parseFloat(req.body.latitude)  : null;
+                const lng = req.body.longitude ? parseFloat(req.body.longitude) : null;
+
                 /* a) community_posts */
                 const [postId] = await trx('community_posts').insert({
-                    category     : 'lost-and-found',
-                    user_id      : req.user.id,
-                    date_created : trx.fn.now(),
-                    posted_at    : trx.fn.now(),
-                    title        : req.body.title,
-                    description  : req.body.description || null,
-                    visibility   : req.body.visibility || 'public',        // ★ NEW ★
-                    street_address: req.body.street_address || null,
-                    city         : req.body.city   || null,
-                    county       : req.body.county || null,
-                    latitude     : req.body.latitude  ? parseFloat(req.body.latitude)  : null,
-                    longitude    : req.body.longitude ? parseFloat(req.body.longitude) : null
+                    category      : 'lost-and-found',
+                    user_id       : req.user.id,
+                    date_created  : trx.fn.now(),
+                    posted_at     : trx.fn.now(),
+                    title,
+                    description,             // empty string if not provided
+                    visibility,
+                    street_address: streetAddr,
+                    city,
+                    county,
+                    latitude      : lat,
+                    longitude     : lng
                 });
 
-                /* b) lost_and_found (unchanged) */
+                /* b) lost_and_found */
                 await trx('lost_and_found').insert({
                     id            : postId,
                     date_created  : trx.fn.now(),
                     user_id       : req.user.id,
-                    title         : req.body.title,
-                    description   : req.body.description || null,
-                    lost_or_found : req.body.lost_or_found,
-                    reward        : req.body.lost_or_found === 'lost' ? req.body.reward : null,
-                    street_address: req.body.street_address || null,
-                    city          : req.body.city   || null,
-                    county        : req.body.county || null,
-                    latitude      : req.body.latitude  ? parseFloat(req.body.latitude)  : null,
-                    longitude     : req.body.longitude ? parseFloat(req.body.longitude) : null
+                    title,
+                    description,             // empty string if not provided
+                    lost_or_found : lostFound,
+                    reward        : reward ? reward : null,
+                    street_address: streetAddr,
+                    city,
+                    county,
+                    latitude      : lat,
+                    longitude     : lng
                 });
 
-                /* c) community_photos (unchanged) */
+                /* c) community_photos */
                 if (photoUrls.length) {
                     await trx('community_photos').insert(
                         photoUrls.map((url, idx) => ({
@@ -122,18 +137,19 @@ router.get('/', async (req, res, next) => {
                 'u.avatar_url',
                 'cp.date_created',
                 'cp.visibility',
-                'lf.title',
-                'lf.description',
+                // normalize possibly-null text fields to empty strings
+                db.raw('COALESCE(lf.title, "")        AS title'),
+                db.raw('COALESCE(lf.description, "")  AS description'),
                 'lf.lost_or_found',
                 'lf.reward',
-                'lf.street_address',
-                'lf.city',
-                'lf.county',
+                db.raw('COALESCE(lf.street_address, "") AS street_address'),
+                db.raw('COALESCE(lf.city, "")           AS city'),
+                db.raw('COALESCE(lf.county, "")         AS county'),
                 db.raw('(SELECT COUNT(*) FROM post_likes    WHERE post_id = cp.id) AS like_count'),
                 db.raw('(SELECT COUNT(*) FROM post_comments WHERE post_id = cp.id) AS comment_count'),
                 db.raw('JSON_ARRAYAGG(p.url) AS photos')
             )
-            .groupBy('cp.id');            // ← add this single line
+            .groupBy('cp.id');
 
         /* any existing filters or orderBy() calls stay as-is */
 
@@ -142,6 +158,5 @@ router.get('/', async (req, res, next) => {
         next(err);
     }
 });
-
 
 export default router;

@@ -1,21 +1,59 @@
 // backend/src/routes/posts.js
-// ----------------------------------------------------------------------------
-// Endpoints for likes and threaded comments on ANY post table.
-// Each row carries a `category` so multiple post-types can share this router.
-// Defaults to "community_post" for backward-compatibility.
-// ----------------------------------------------------------------------------
+// =============================================================================
+// POST likes + threaded comments + comment‑likes + comment‑image upload (GCS)
+// + Reposts toggle (new)
+// -----------------------------------------------------------------------------
+//
+// Requires (install once in backend):
+//   npm i multer @google-cloud/storage
+//
+// Env:
+//   GCP_PROJECT_ID=<your project id>
+//   GCS_BUCKET=<your bucket name>   // same bucket you use for post photos
+//
+// DB (tables this router touches):
+//   post_likes, post_comments, comment_likes, comment_photos, post_reposts
+//
+// =============================================================================
 
 import express           from 'express';
+import path              from 'path';
+import multer            from 'multer';
+import { Storage }       from '@google-cloud/storage';
 import db                from '../config/db.js';
 import authenticateToken from '../middleware/auth.js';
 import optionalAuth      from '../middleware/optionalAuth.js';
 
 const router = express.Router();
 
+/* ── Multer: keep in memory; 5 MB limit ─────────────────────────────────── */
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits : { fileSize: 5 * 1024 * 1024 },
+});
+
+/* ── Google Cloud Storage setup ─────────────────────────────────────────── */
+const storage = new Storage({ projectId: process.env.GCP_PROJECT_ID });
+const bucket  = storage.bucket(process.env.GCS_BUCKET);
+const COMMENT_PHOTO_DIR = 'comment_photos';
+
+async function uploadCommentImage(file) {
+    const ext    = path.extname(file.originalname) || '';
+    const key    = `${COMMENT_PHOTO_DIR}/${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
+    const blob   = bucket.file(key);
+    const stream = blob.createWriteStream({ metadata: { contentType: file.mimetype } });
+
+    await new Promise((resolve, reject) => {
+        stream.on('error', reject);
+        stream.on('finish', resolve);
+        stream.end(file.buffer);
+    });
+
+    return `https://storage.googleapis.com/${bucket.name}/${key}`;
+}
+
 /* ────────────────────────────────────────────────────────────────
- * POST /api/posts/:postId/like
- * body / query: { category? }
- * Toggles like and returns { liked, likesCount }.
+ * 1) POST /api/posts/:postId/like  (toggle)
  * ──────────────────────────────────────────────────────────────── */
 router.post('/:postId/like', authenticateToken, async (req, res, next) => {
     const { id: user_id } = req.user;
@@ -23,9 +61,7 @@ router.post('/:postId/like', authenticateToken, async (req, res, next) => {
     const category = (req.body.category || req.query.category || 'community_post').trim();
 
     try {
-        const existing = await db('post_likes')
-            .where({ category, post_id, user_id })
-            .first();
+        const existing = await db('post_likes').where({ category, post_id, user_id }).first();
 
         if (existing) {
             await db('post_likes').where({ id: existing.id }).del();
@@ -37,101 +73,158 @@ router.post('/:postId/like', authenticateToken, async (req, res, next) => {
             .where({ category, post_id })
             .count('* as count');
 
-        return res.json({
-            liked: !existing,
-            likesCount: Number(count) || 0,
-        });
+        return res.json({ liked: !existing, likesCount: Number(count) || 0 });
     } catch (err) {
         return next(err);
     }
 });
 
 /* ────────────────────────────────────────────────────────────────
- * POST /api/posts/:postId/comments
- * body: { content, parent_id?, category? }
- * Creates a comment or reply (self-referencing).
+ * 2) POST /api/posts/:postId/repost  (toggle)   ← NEW
  * ──────────────────────────────────────────────────────────────── */
-router.post('/:postId/comments', authenticateToken, async (req, res, next) => {
+router.post('/:postId/repost', authenticateToken, async (req, res, next) => {
     const { id: user_id } = req.user;
     const post_id = Number(req.params.postId);
 
-    const {
-        content   = '',
-        parent_id = null,
-        category: bodyCategory,
-    } = req.body;
-
-    if (!content.trim()) return res.status(400).json({ error: 'empty_content' });
-    const category = (bodyCategory || 'community_post').trim();
-
     try {
-        const newComment = await db.transaction(async (trx) => {
-            let root_id = null;
+        const existing = await db('post_reposts').where({ post_id, user_id }).first();
 
-            /* if reply, verify parent and compute root */
-            if (parent_id) {
-                const parent = await trx('post_comments')
-                    .select('id', 'root_id')
-                    .where({ id: parent_id })
-                    .first();
-
-                if (!parent) throw new Error('parent_not_found');
-
-                root_id = parent.root_id || parent.id;
-
-                /* increment parent's reply_count */
-                await trx('post_comments')
-                    .where({ id: parent_id })
-                    .increment('reply_count', 1);
-            }
-
-            /* insert */
-            const [id] = await trx('post_comments').insert({
-                category,
-                post_id,
-                user_id,
-                content: content.trim(),
-                parent_id,
-                root_id,
-            });
-
-            /* return full row w/ author */
-            return await trx('post_comments as pc')
-                .join('users as u', 'pc.user_id', 'u.id')
-                .select(
-                    'pc.id',
-                    'pc.post_id',
-                    'pc.parent_id',
-                    'pc.root_id',
-                    'pc.reply_count',
-                    'pc.content',
-                    'pc.created_at',
-                    'u.first_name',
-                    'u.last_name',
-                    'u.avatar_url',
-                )
-                .where('pc.id', id)
-                .first();
-        });
-
-        return res.status(201).json(newComment);
-    } catch (err) {
-        if (err.message === 'parent_not_found') {
-            return res.status(400).json({ error: 'invalid_parent_id' });
+        if (existing) {
+            await db('post_reposts').where({ id: existing.id }).del();
+        } else {
+            await db('post_reposts').insert({ post_id, user_id });
         }
+
+        const [{ count }] = await db('post_reposts').where({ post_id }).count('* as count');
+        return res.json({ reposted: !existing, repostsCount: Number(count) || 0 });
+    } catch (err) {
         return next(err);
     }
 });
 
 /* ────────────────────────────────────────────────────────────────
- * GET /api/posts/:postId/comments
- * query: { category? }
- * Returns ALL comments (top-level + replies) ordered oldest-first.
- * Each row contains parent_id and reply_count for easy client grouping.
+ * 3) POST /api/posts/comments/:commentId/like  (toggle)
+ * ──────────────────────────────────────────────────────────────── */
+router.post('/comments/:commentId/like', authenticateToken, async (req, res, next) => {
+    const { id: user_id } = req.user;
+    const comment_id      = Number(req.params.commentId);
+
+    try {
+        const existing = await db('comment_likes').where({ comment_id, user_id }).first();
+
+        if (existing) {
+            await db('comment_likes').where({ id: existing.id }).del();
+        } else {
+            await db('comment_likes').insert({ comment_id, user_id });
+        }
+
+        const [{ count }] = await db('comment_likes').where({ comment_id }).count('* as count');
+
+        return res.json({ liked: !existing, likesCount: Number(count) || 0 });
+    } catch (err) {
+        return next(err);
+    }
+});
+
+/* ────────────────────────────────────────────────────────────────
+ * 4) POST /api/posts/:postId/comments  (text + optional image)
+ *    Accepts JSON or multipart/form-data:
+ *      - fields: content, parent_id?, category?
+ *      - file:   image?  (1 image)
+ * ──────────────────────────────────────────────────────────────── */
+router.post(
+    '/:postId/comments',
+    authenticateToken,
+    upload.single('image'),
+    async (req, res, next) => {
+        const { id: user_id } = req.user;
+        const post_id  = Number(req.params.postId);
+
+        const content   = (req.body?.content ?? '').toString();
+        const parent_id = req.body?.parent_id ? Number(req.body.parent_id) : null;
+        const category  = (req.body?.category || 'community_post').trim();
+
+        if (!content.trim() && !req.file) {
+            return res.status(400).json({ error: 'empty_content' });
+        }
+
+        try {
+            const result = await db.transaction(async (trx) => {
+                let root_id = null;
+
+                if (parent_id) {
+                    const parent = await trx('post_comments')
+                        .select('id', 'root_id')
+                        .where({ id: parent_id })
+                        .first();
+                    if (!parent) throw new Error('parent_not_found');
+                    root_id = parent.root_id || parent.id;
+                    await trx('post_comments').where({ id: parent_id }).increment('reply_count', 1);
+                }
+
+                // 1) insert comment
+                const insertRes = await trx('post_comments').insert({
+                    category,
+                    post_id,
+                    user_id,
+                    content: content.trim(),
+                    parent_id,
+                    root_id,
+                    created_at: trx.fn.now(),
+                });
+
+                const comment_id =
+                    typeof insertRes[0] === 'object' ? insertRes[0].id : insertRes[0];
+
+                // 2) optional image
+                let imageUrl = null;
+                if (req.file) {
+                    imageUrl = await uploadCommentImage(req.file);
+                    await trx('comment_photos').insert({ comment_id, url: imageUrl, position: 0 });
+                }
+
+                // 3) hydrate newly created row
+                const row = await trx('post_comments as pc')
+                    .join('users as u', 'pc.user_id', 'u.id')
+                    .select(
+                        'pc.id',
+                        'pc.post_id',
+                        'pc.parent_id',
+                        'pc.root_id',
+                        'pc.reply_count',
+                        'pc.content',
+                        'pc.created_at',
+                        'u.first_name',
+                        'u.last_name',
+                        'u.avatar_url',
+                        trx.raw('0 AS likesCount'),
+                        trx.raw('false AS viewerLiked'),
+                        trx.raw('? AS image', [imageUrl]),
+                    )
+                    .where('pc.id', comment_id)
+                    .first();
+
+                return row;
+            });
+
+            return res.status(201).json(result);
+        } catch (err) {
+            if (err.message === 'parent_not_found') {
+                return res.status(400).json({ error: 'invalid_parent_id' });
+            }
+            return next(err);
+        }
+    }
+);
+
+/* ────────────────────────────────────────────────────────────────
+ * 5) GET /api/posts/:postId/comments  (popular/newest + image)
  * ──────────────────────────────────────────────────────────────── */
 router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
     const post_id  = Number(req.params.postId);
     const category = (req.query.category || 'community_post').trim();
+    const sortKey  = (req.query.sort || 'popular').toLowerCase();
+    const viewerId = req.user?.id || 0;
 
     try {
         const rows = await db('post_comments as pc')
@@ -147,39 +240,20 @@ router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
                 'u.first_name',
                 'u.last_name',
                 'u.avatar_url',
+                db.raw('(SELECT COUNT(*) FROM comment_likes WHERE comment_id = pc.id) AS likesCount'),
+                db.raw(
+                    'EXISTS (SELECT 1 FROM comment_likes WHERE comment_id = pc.id AND user_id = ?) AS viewerLiked',
+                    [viewerId]
+                ),
+                db.raw(
+                    '(SELECT url FROM comment_photos WHERE comment_id = pc.id ORDER BY position ASC, id ASC LIMIT 1) AS image'
+                ),
             )
             .where({ 'pc.post_id': post_id, 'pc.category': category })
-            .orderBy('pc.created_at', 'asc');
-
-        return res.json(rows);
-    } catch (err) {
-        return next(err);
-    }
-});
-
-/* ────────────────────────────────────────────────────────────────
- * GET /api/comments/:commentId/replies
- * Optional lazy-load endpoint – returns direct children only.
- * ──────────────────────────────────────────────────────────────── */
-router.get('/comments/:commentId/replies', optionalAuth, async (req, res, next) => {
-    const commentId = Number(req.params.commentId);
-
-    try {
-        const rows = await db('post_comments as pc')
-            .join('users as u', 'pc.user_id', 'u.id')
-            .select(
-                'pc.id',
-                'pc.parent_id',
-                'pc.root_id',
-                'pc.reply_count',
-                'pc.content',
-                'pc.created_at',
-                'u.first_name',
-                'u.last_name',
-                'u.avatar_url',
-            )
-            .where('pc.parent_id', commentId)
-            .orderBy('pc.created_at', 'asc');
+            .modify((q) => {
+                if (sortKey === 'newest') q.orderBy('pc.created_at', 'desc');
+                else q.orderBy('likesCount', 'desc').orderBy('pc.created_at', 'desc');
+            });
 
         return res.json(rows);
     } catch (err) {

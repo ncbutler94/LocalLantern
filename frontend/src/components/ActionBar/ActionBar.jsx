@@ -5,41 +5,50 @@ import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon       from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareOutlinedIcon     from '@mui/icons-material/ShareOutlined';
+import RepeatIcon            from '@mui/icons-material/Repeat';
 import { useAuthModal } from '../../contexts/AuthModalContext';
 
 export default function ActionBar({
                                       user,
                                       postId,
-                                      initialLikes,
-                                      initiallyLiked,
+                                      initialLikes = 0,
+                                      initiallyLiked = false,
+                                      initialReposts = 0,
+                                      initiallyReposted = false,
                                       onComment,
-                                      onShare
+                                      onShare,       // ← REQUIRED: opens SharePostDialog in parent
                                   }) {
     const { open: openAuth } = useAuthModal();
-    const [likes, setLikes]   = useState(initialLikes);
-    const [liked, setLiked]   = useState(initiallyLiked);
+    const [likes, setLikes]       = useState(initialLikes);
+    const [liked, setLiked]       = useState(Boolean(initiallyLiked));
+    const [reposts, setReposts]   = useState(initialReposts);
+    const [reposted, setReposted] = useState(Boolean(initiallyReposted));
 
-    /* --- toggle like with cookie --- */
     const handleLike = async () => {
         if (!user) return openAuth();
-
-        const nextLiked = !liked;
-        // optimistic UI
-        setLiked(nextLiked);
-        setLikes(l => l + (nextLiked ? +1 : -1));
-
+        const next = !liked;
+        setLiked(next); setLikes((v) => v + (next ? +1 : -1));
+        window.dispatchEvent(new CustomEvent('post-like-changed', { detail: { postId, liked: next, likes: (likes + (next ? 1 : -1)) } }));
         try {
             await fetch(`/api/posts/${postId}/like`, {
-                method : 'POST',
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body   : JSON.stringify({ category: 'community_post' }),
-                credentials: 'include'        // << sends session cookie
+                body: JSON.stringify({ category: 'community_post' }),
+                credentials: 'include'
             });
         } catch (err) {
-            // rollback if request fails
-            console.error(err);
-            setLiked(!nextLiked);
-            setLikes(l => l + (nextLiked ? -1 : +1));
+            setLiked(!next); setLikes((v) => v + (next ? -1 : +1));
+        }
+    };
+
+    const handleRepost = async () => {
+        if (!user) return openAuth();
+        const next = !reposted;
+        setReposted(next); setReposts((v) => v + (next ? +1 : -1));
+        try {
+            await fetch(`/api/posts/${postId}/repost`, { method: 'POST', credentials: 'include' });
+        } catch (err) {
+            setReposted(!next); setReposts((v) => v + (next ? -1 : +1));
         }
     };
 
@@ -57,14 +66,19 @@ export default function ActionBar({
                     <ChatBubbleOutlineIcon />
                 </IconButton>
             </Tooltip>
-            <Typography variant="caption">0</Typography>
+
+            <Tooltip title={reposted ? 'Undo Repost' : 'Repost'}>
+                <IconButton onClick={handleRepost}>
+                    <RepeatIcon color={reposted ? 'primary' : 'inherit'} />
+                </IconButton>
+            </Tooltip>
+            <Typography variant="caption">{reposts}</Typography>
 
             <Tooltip title="Share">
                 <IconButton onClick={user ? onShare : openAuth}>
                     <ShareOutlinedIcon />
                 </IconButton>
             </Tooltip>
-            <Typography variant="caption">0</Typography>
         </Box>
     );
 }

@@ -89,7 +89,7 @@ const offsetCoords = ([lat, lng], idx, total, zoom) => {
 const DEFAULT_CENTER = [32.806671, -86.79113];
 const DEFAULT_ZOOM   = 7.5;
 
-/* → NEW: pad Alabama’s bounds by 12 % for leeway */
+/* → pad Alabama’s bounds by 12 % for leeway */
 const RAW_BOUNDS = L.geoJSON(alabama.features[0]).getBounds();
 const PADDED_BOUNDS = RAW_BOUNDS.pad(0.12);
 
@@ -107,27 +107,55 @@ const MapWrapper = styled(Box)(() => ({
 }));
 
 /* ───────────────────────────────────────────
-   Tiny helpers
+   Tiny helpers (with safe cleanups)
    ─────────────────────────────────────────── */
-const RemovePrefix = () => { const m=useMap(); useEffect(()=>m.attributionControl.setPrefix(''),[m]); return null; };
+const RemovePrefix = () => {
+    const map = useMap();
+    useEffect(() => {
+        try {
+            map?.attributionControl?.setPrefix?.('');
+        } catch { /* no-op */ }
+    }, [map]);
+    return null;
+};
+
 const MaskController = () => {
     const map = useMap();
     useEffect(() => {
         const outer = [[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]];
         const hole  = alabama.features[0].geometry.coordinates[0];
-        map.createPane('maskPane').style.zIndex = 650;
+
+        // ensure pane exists
+        const pane = map.createPane('maskPane');
+        if (pane) pane.style.zIndex = 650;
+
         const mask = L.geoJSON(
             { type:'Feature', geometry:{ type:'Polygon', coordinates:[outer,hole]} },
             { pane:'maskPane', interactive:false, style:{ fillColor:'white',fillOpacity:0.7,color:'#000',weight:2 } }
         ).addTo(map);
-        return () => map.removeLayer(mask);
+
+        return () => {
+            try { map?.removeLayer?.(mask); } catch { /* no-op */ }
+        };
     }, [map]);
     return null;
 };
-const BoundsController = () => { useMap().setMaxBounds(PADDED_BOUNDS); return null; };
+
+const BoundsController = () => {
+    const map = useMap();
+    useEffect(() => {
+        try { map?.setMaxBounds?.(PADDED_BOUNDS); } catch { /* no-op */ }
+    }, [map]);
+    return null;
+};
+
 const Recenter = ({ center, zoomLevel }) => {
-    const map=useMap();
-    useEffect(()=>{ if(center?.length===2) map.setView(center, zoomLevel ?? DEFAULT_ZOOM); },[map,center,zoomLevel]);
+    const map = useMap();
+    useEffect(() => {
+        if (center?.length === 2) {
+            try { map.setView(center, zoomLevel ?? DEFAULT_ZOOM); } catch { /* no-op */ }
+        }
+    }, [map, center, zoomLevel]);
     return null;
 };
 
@@ -150,73 +178,107 @@ export default function MapView({
     const animRef   = useRef(null);
     const iconElRef = useRef(null);
 
-    /* ----- hover bounce animation ----- */
+    /* ----- hover bounce animation (SAFE cleanup) ----- */
     useEffect(() => {
-        animRef.current?.cancel(); animRef.current=null;
-        if(iconElRef.current) iconElRef.current.style.transform='';
-        if(hoveredId!=null){
-            const marker=markerRefs.current[`c${hoveredId}`];
-            const img=marker?.getElement()?.querySelector('.marker-icon');
-            if(img){
-                iconElRef.current=img;
-                img.style.transformOrigin='50% 100%';
-                animRef.current=img.animate(
-                    [{transform:'translateY(0)'},{transform:'translateY(-15px)'}],
-                    {duration:600,iterations:Infinity,easing:'ease-in-out',direction:'alternate'}
+        // cancel any previous animation
+        if (animRef.current) {
+            try { animRef.current.cancel?.(); } catch { /* no-op */ }
+            animRef.current = null;
+        }
+        // reset any previous element transform
+        if (iconElRef.current) {
+            try { iconElRef.current.style.transform = ''; } catch { /* no-op */ }
+            iconElRef.current = null;
+        }
+
+        if (hoveredId != null) {
+            const marker = markerRefs.current[`c${hoveredId}`];
+            const img = marker?.getElement()?.querySelector('.marker-icon');
+            if (img) {
+                iconElRef.current = img;
+                img.style.transformOrigin = '50% 100%';
+                animRef.current = img.animate(
+                    [{ transform: 'translateY(0)' }, { transform: 'translateY(-15px)' }],
+                    { duration: 600, iterations: Infinity, easing: 'ease-in-out', direction: 'alternate' }
                 );
             }
         }
-        return ()=>animRef.current?.cancel();
-    },[hoveredId]);
+
+        return () => {
+            if (animRef.current) {
+                try { animRef.current.cancel?.(); } catch { /* no-op */ }
+                animRef.current = null;
+            }
+            if (iconElRef.current) {
+                try { iconElRef.current.style.transform = ''; } catch { /* no-op */ }
+                iconElRef.current = null;
+            }
+        };
+    }, [hoveredId]);
 
     /* ----- popup open / close wiring ----- */
-    useEffect(()=>{ if(openedPopupId) markerRefs.current[openedPopupId]?.openPopup(); },[openedPopupId]);
-    useEffect(()=>{
-        const handler=e=>{
-            if(!openedPopupId) return;
-            if(e.target.closest('.leaflet-container')) return;
+    useEffect(() => {
+        if (openedPopupId) {
+            try { markerRefs.current[openedPopupId]?.openPopup?.(); } catch { /* no-op */ }
+        }
+    }, [openedPopupId]);
+
+    useEffect(() => {
+        const handler = (e) => {
+            if (!openedPopupId) return;
+            if (e.target?.closest?.('.leaflet-container')) return;
             onPopupClose?.();
         };
-        document.addEventListener('click',handler,false);
-        return()=>document.removeEventListener('click',handler,false);
-    },[openedPopupId,onPopupClose]);
-    useEffect(()=>{
-        const map=mapRef?.current;
-        if(!map) return;
-        const close=()=>onPopupClose?.();
-        map.on('zoomstart',close).on('zoom',close);
-        return()=>{map.off('zoomstart',close);map.off('zoom',close);};
-    },[mapRef,onPopupClose]);
+        document.addEventListener('click', handler, false);
+        return () => {
+            document.removeEventListener('click', handler, false);
+        };
+    }, [openedPopupId, onPopupClose]);
+
+    useEffect(() => {
+        const map = mapRef?.current;
+        if (!map) return;
+        const close = () => onPopupClose?.();
+        map.on('zoomstart', close).on('zoom', close);
+        return () => {
+            try {
+                map?.off?.('zoomstart', close);
+                map?.off?.('zoom', close);
+            } catch { /* no-op */ }
+        };
+    }, [mapRef, onPopupClose]);
 
     /* ---------- group by coord then by category ---------- */
     const coordCat = {};
-    data.features.forEach(f=>{
-        const [lng,lat]=f.geometry.coordinates;
-        const coordKey=`${lat.toFixed(6)}_${lng.toFixed(6)}`;
-        const cat=(f.properties.category||'').toLowerCase();
+    data.features.forEach(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        const coordKey = `${lat.toFixed(6)}_${lng.toFixed(6)}`;
+        const cat = (f.properties.category || '').toLowerCase();
         ((coordCat[coordKey] ||= {})[cat] ||= []).push(f.properties.id);
     });
 
     /* ---------- flatten to marker entries ---------- */
     const markerEntries = [];
-    Object.entries(coordCat).forEach(([coordKey,catMap])=>{
-        const catKeys=Object.keys(catMap);
-        catKeys.forEach((cat,i)=>{
-            const ids=catMap[cat];
-            const [lng,lat] = data.features.find(f=>f.properties.id===ids[0]).geometry.coordinates;
-            const currentZoom = mapRef.current?.getZoom() ?? DEFAULT_ZOOM;
-            const position = offsetCoords([lat,lng],i,catKeys.length,currentZoom);
-            markerEntries.push({groupKey:`${coordKey}|${cat}`,position,cat,ids});
+    Object.entries(coordCat).forEach(([coordKey, catMap]) => {
+        const catKeys = Object.keys(catMap);
+        catKeys.forEach((cat, i) => {
+            const ids = catMap[cat];
+            const feature = data.features.find(f => f.properties.id === ids[0]);
+            if (!feature) return;
+            const [lng, lat] = feature.geometry.coordinates;
+            const currentZoom = mapRef.current?.getZoom?.() ?? DEFAULT_ZOOM;
+            const position = offsetCoords([lat, lng], i, catKeys.length, currentZoom);
+            markerEntries.push({ groupKey: `${coordKey}|${cat}`, position, cat, ids });
         });
     });
 
     return (
         <MapWrapper>
-            <div style={{width:'100%',height:'100%'}} onWheelCapture={()=>onPopupClose?.()}>
+            <div style={{ width:'100%', height:'100%' }} onWheelCapture={() => onPopupClose?.()}>
                 <MapContainer
                     center={center}
                     zoom={zoomLevel ?? DEFAULT_ZOOM}
-                    whenCreated={m=>mapRef.current = m}
+                    whenCreated={m => (mapRef.current = m)}
                     scrollWheelZoom
                     minZoom={DEFAULT_ZOOM}
                     maxZoom={18}
@@ -230,7 +292,7 @@ export default function MapView({
                     zoomControl={false}
                     closeOnClick={false}
                     attributionControl
-                    style={{width:'100%',height:'100%'}}
+                    style={{ width:'100%', height:'100%' }}
                 >
                     <RemovePrefix />
                     <BoundsController />
@@ -238,12 +300,12 @@ export default function MapView({
                     <Recenter center={center} zoomLevel={zoomLevel} />
 
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap contributors" noWrap />
-                    <GeoJSON data={alabama} interactive={false} style={{color:'#000',weight:2,fillOpacity:0}}/>
+                    <GeoJSON data={alabama} interactive={false} style={{ color:'#000', weight:2, fillOpacity:0 }} />
 
-                    {markerEntries.map(({groupKey,position,cat,ids})=>{
-                        const idx=activeIdxByGroup[groupKey]??0;
-                        const activeId=ids[idx];
-                        const multiple = ids.length>1;
+                    {markerEntries.map(({ groupKey, position, cat, ids }) => {
+                        const idx = activeIdxByGroup[groupKey] ?? 0;
+                        const activeId = ids[idx];
+                        const multiple = ids.length > 1;
                         const icon = CATEGORY_ICON_MAP[cat] || communityDivIcon;
 
                         return (
@@ -251,31 +313,43 @@ export default function MapView({
                                 key={groupKey}
                                 position={position}
                                 icon={icon}
-                                ref={m=>m&&ids.forEach(id=>markerRefs.current[id]=m)}
-                                eventHandlers={{ click: () => {
+                                ref={m => m && ids.forEach(id => (markerRefs.current[id] = m))}
+                                eventHandlers={{
+                                    click: () => {
                                         onMarkerClick(activeId);
-                                        setActiveIdxByGroup(p=>({...p,[groupKey]:idx}));
-                                    }}}
+                                        setActiveIdxByGroup(p => ({ ...p, [groupKey]: idx }));
+                                    },
+                                }}
                             >
-                                {openedPopupId===activeId&&(
-                                    <Popup closeButton closeOnClick={false} onClose={()=>onPopupClose?.()} maxWidth={420}>
-                                        <Box sx={{display:'flex',alignItems:'center',mb:1}}>
-                                            {multiple&&(
-                                                <IconButton size="large" onClick={e=>{
-                                                    e.stopPropagation();
-                                                    const newIdx=Math.max(idx-1,0);
-                                                    setActiveIdxByGroup(p=>({...p,[groupKey]:newIdx}));
-                                                    onMarkerClick(ids[newIdx]);
-                                                }}>‹</IconButton>
+                                {openedPopupId === activeId && (
+                                    <Popup closeButton closeOnClick={false} onClose={() => onPopupClose?.()} maxWidth={420}>
+                                        <Box sx={{ display:'flex', alignItems:'center', mb:1 }}>
+                                            {multiple && (
+                                                <IconButton
+                                                    size="large"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const newIdx = Math.max(idx - 1, 0);
+                                                        setActiveIdxByGroup(p => ({ ...p, [groupKey]: newIdx }));
+                                                        onMarkerClick(ids[newIdx]);
+                                                    }}
+                                                >
+                                                    ‹
+                                                </IconButton>
                                             )}
-                                            <Box sx={{flex:1}}>{popupContentById[activeId]}</Box>
-                                            {multiple&&(
-                                                <IconButton size="large" onClick={e=>{
-                                                    e.stopPropagation();
-                                                    const newIdx=Math.min(idx+1,ids.length-1);
-                                                    setActiveIdxByGroup(p=>({...p,[groupKey]:newIdx}));
-                                                    onMarkerClick(ids[newIdx]);
-                                                }}>›</IconButton>
+                                            <Box sx={{ flex:1 }}>{popupContentById[activeId]}</Box>
+                                            {multiple && (
+                                                <IconButton
+                                                    size="large"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const newIdx = Math.min(idx + 1, ids.length - 1);
+                                                        setActiveIdxByGroup(p => ({ ...p, [groupKey]: newIdx }));
+                                                        onMarkerClick(ids[newIdx]);
+                                                    }}
+                                                >
+                                                    ›
+                                                </IconButton>
                                             )}
                                         </Box>
                                     </Popup>

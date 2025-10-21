@@ -1,7 +1,7 @@
 import React from 'react';
 import AllPage from './AllPage';
 import CommunityPage from './CommunityPage';
-import BusinessesPage from './BusinessesPage';
+import BusinessPage from './BusinessPage';
 import EventsPage from './EventsPage';
 import JobsPage from './JobsPage';
 import ServicesPage from './ServicesPage';
@@ -16,8 +16,8 @@ export default function Home({ activeTab, ...rest }) {
             return <AllPage {...rest} />;
         case 'Community':
             return <CommunityPage {...rest} />;
-        case 'Businesses':
-            return <BusinessesPage {...rest} />;
+        case 'Business':
+            return <BusinessPage {...rest} />;
         case 'Events':
             return <EventsPage {...rest} />;
         case 'Jobs':

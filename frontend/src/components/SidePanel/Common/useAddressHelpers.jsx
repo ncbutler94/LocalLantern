@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { coordsFromLocalData }   from './useBasePostForm';
+import { coordsFromLocalData }   from '../Community/Common/useBasePostForm';
 
 /**
  * Adds street-address state + a coordinate resolver.

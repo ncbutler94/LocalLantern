@@ -1,4 +1,3 @@
-// src/components/SidePanel/Community/NewCommunityPosts/NewLostAndFoundForm.jsx
 import React, { useState } from 'react';
 import {
     DialogTitle, DialogContent, DialogActions,
@@ -15,7 +14,7 @@ import useBasePostForm, {
     MAX_TITLE,
     MAX_DESCRIPTION
 } from '../Common/useBasePostForm';
-import useAddressHelpers from '../Common/useAddressHelpers';
+import useAddressHelpers from '../../Common/useAddressHelpers';
 import CityCountySelect  from '../../../Common/CityCountySelect/CityCountySelect';
 
 const MAX_REWARD_LENGTH = 11;
@@ -83,16 +82,17 @@ export default function NewLostAndFoundForm({ onClose, onSubmit, onRefresh }) {
             const [lat, lng] = await addr.resolveCoordinates();
 
             const form = new FormData();
-            form.append('title',          base.title);
-            form.append('visibility',     visibility);
-            form.append('lost_or_found',  lostFound);
+            // ALWAYS send strings (never null/undefined) so backend stores ''
+            form.append('title',          base.title || '');
+            form.append('visibility',     visibility || 'public');
+            form.append('lost_or_found',  lostFound || '');
             if (reward) form.append('reward', parseFloat(reward).toString());
-            form.append('description',    base.description);
-            form.append('street_address', addr.streetAddress);
-            form.append('city',           base.city);
-            form.append('county',         base.county);
-            form.append('latitude',       lat);
-            form.append('longitude',      lng);
+            form.append('description',    base.description || '');
+            form.append('street_address', addr.streetAddress || '');
+            form.append('city',           base.city || '');
+            form.append('county',         base.county || '');
+            form.append('latitude',       lat ?? '');
+            form.append('longitude',      lng ?? '');
             base.photos.filter(Boolean).forEach(p => form.append('photos', p.file));
 
             await onSubmit(form);

@@ -1,15 +1,11 @@
 // src/App.js
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import {
-    BrowserRouter as Router,
-    Routes,
-    Route,
-    Navigate
+    BrowserRouter as Router, Routes, Route, Navigate,
 } from 'react-router-dom';
 import axios from 'axios';
 
-import { AuthModalProvider } from './contexts/AuthModalContext';  // ← NEW
+import { AuthModalProvider } from './contexts/AuthModalContext';
 
 import Layout             from './pages/Layout';
 import Home               from './pages/Home';
@@ -17,102 +13,86 @@ import Login              from './components/Login/Login';
 import Register           from './components/Register/Register';
 import SocialLoginSuccess from './pages/social/SocialLoginSuccess';
 import SocialSignup       from './pages/social/SocialSignup';
+import SocialHome         from './pages/social/SocialHome';
+import UserProfilePage    from './pages/profile/userProfile/UserProfilePage';
+
+const BusinessPage = lazy(() => import('./pages/BusinessPage'));
 
 export default function App() {
-    // Holds the authenticated user (null = not logged in)
     const [user, setUser] = useState(null);
-    // Track which tab is active in Header
     const [activeTab, setActiveTab] = useState('All');
-    // TRUE while we’re checking the JWT cookie on startup
     const [authChecking, setAuthChecking] = useState(true);
 
-    // Called when we get a valid user back
-    const handleLogin = (userData) => {
-        setUser(userData);
-    };
-
-    // Log out both server-side and client-side
+    useEffect(() => { axios.defaults.withCredentials = true; }, []);
+    const handleLogin  = (u) => setUser(u);
     const handleLogout = () => {
-        axios
-            .post(
-                `${process.env.REACT_APP_API_URL}/auth/logout`,
-                {},
-                { withCredentials: true }
-            )
-            .finally(() => setUser(null));
+        axios.post(`${process.env.REACT_APP_API_URL}/auth/logout`, {}).finally(() => setUser(null));
     };
 
-    // On mount, check /users/profile once to hydrate `user`
     useEffect(() => {
-        axios
-            .get(`${process.env.REACT_APP_API_URL}/users/profile`, {
-                withCredentials: true
-            })
-            .then(res => {
+        let alive = true;
+        (async () => {
+            try {
+                const res = await axios.get(`${process.env.REACT_APP_API_URL}/users/profile`);
+                if (!alive) return;
                 handleLogin(res.data.user);
-            })
-            .catch(() => {
-                // no valid session → stay logged out
-            })
-            .finally(() => {
-                // we’re done checking either way
-                setAuthChecking(false);
-            });
+            } catch { /* not logged in */ }
+            finally { if (alive) setAuthChecking(false); }
+        })();
+        return () => { alive = false; };
     }, []);
 
-    // While we’re waiting for the profile check, render nothing (or a spinner)
-    if (authChecking) {
-        return null;
-        // Or return <YourLoader />; if you have a global spinner component
-    }
+    if (authChecking) return null;
 
     return (
-        <AuthModalProvider>                                   {/* ← WRAP here */}
+        <AuthModalProvider>
             <Router>
-                <Routes>
-                    {/* OAuth callback landing pages */}
-                    <Route
-                        path="/social-login-success"
-                        element={<SocialLoginSuccess onLogin={handleLogin} />}
-                    />
-                    <Route
-                        path="/social-signup"
-                        element={<SocialSignup onLogin={handleLogin} />}
-                    />
+                <Suspense fallback={null}>
+                    <Routes>
+                        {/* OAuth */}
+                        <Route path="/social-login-success" element={<SocialLoginSuccess onLogin={handleLogin} />} />
+                        <Route path="/social-signup"        element={<SocialSignup onLogin={handleLogin} />} />
 
-                    {/* All other routes inside Layout */}
-                    <Route
-                        path="/*"
-                        element={
-                            <Layout
-                                user={user}
-                                onLogin={handleLogin}
-                                onLogout={handleLogout}
-                                activeTab={activeTab}
-                                onTabChange={setActiveTab}
-                            >
-                                <Routes>
-                                    <Route
-                                        path="login"
-                                        element={<Login onLogin={handleLogin} />}
-                                    />
-                                    <Route
-                                        path="register"
-                                        element={<Register onSignup={handleLogin} />}
-                                    />
-                                    <Route
-                                        path=""
-                                        element={<Home user={user} activeTab={activeTab} />}
-                                    />
-                                    <Route
-                                        path="*"
-                                        element={<Navigate to="/" replace />}
-                                    />
-                                </Routes>
-                            </Layout>
-                        }
-                    />
-                </Routes>
+                        {/* Businesses */}
+                        <Route
+                            path="/business/*"
+                            element={
+                                <Layout user={user} onLogin={handleLogin} onLogout={handleLogout} activeTab={activeTab} onTabChange={setActiveTab}>
+                                    <Routes>
+                                        <Route path="" element={<BusinessPage user={user} />} />
+                                        <Route path=":businessId" element={<BusinessPage user={user} />} />
+                                        <Route path="*" element={<Navigate to="/business" replace />} />
+                                    </Routes>
+                                </Layout>
+                            }
+                        />
+
+                        {/* Everything else */}
+                        <Route
+                            path="/*"
+                            element={
+                                <Layout user={user} onLogin={handleLogin} onLogout={handleLogout} activeTab={activeTab} onTabChange={setActiveTab}>
+                                    <Routes>
+                                        <Route path="login"    element={<Login onLogin={handleLogin} />} />
+                                        <Route path="register" element={<Register onSignup={handleLogin} />} />
+
+                                        {/* Social */}
+                                        <Route path="social" element={<SocialHome user={user} />} />
+                                        {/* Legacy profile path kept working */}
+                                        <Route path="u/:handleOrId" element={<UserProfilePage me={user} />} />
+
+                                        {/* NEW: direct /:handleOrId profile path (comes after explicit routes to avoid conflicts) */}
+                                        <Route path=":handleOrId" element={<UserProfilePage me={user} />} />
+
+                                        {/* Misc */}
+                                        <Route path=""   element={<Home user={user} activeTab={activeTab} />} />
+                                        <Route path="*"  element={<Navigate to="/" replace />} />
+                                    </Routes>
+                                </Layout>
+                            }
+                        />
+                    </Routes>
+                </Suspense>
             </Router>
         </AuthModalProvider>
     );
