@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "node-fetch": "^3.3.2",
-    "react-router-dom": "^7.4.0",
-    "type": "module"
-  }
-}
