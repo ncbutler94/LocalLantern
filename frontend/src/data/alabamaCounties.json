@@ -1,0 +1,471 @@
+[
+  {
+    "name": "Autauga",
+    "coordinates": [
+      32.5165255,
+      -86.6319403
+    ]
+  },
+  {
+    "name": "Baldwin",
+    "coordinates": [
+      30.5677527,
+      -87.7324392
+    ]
+  },
+  {
+    "name": "Barbour",
+    "coordinates": [
+      31.8589311,
+      -85.4032078
+    ]
+  },
+  {
+    "name": "Bibb",
+    "coordinates": [
+      32.971079,
+      -87.1227088
+    ]
+  },
+  {
+    "name": "Blount",
+    "coordinates": [
+      33.9510169,
+      -86.5702002
+    ]
+  },
+  {
+    "name": "Bullock",
+    "coordinates": [
+      32.09929,
+      -85.7091657
+    ]
+  },
+  {
+    "name": "Butler",
+    "coordinates": [
+      31.7340713,
+      -86.6754793
+    ]
+  },
+  {
+    "name": "Calhoun",
+    "coordinates": [
+      33.7514505,
+      -85.8315666
+    ]
+  },
+  {
+    "name": "Chambers",
+    "coordinates": [
+      32.8901658,
+      -85.3866953
+    ]
+  },
+  {
+    "name": "Cherokee",
+    "coordinates": [
+      34.1142554,
+      -85.6004514
+    ]
+  },
+  {
+    "name": "Chilton",
+    "coordinates": [
+      32.8522565,
+      -86.7032845
+    ]
+  },
+  {
+    "name": "Choctaw",
+    "coordinates": [
+      31.9908095,
+      -88.2821326
+    ]
+  },
+  {
+    "name": "Clarke",
+    "coordinates": [
+      31.659134,
+      -87.8192486
+    ]
+  },
+  {
+    "name": "Clay",
+    "coordinates": [
+      33.2423393,
+      -85.819651
+    ]
+  },
+  {
+    "name": "Cleburne",
+    "coordinates": [
+      33.6506958,
+      -85.5017359
+    ]
+  },
+  {
+    "name": "Coffee",
+    "coordinates": [
+      31.3629619,
+      -85.9870669
+    ]
+  },
+  {
+    "name": "Colbert",
+    "coordinates": [
+      34.6473396,
+      -87.7921769
+    ]
+  },
+  {
+    "name": "Conecuh",
+    "coordinates": [
+      31.3966783,
+      -86.9437104
+    ]
+  },
+  {
+    "name": "Coosa",
+    "coordinates": [
+      32.9181762,
+      -86.2327497
+    ]
+  },
+  {
+    "name": "Covington",
+    "coordinates": [
+      31.196549,
+      -86.4597236
+    ]
+  },
+  {
+    "name": "Crenshaw",
+    "coordinates": [
+      31.6809362,
+      -86.3244009
+    ]
+  },
+  {
+    "name": "Cullman",
+    "coordinates": [
+      34.1335332,
+      -86.8779268
+    ]
+  },
+  {
+    "name": "Dale",
+    "coordinates": [
+      31.3940969,
+      -85.623763
+    ]
+  },
+  {
+    "name": "Dallas",
+    "coordinates": [
+      32.3117968,
+      -87.1046643
+    ]
+  },
+  {
+    "name": "DeKalb",
+    "coordinates": [
+      34.4524349,
+      -85.7662118
+    ]
+  },
+  {
+    "name": "Elmore",
+    "coordinates": [
+      32.5801231,
+      -86.125195
+    ]
+  },
+  {
+    "name": "Escambia",
+    "coordinates": [
+      31.1168422,
+      -87.1070947
+    ]
+  },
+  {
+    "name": "Etowah",
+    "coordinates": [
+      34.0371404,
+      -86.022147
+    ]
+  },
+  {
+    "name": "Fayette",
+    "coordinates": [
+      33.7303493,
+      -87.7419088
+    ]
+  },
+  {
+    "name": "Franklin",
+    "coordinates": [
+      34.440962,
+      -87.8339064
+    ]
+  },
+  {
+    "name": "Geneva",
+    "coordinates": [
+      31.0862933,
+      -85.803014
+    ]
+  },
+  {
+    "name": "Greene",
+    "coordinates": [
+      32.8620514,
+      -87.9915392
+    ]
+  },
+  {
+    "name": "Hale",
+    "coordinates": [
+      32.7412417,
+      -87.6561668
+    ]
+  },
+  {
+    "name": "Henry",
+    "coordinates": [
+      31.4838041,
+      -85.2447377
+    ]
+  },
+  {
+    "name": "Houston",
+    "coordinates": [
+      31.1355603,
+      -85.2654592
+    ]
+  },
+  {
+    "name": "Jackson",
+    "coordinates": [
+      34.7692447,
+      -85.9867941
+    ]
+  },
+  {
+    "name": "Jefferson",
+    "coordinates": [
+      33.5228184,
+      -86.9164513
+    ]
+  },
+  {
+    "name": "Lamar",
+    "coordinates": [
+      33.7490016,
+      -88.1003689
+    ]
+  },
+  {
+    "name": "Lauderdale",
+    "coordinates": [
+      34.9049555,
+      -87.6747398
+    ]
+  },
+  {
+    "name": "Lawrence",
+    "coordinates": [
+      34.4776367,
+      -87.3017331
+    ]
+  },
+  {
+    "name": "Lee",
+    "coordinates": [
+      32.5814796,
+      -85.3077038
+    ]
+  },
+  {
+    "name": "Limestone",
+    "coordinates": [
+      34.8342463,
+      -86.9901321
+    ]
+  },
+  {
+    "name": "Lowndes",
+    "coordinates": [
+      32.1088066,
+      -86.6402541
+    ]
+  },
+  {
+    "name": "Macon",
+    "coordinates": [
+      32.366606,
+      -85.6660307
+    ]
+  },
+  {
+    "name": "Madison",
+    "coordinates": [
+      34.7736807,
+      -86.5675095
+    ]
+  },
+  {
+    "name": "Marengo",
+    "coordinates": [
+      32.201002,
+      -87.7569365
+    ]
+  },
+  {
+    "name": "Marion",
+    "coordinates": [
+      34.1128132,
+      -87.8544031
+    ]
+  },
+  {
+    "name": "Marshall",
+    "coordinates": [
+      34.3396046,
+      -86.3301801
+    ]
+  },
+  {
+    "name": "Mobile",
+    "coordinates": [
+      30.6488242,
+      -88.194642
+    ]
+  },
+  {
+    "name": "Monroe",
+    "coordinates": [
+      31.5593935,
+      -87.3781004
+    ]
+  },
+  {
+    "name": "Montgomery",
+    "coordinates": [
+      32.1672192,
+      -86.1999118
+    ]
+  },
+  {
+    "name": "Morgan",
+    "coordinates": [
+      34.4296848,
+      -86.8529584
+    ]
+  },
+  {
+    "name": "Perry",
+    "coordinates": [
+      32.6421387,
+      -87.2876639
+    ]
+  },
+  {
+    "name": "Pickens",
+    "coordinates": [
+      33.2948421,
+      -88.1244034
+    ]
+  },
+  {
+    "name": "Pike",
+    "coordinates": [
+      31.7615793,
+      -85.9259465
+    ]
+  },
+  {
+    "name": "Randolph",
+    "coordinates": [
+      33.2651763,
+      -85.4693961
+    ]
+  },
+  {
+    "name": "Russell",
+    "coordinates": [
+      32.2698458,
+      -85.1959487
+    ]
+  },
+  {
+    "name": "Shelby",
+    "coordinates": [
+      33.2503347,
+      -86.6639746
+    ]
+  },
+  {
+    "name": "St. Clair",
+    "coordinates": [
+      33.7086407,
+      -86.3364
+    ]
+  },
+  {
+    "name": "Sumter",
+    "coordinates": [
+      32.5234698,
+      -88.1837986
+    ]
+  },
+  {
+    "name": "Talladega",
+    "coordinates": [
+      33.3967079,
+      -86.1597137
+    ]
+  },
+  {
+    "name": "Tallapoosa",
+    "coordinates": [
+      32.8595687,
+      -85.8023774
+    ]
+  },
+  {
+    "name": "Tuscaloosa",
+    "coordinates": [
+      33.2668398,
+      -87.4862182
+    ]
+  },
+  {
+    "name": "Walker",
+    "coordinates": [
+      33.7804491,
+      -87.2767248
+    ]
+  },
+  {
+    "name": "Washington",
+    "coordinates": [
+      31.3991238,
+      -88.2019828
+    ]
+  },
+  {
+    "name": "Wilcox",
+    "coordinates": [
+      31.9523021,
+      -87.3005169
+    ]
+  },
+  {
+    "name": "Winston",
+    "coordinates": [
+      34.1328863,
+      -87.361354
+    ]
+  }
+]
