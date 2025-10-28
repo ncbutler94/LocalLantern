@@ -4,7 +4,7 @@ import React, {
     useEffect,
     useImperativeHandle,
     useRef,
-    useState
+    useState,
 } from 'react';
 import {
     Avatar,
@@ -13,6 +13,7 @@ import {
     CircularProgress,
     Dialog,
     DialogContent,
+    DialogTitle,
     Divider,
     IconButton,
     Menu,
@@ -20,8 +21,9 @@ import {
     Paper,
     Tab,
     Tabs,
-    Typography
+    Typography,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import axios from 'axios';
 import UserMiniCard from './UserMiniCard';
@@ -40,13 +42,18 @@ export default forwardRef(function FollowsSection(
         profileId,
         profileHandle,
         profileAvatar,
+        profileName,          // NEW: for popup header (bold)
+        profileUsername,      // NEW: for popup header (bold)
         onFlash,
         isFollowingProfile,
-        onToggleFollowProfile
+        onToggleFollowProfile,
+        showFollowingTabInSection = true, // NEW: hide "Following" tab in the section if false
     },
     ref
 ) {
-    const [tab, setTab] = useState(0); // 0 = Followers, 1 = Following
+    // 0 = Followers, 1 = Following
+    const [tab, setTab] = useState(0);
+
     const [loading, setLoading] = useState(true);
     const [followers, setFollowers] = useState([]);
     const [following, setFollowing] = useState([]);
@@ -85,7 +92,7 @@ export default forwardRef(function FollowsSection(
         openAll: () => {
             setDialogTab(tab);
             setAllOpen(true);
-        }
+        },
     }));
 
     // cache for which profile is loaded
@@ -141,10 +148,13 @@ export default forwardRef(function FollowsSection(
         (async () => {
             try {
                 const who = viewer.handle || viewer.public_id || viewer.id;
-                const r = await axios.get(`${api}/users/social/${encodeURIComponent(who)}`, {
-                    withCredentials: true,
-                    signal: ctrl.signal
-                });
+                const r = await axios.get(
+                    `${api}/users/social/${encodeURIComponent(who)}`,
+                    {
+                        withCredentials: true,
+                        signal: ctrl.signal,
+                    }
+                );
                 if (!alive) return;
                 const myFollowing = (r.data.following || []).map((u) => idKey(u));
                 const myFollowers = (r.data.followers || []).map((u) => idKey(u));
@@ -207,12 +217,12 @@ export default forwardRef(function FollowsSection(
             }
             onFlash?.({
                 type: 'success',
-                text: asFollowBack ? 'Followed back.' : 'Followed.'
+                text: asFollowBack ? 'Followed back.' : 'Followed.',
             });
         } catch (e) {
             onFlash?.({
                 type: 'error',
-                text: e?.response?.data?.message || 'Failed to follow.'
+                text: e?.response?.data?.message || 'Failed to follow.',
             });
         } finally {
             closeMenu();
@@ -234,14 +244,14 @@ export default forwardRef(function FollowsSection(
                 setFollowing((list) => list.filter((x) => Number(x.id) !== Number(u.id)));
                 setCounts((c) => ({
                     ...c,
-                    following: Math.max(0, (c.following || 0) - 1)
+                    following: Math.max(0, (c.following || 0) - 1),
                 }));
             }
             onFlash?.({ type: 'success', text: 'Unfollowed.' });
         } catch (e) {
             onFlash?.({
                 type: 'error',
-                text: e?.response?.data?.message || 'Failed to unfollow.'
+                text: e?.response?.data?.message || 'Failed to unfollow.',
             });
         } finally {
             closeMenu();
@@ -254,17 +264,22 @@ export default forwardRef(function FollowsSection(
         closeMenu();
     };
 
-    // ------- Section (card) content: 3-up grid, max 9 -------
+    // ------- Section (card) content: grid tiles, max 9 -------
     const visibleList = (tab === 0 ? followers : following).slice(0, 9);
 
     return (
         <Box>
-
-            {/* Tabs with counts */}
-            <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 1 }}>
-                <Tab label={`Followers (${counts.followers || 0})`} />
-                <Tab label={`Following (${counts.following || 0})`} />
-            </Tabs>
+            {/* SECTION TABS (left rail): hide "Following" label if requested */}
+            {showFollowingTabInSection ? (
+                <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 1 }}>
+                    <Tab label={`Followers (${counts.followers || 0})`} />
+                    <Tab label={`Following (${counts.following || 0})`} />
+                </Tabs>
+            ) : (
+                <Tabs value={0} onChange={() => {}} sx={{ mb: 1 }}>
+                    <Tab label={`Followers (${counts.followers || 0})`} />
+                </Tabs>
+            )}
 
             {loading ? (
                 <Box sx={{ p: 3, textAlign: 'center' }}>
@@ -276,21 +291,16 @@ export default forwardRef(function FollowsSection(
                 </Typography>
             ) : (
                 <>
-                    {/* 3 per row grid, capped at 9 */}
+                    {/* 3 per row grid, capped at 9 (unchanged for left rail) */}
                     <Box
                         sx={{
                             display: 'grid',
                             gridTemplateColumns: 'repeat(3, 1fr)',
-                            gap: 1
+                            gap: 1,
                         }}
                     >
                         {visibleList.map((u) => (
-                            <UserMiniCard
-                                key={u.id}
-                                user={u}
-                                variant="grid"
-                                // click anywhere in the tile navigates (handled in comp)
-                            />
+                            <UserMiniCard key={u.id} user={u} variant="grid" />
                         ))}
                     </Box>
 
@@ -319,38 +329,71 @@ export default forwardRef(function FollowsSection(
             {/* ---------- View All Popup ---------- */}
             <Dialog
                 open={allOpen}
-                onClose={() => setAllOpen(false)}
+                onClose={(_, reason) => {
+                    // Do not close when clicking outside the popup
+                    if (reason === 'backdropClick') return;
+                    setAllOpen(false);
+                }}
                 fullWidth
                 maxWidth="md"
                 PaperProps={{
                     sx: {
                         width: 820,
                         maxWidth: '90vw',
-                        height: 620
-                    }
+                        height: 640,
+                        borderRadius: 3,
+                    },
                 }}
             >
-                <DialogContent sx={{ p: 0, height: '100%' }}>
-                    {/* Header: title left, profile avatar centered */}
+                {/* Title bar (separate, top-left) with X close button */}
+                <DialogTitle
+                    sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr auto',
+                        alignItems: 'center',
+                        py: 1.25,
+                        pr: 1,
+                    }}
+                >
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                        Followers &amp; Following
+                    </Typography>
+                    <IconButton
+                        aria-label="Close"
+                        onClick={() => setAllOpen(false)}
+                        size="small"
+                    >
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
+
+                <DialogContent sx={{ p: 0, height: 'calc(100% - 56px)' }}>
+                    {/* Header row: avatar center; name/username to the right (both bold) */}
                     <Box
                         sx={{
                             display: 'grid',
-                            gridTemplateColumns: '1fr 1fr 1fr',
+                            gridTemplateColumns: '1fr auto 1fr',
                             alignItems: 'center',
                             p: 1.25,
                             borderBottom: 1,
-                            borderColor: 'divider'
+                            borderColor: 'divider',
+                            gap: 1,
                         }}
                     >
-                        <Typography sx={{ fontWeight: 700 }}>Followers &amp; Following</Typography>
-                        <Box sx={{ textAlign: 'center' }}>
-                            <Avatar
-                                src={profileAvatar}
-                                variant="square"
-                                sx={{ width: 64, height: 64, borderRadius: 1, mx: 'auto' }}
-                            />
+                        <Box /> {/* left spacer for visual balance */}
+                        <Avatar
+                            src={profileAvatar}
+                            variant="square"
+                            sx={{ width: 72, height: 72, borderRadius: 1, mx: 'auto' }}
+                        />
+                        <Box sx={{ pl: 1 }}>
+                            <Typography sx={{ fontWeight: 700 }} noWrap>
+                                {profileName || ''}
+                            </Typography>
+                            <Typography sx={{ fontWeight: 700 }} color="text.secondary" noWrap>
+                                @{profileUsername || ''}
+                            </Typography>
                         </Box>
-                        <Box /> {/* right-side spacer */}
                     </Box>
 
                     {/* Tabs below header; open on whichever was last selected in section */}
@@ -365,8 +408,14 @@ export default forwardRef(function FollowsSection(
 
                     <Divider />
 
-                    {/* Scroll area with uniform row cards */}
-                    <Box sx={{ p: 1.25, overflowY: 'auto', height: 'calc(100% - 116px)' }}>
+                    {/* Scroll area with 2-up grid cards (own scroll box) */}
+                    <Box
+                        sx={{
+                            p: 1.25,
+                            overflowY: 'auto',
+                            height: 'calc(100% - 116px)', // under tabs+divider+header
+                        }}
+                    >
                         {loading ? (
                             <Typography sx={{ p: 2 }} color="text.secondary">
                                 Loading…
@@ -378,96 +427,114 @@ export default forwardRef(function FollowsSection(
                                     : 'Not following anyone yet.'}
                             </Typography>
                         ) : (
-                            (dialogTab === 0 ? followers : following).map((u) => {
-                                const name =
-                                    `${u.first_name || ''} ${u.last_name || ''}`.trim() ||
-                                    (u.handle ? `@${u.handle}` : 'User');
-                                const username = u.handle || u.username || '';
-                                const avatar = u.avatar_url || u.profile_picture || '';
+                            <Box
+                                sx={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(2, minmax(0,1fr))',
+                                    gap: 1,
+                                }}
+                            >
+                                {(dialogTab === 0 ? followers : following).map((u) => {
+                                    const name =
+                                        `${u.first_name || ''} ${u.last_name || ''}`.trim() ||
+                                        (u.handle ? `@${u.handle}` : 'User');
+                                    const username = u.handle || u.username || '';
+                                    const avatar = u.avatar_url || u.profile_picture || '';
 
-                                // Decide menu items based on context
-                                const canFollowOption =
-                                    !isOwnPage && !weFollow(u); // viewing someone else's lists
-                                const canUnfollowOption =
-                                    isOwnPage && dialogTab === 1; // own Following tab
-                                const canFollowBackOption =
-                                    isOwnPage && dialogTab === 0 && !weFollow(u); // own Followers tab
+                                    // Decide menu items based on context
+                                    const canFollowOption = !isOwnPage && !weFollow(u); // viewing someone else's lists
+                                    const canUnfollowOption = isOwnPage && dialogTab === 1; // own Following tab
+                                    const canFollowBackOption =
+                                        isOwnPage && dialogTab === 0 && !weFollow(u); // own Followers tab
 
-                                return (
-                                    <Paper
-                                        key={u.id}
-                                        variant="outlined"
-                                        sx={{
-                                            display: 'grid',
-                                            gridTemplateColumns: 'auto 1fr auto',
-                                            alignItems: 'center',
-                                            gap: 1,
-                                            p: 1,
-                                            mb: 1,
-                                            borderRadius: 2,
-                                            cursor: 'pointer'
-                                        }}
-                                        onClick={() => goProfile(u)}
-                                    >
-                                        <Avatar
-                                            src={avatar}
-                                            variant="square"
-                                            sx={{ width: 48, height: 48, borderRadius: 1 }}
-                                        />
-                                        <Box sx={{ minWidth: 0 }}>
-                                            <Typography variant="subtitle2" noWrap>
-                                                {name}
-                                            </Typography>
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                                noWrap
-                                            >
-                                                @{username}
-                                            </Typography>
-                                        </Box>
-                                        <IconButton size="small" onClick={(e) => openMenu(e, u)}>
-                                            <MoreVertIcon fontSize="small" />
-                                        </IconButton>
+                                    return (
+                                        <Paper
+                                            key={u.id}
+                                            variant="outlined"
+                                            sx={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'auto 1fr auto',
+                                                alignItems: 'center',
+                                                gap: 1,
+                                                p: 1,
+                                                borderRadius: 2,
+                                            }}
+                                        >
+                                            {/* Only avatar/name/username navigate to profile */}
+                                            <Avatar
+                                                src={avatar}
+                                                alt={name}
+                                                variant="square"
+                                                sx={{ width: 84, height: 84, borderRadius: 1, cursor: 'pointer' }}
+                                                onClick={() => goProfile(u)}
+                                            />
+                                            <Box sx={{ minWidth: 0 }}>
+                                                <Typography
+                                                    variant="subtitle2"
+                                                    noWrap
+                                                    sx={{ cursor: 'pointer' }}
+                                                    onClick={() => goProfile(u)}
+                                                >
+                                                    {name}
+                                                </Typography>
+                                                <Typography
+                                                    variant="body2"
+                                                    color="text.secondary"
+                                                    noWrap
+                                                    sx={{ cursor: 'pointer' }}
+                                                    onClick={() => goProfile(u)}
+                                                >
+                                                    @{username}
+                                                </Typography>
+                                            </Box>
+                                            <IconButton size="small" onClick={(e) => openMenu(e, u)}>
+                                                <MoreVertIcon fontSize="small" />
+                                            </IconButton>
 
-                                        {/* Contextual menu for this user */}
-                                        {menuUser && menuUser.id === u.id && (
-                                            <Menu
-                                                open={Boolean(menuAnchor)}
-                                                anchorEl={menuAnchor}
-                                                onClose={closeMenu}
-                                                anchorOrigin={{
-                                                    vertical: 'bottom',
-                                                    horizontal: 'right'
-                                                }}
-                                                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                                            >
-                                                {canUnfollowOption && (
-                                                    <MenuItem onClick={() => unfollowUser(u)}>
-                                                        Unfollow
+                                            {/* Contextual menu for this user */}
+                                            {menuUser && menuUser.id === u.id && (
+                                                <Menu
+                                                    open={Boolean(menuAnchor)}
+                                                    anchorEl={menuAnchor}
+                                                    onClose={closeMenu}
+                                                    anchorOrigin={{
+                                                        vertical: 'bottom',
+                                                        horizontal: 'right',
+                                                    }}
+                                                    transformOrigin={{
+                                                        vertical: 'top',
+                                                        horizontal: 'right',
+                                                    }}
+                                                >
+                                                    {canUnfollowOption && (
+                                                        <MenuItem onClick={() => unfollowUser(u)}>
+                                                            Unfollow
+                                                        </MenuItem>
+                                                    )}
+                                                    {canFollowBackOption && (
+                                                        <MenuItem onClick={() => followUser(u, true)}>
+                                                            Follow Back
+                                                        </MenuItem>
+                                                    )}
+                                                    {canFollowOption && (
+                                                        <MenuItem onClick={() => followUser(u, false)}>
+                                                            Follow
+                                                        </MenuItem>
+                                                    )}
+                                                    {canMessage(u) && (
+                                                        <MenuItem onClick={() => openMessage(u)}>
+                                                            Send Message
+                                                        </MenuItem>
+                                                    )}
+                                                    <MenuItem onClick={() => goProfile(u)}>
+                                                        View Profile
                                                     </MenuItem>
-                                                )}
-                                                {canFollowBackOption && (
-                                                    <MenuItem onClick={() => followUser(u, true)}>
-                                                        Follow Back
-                                                    </MenuItem>
-                                                )}
-                                                {canFollowOption && (
-                                                    <MenuItem onClick={() => followUser(u, false)}>
-                                                        Follow
-                                                    </MenuItem>
-                                                )}
-                                                {canMessage(u) && (
-                                                    <MenuItem onClick={() => openMessage(u)}>
-                                                        Send Message
-                                                    </MenuItem>
-                                                )}
-                                                <MenuItem onClick={() => goProfile(u)}>View Profile</MenuItem>
-                                            </Menu>
-                                        )}
-                                    </Paper>
-                                );
-                            })
+                                                </Menu>
+                                            )}
+                                        </Paper>
+                                    );
+                                })}
+                            </Box>
                         )}
                     </Box>
                 </DialogContent>
@@ -478,7 +545,9 @@ export default forwardRef(function FollowsSection(
                 open={msgOpen}
                 onClose={() => setMsgOpen(false)}
                 toUser={msgTarget}
-                onSent={() => onFlash?.({ type: 'success', text: 'Message sent.' })}
+                onSent={() =>
+                    onFlash?.({ type: 'success', text: 'Message sent.' })
+                }
                 onError={(txt) =>
                     onFlash?.({ type: 'error', text: txt || 'Failed to send message.' })
                 }

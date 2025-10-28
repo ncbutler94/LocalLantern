@@ -134,7 +134,9 @@ export const ProfilePostCard = memo(function ProfilePostCard({
     // Normalize engagement counts + viewer flags
     const finalLikesCount = Number(likesCount ?? likes_count ?? like_count ?? likes ?? 0);
     const finalViewerLiked = Boolean(viewerLiked ?? viewer_liked ?? liked ?? is_liked ?? false);
-    const finalCommentsCount = Number(commentsCount ?? comments_count ?? comment_count ?? comments ?? 0);
+    const finalCommentsCount = Number(
+        commentsCount ?? comments_count ?? comment_count ?? comments ?? 0
+    );
     const finalRepostsCount = Number(repostsCount ?? reposts_count ?? repost_count ?? reposts ?? 0);
     const finalViewerReposted = Boolean(
         viewerReposted ?? viewer_reposted ?? reposted ?? is_reposted ?? false
@@ -201,17 +203,20 @@ export const ProfilePostCard = memo(function ProfilePostCard({
     return (
         <Card
             data-post-id={id}
-            sx={{
+            sx={(theme) => ({
                 display: 'flex',
                 flexDirection: 'column',
                 width: '100%',
                 minHeight: 320,
                 borderRadius: 2,
-                border: 1,
-                borderColor: hoveredId === id ? 'primary.main' : 'divider',
                 overflow: 'hidden',
-                boxShadow: '0 1px 6px rgba(0,0,0,0.1)',
-            }}
+                // Use an INSET stroke so the border draws inside the card and
+                // cannot be clipped by the scroll container — guarantees a visible
+                // right edge even with overlay scrollbars.
+                boxShadow: `0 1px 6px rgba(0,0,0,0.1), inset 0 0 0 1px ${
+                    hoveredId === id ? theme.palette.primary.main : theme.palette.divider
+                }`,
+            })}
             onMouseEnter={() => setHoveredId?.(id)}
             onMouseLeave={() => setHoveredId?.(null)}
         >
@@ -243,11 +248,18 @@ export const ProfilePostCard = memo(function ProfilePostCard({
                         )}
                     </Box>
                 }
-                subheader={<Typography variant="caption" color="text.secondary">{dateOnly(postDate)}</Typography>}
+                subheader={
+                    <Typography variant="caption" color="text.secondary">
+                        {dateOnly(postDate)}
+                    </Typography>
+                }
                 sx={{ pb: 0 }}
             />
 
-            <CardActionArea onClick={() => onCardClick?.(post)} sx={{ flex: 1, px: 2, py: showImage ? 1.5 : 0.5 }}>
+            <CardActionArea
+                onClick={() => onCardClick?.(post)}
+                sx={{ flex: 1, px: 2, py: showImage ? 1.5 : 0.5 }}
+            >
                 <Box sx={{ display: 'flex', gap: showImage ? 2 : 0 }}>
                     {showImage && (
                         <Box
@@ -255,7 +267,13 @@ export const ProfilePostCard = memo(function ProfilePostCard({
                             src={mainPhoto}
                             loading="lazy"
                             onError={() => setImgError(true)}
-                            sx={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 1, flexShrink: 0 }}
+                            sx={{
+                                width: 120,
+                                height: 120,
+                                objectFit: 'cover',
+                                borderRadius: 1,
+                                flexShrink: 0,
+                            }}
                             alt=""
                         />
                     )}
@@ -271,7 +289,10 @@ export const ProfilePostCard = memo(function ProfilePostCard({
                         </Box>
 
                         {title && (
-                            <Typography variant="h6" sx={{ mt: 0.5, fontSize: '1.1rem', wordBreak: 'break-word' }}>
+                            <Typography
+                                variant="h6"
+                                sx={{ mt: 0.5, fontSize: '1.1rem', wordBreak: 'break-word' }}
+                            >
                                 {title}
                             </Typography>
                         )}
@@ -291,12 +312,21 @@ export const ProfilePostCard = memo(function ProfilePostCard({
                             >
                                 {preview}
                                 {long && (
-                                    <>
+                                    <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
                                         {' '}
-                                        <Link component="span" underline="hover" color="inherit">
+                                        ...{' '}
+                                        <Link
+                                            component="span"
+                                            underline="hover"
+                                            color="inherit"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                onCardClick?.(post);
+                                            }}
+                                        >
                                             more
                                         </Link>
-                                    </>
+                                    </Box>
                                 )}
                             </Typography>
                         )}
@@ -395,9 +425,14 @@ export default function ProfilePostsList({
     };
     const handleViewProfile = (u) => window.location.assign(`/${u.handle || u.id}`);
     const handleMessage = () =>
-        window.dispatchEvent(new CustomEvent('open-message-center', { detail: { userId: userForCard?.id } }));
+        window.dispatchEvent(
+            new CustomEvent('open-message-center', { detail: { userId: userForCard?.id } })
+        );
 
-    const handleOpenShare = (post) => { setSharePost(post); setShareOpen(true); };
+    const handleOpenShare = (post) => {
+        setSharePost(post);
+        setShareOpen(true);
+    };
 
     const rendered = useMemo(
         () =>
@@ -432,7 +467,14 @@ export default function ProfilePostsList({
     return (
         <Box sx={{ position: 'relative', minHeight: 240, width: '100%', overflowX: 'hidden' }}>
             {list.length > 0 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', overflowX: 'hidden' }}>
+                <Box
+                    sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        width: '100%',
+                        overflowX: 'hidden',
+                    }}
+                >
                     {rendered}
                 </Box>
             )}
@@ -449,7 +491,9 @@ export default function ProfilePostsList({
                         pointerEvents: 'none',
                     }}
                 >
-                    <Typography variant="body2" color="text.secondary">Loading…</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        Loading…
+                    </Typography>
                 </Box>
             )}
 
@@ -463,7 +507,9 @@ export default function ProfilePostsList({
                         alignItems: 'center',
                     }}
                 >
-                    <Typography variant="body2" color="text.secondary">No posts found.</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        No posts found.
+                    </Typography>
                 </Box>
             )}
 
@@ -478,7 +524,12 @@ export default function ProfilePostsList({
                 onViewProfile={handleViewProfile}
             />
 
-            <SharePostDialog open={shareOpen} onClose={() => setShareOpen(false)} viewer={user} post={sharePost} />
+            <SharePostDialog
+                open={shareOpen}
+                onClose={() => setShareOpen(false)}
+                viewer={user}
+                post={sharePost}
+            />
         </Box>
     );
 }

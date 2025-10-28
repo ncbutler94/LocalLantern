@@ -40,7 +40,13 @@ const scrollerSx = {
     maxHeight: 520,
     overflowY: 'auto',
     overflowX: 'hidden',
-    pr: 1.25,              // ensure card right border is fully visible
+    // Keep both card borders fully visible—add a little more space on the right
+    // so overlay scrollbars never cover the card border.
+    pl: 2,                 // left padding
+    pr: { xs: 4, md: 4 },  // right padding (32px) — larger to clear overlay scrollbar
+    pt: 1,
+    pb: 1,
+    scrollbarGutter: 'stable both-edges',
     boxSizing: 'border-box',
     width: '100%',
     '& > *': { maxWidth: '100%' },
