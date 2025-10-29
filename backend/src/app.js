@@ -20,6 +20,7 @@ import publicRoutes from './routes/public.js';
 import postsRouter  from './routes/posts.js';
 
 import businessesRouter from './routes/businesses/businesses.js';
+import eventsRouter     from './routes/events/events.js';  // ⬅️ NEW
 
 import logger from './utils/logger.js';
 import { Client as GoogleMapsClient } from '@googlemaps/google-maps-services-js';
@@ -75,6 +76,9 @@ app.use('/api/posts', postsRouter);
 
 /* 🚀 Businesses API */
 app.use('/api/businesses', businessesRouter);
+
+/* 🚀 NEW: Events API */
+app.use('/api/events', eventsRouter);
 
 /* ───────────────────── Google Geocode proxy ────────── */
 const mapsClient = new GoogleMapsClient({});

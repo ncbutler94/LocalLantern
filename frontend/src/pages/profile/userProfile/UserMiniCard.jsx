@@ -1,80 +1,177 @@
 // src/pages/profile/userProfile/UserMiniCard.jsx
 import React from 'react';
-import { Avatar, Box, IconButton, Typography } from '@mui/material';
+import {
+    Avatar,
+    Box,
+    Typography,
+    IconButton,
+    Menu,
+    MenuItem,
+    Paper,
+} from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 
 /**
- * Compact user card used in the profile "Followers & Following" section
- * - variant="grid": square avatar above, name + @username centered beneath (used in 3-up grid)
- * - variant="row":  square avatar left, text right, and optional 3-dots (used in dialogs if desired)
+ * Compact user card used in the “Followers & Following” surfaces.
+ *
+ * Variants:
+ * - "grid": vertical tile (avatar above, text below) for the left-rail 3-up grid.
+ *           Only the avatar, name, or username navigates. No background/tile click.
+ * - "row" : horizontal card (avatar left, text center, 3-dots on right) for lists.
+ *           Only the avatar, name, or username navigates. 3-dots menu → "View Profile".
+ *
+ * Props:
+ * - user: { id, handle, username, first_name, last_name, avatar_url, profile_picture, public_id }
+ * - variant: "grid" | "row"
+ * - onViewProfile?: optional handler; if provided, it's used instead of window.location.assign
  */
-function UserMiniCard({ user, onMenu, variant = 'grid' }) {
+function UserMiniCard({ user, variant = 'grid', onViewProfile }) {
+    const [menuAnchor, setMenuAnchor] = React.useState(null);
+
     const name =
-        `${user.first_name || ''} ${user.last_name || ''}`.trim() ||
-        (user.handle ? `@${user.handle}` : 'User');
-    const username = user.handle || user.username || '';
-    const avatar = user.avatar_url || user.profile_picture || '';
+        `${user?.first_name || ''} ${user?.last_name || ''}`.trim() ||
+        user?.display_name ||
+        user?.name ||
+        user?.handle ||
+        'User';
+
+    const username = user?.handle || user?.username || '';
+    const avatar = user?.avatar_url || user?.profile_picture || '';
 
     const goProfile = () => {
+        if (!user) return;
+        if (onViewProfile) return onViewProfile(user);
         const path = user.handle ? `/${user.handle}` : `/${user.public_id || user.id}`;
         window.location.assign(path);
     };
 
+    const openMenu = (e) => {
+        e.stopPropagation();
+        setMenuAnchor(e.currentTarget);
+    };
+    const closeMenu = () => setMenuAnchor(null);
+
     if (variant === 'row') {
         return (
-            <Box
+            <Paper
+                variant="outlined"
                 sx={{
+                    p: 1,
                     display: 'grid',
                     gridTemplateColumns: 'auto 1fr auto',
                     alignItems: 'center',
                     gap: 1,
-                    p: 1,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1.5
+                    borderRadius: 2,
+                    cursor: 'default', // background is not clickable
                 }}
             >
-                <Avatar src={avatar} variant="square" sx={{ width: 48, height: 48, borderRadius: 1 }} />
+                {/* Avatar (clickable) */}
+                <Avatar
+                    src={avatar}
+                    alt={name}
+                    variant="square"
+                    sx={{ width: 72, height: 72, borderRadius: 1, cursor: 'pointer' }}
+                    onClick={goProfile}
+                />
+
+                {/* Name + username (clickable) */}
                 <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="body2" noWrap>{name}</Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap>@{username}</Typography>
+                    <Typography
+                        variant="subtitle2"
+                        noWrap
+                        sx={{ cursor: 'pointer' }}
+                        onClick={goProfile}
+                        title={name}
+                    >
+                        {name}
+                    </Typography>
+                    {username && (
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            noWrap
+                            sx={{ cursor: 'pointer' }}
+                            onClick={goProfile}
+                            title={`@${username}`}
+                        >
+                            @{username}
+                        </Typography>
+                    )}
                 </Box>
-                {onMenu && (
-                    <IconButton size="small" onClick={onMenu}>
-                        <MoreVertIcon fontSize="small" />
-                    </IconButton>
-                )}
-            </Box>
+
+                {/* 3-dots menu (no background click) */}
+                <IconButton size="small" onClick={openMenu}>
+                    <MoreVertIcon fontSize="small" />
+                </IconButton>
+
+                <Menu
+                    open={Boolean(menuAnchor)}
+                    anchorEl={menuAnchor}
+                    onClose={closeMenu}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                >
+                    <MenuItem
+                        onClick={() => {
+                            closeMenu();
+                            goProfile();
+                        }}
+                    >
+                        View Profile
+                    </MenuItem>
+                </Menu>
+            </Paper>
         );
     }
 
-    // Default: grid variant (3-up tiles)
+    // Default: "grid" variant (3-up tiles in the left rail)
     return (
-        <Box
-            onClick={goProfile}
+        <Paper
+            variant="outlined"
             sx={{
                 textAlign: 'center',
                 p: 1,
-                border: '1px solid',
-                borderColor: 'divider',
                 borderRadius: 2,
-                cursor: 'pointer',
+                borderColor: 'divider',
+                cursor: 'default', // tile background is not clickable
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                '&:hover': { boxShadow: 1 }
+                '&:hover': { boxShadow: 1 },
             }}
         >
+            {/* Avatar (clickable) */}
             <Avatar
                 src={avatar}
+                alt={name}
                 variant="square"
-                sx={{ width: 96, height: 96, borderRadius: 1, mb: 1 }}
+                sx={{ width: 88, height: 88, borderRadius: 1, mb: 1, cursor: 'pointer' }}
+                onClick={goProfile}
             />
-            <Typography variant="subtitle2" noWrap>{name}</Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-                @{username}
+
+            {/* Name + username (each clickable) */}
+            <Typography
+                variant="subtitle2"
+                noWrap
+                sx={{ cursor: 'pointer' }}
+                onClick={goProfile}
+                title={name}
+            >
+                {name}
             </Typography>
-        </Box>
+            {username && (
+                <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    noWrap
+                    sx={{ cursor: 'pointer' }}
+                    onClick={goProfile}
+                    title={`@${username}`}
+                >
+                    @{username}
+                </Typography>
+            )}
+        </Paper>
     );
 }
 

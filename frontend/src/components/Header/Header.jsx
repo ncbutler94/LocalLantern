@@ -52,7 +52,7 @@ export default function Header({ user, onLogin, onLogout, activeTab, onTabChange
 
     const avatarSrc = user?.avatar_url || user?.profile_picture || defaultAvatar;
     const slug = user ? (user.handle || user.public_id || user.id) : '';
-    const profilePath = user ? `/u/${slug}` : '/login'; // keep /u/* route alive in app
+    const profilePath = user ? `/u/${slug}` : '/login';
 
     const onProfileRoute = /^\/u(\/|$)/.test(location.pathname);
     const onSocialRoute  = /^\/social(\/|$)/.test(location.pathname);
@@ -74,13 +74,14 @@ export default function Header({ user, onLogin, onLogout, activeTab, onTabChange
 
     const handleTabChange = (val) => {
         onTabChange(val);
-        if (val === 'Businesses') navigate('/business'); else navigate('/');
+        if (val === 'Businesses')      navigate('/business');
+        else if (val === 'Events')     navigate('/events');  // ⬅️ NEW
+        else                           navigate('/');
     };
 
     const handleAvatarClick = (e) => { user ? setAnchorEl(e.currentTarget) : openLogin(); };
     const closeMenu = () => setAnchorEl(null);
 
-    // Local, lightweight dialog wrapper so we don’t need a separate component file
     const AuthDialog = ({ title, open, onClose, children }) => (
         <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
             <DialogTitle sx={{ m:0, p:2, textAlign:'center' }}>

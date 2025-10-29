@@ -352,14 +352,14 @@ export default function UserProfilePage({ me }) {
                                                 <b>Start:</b> {ed.start_date || '—'} &nbsp;&nbsp; <b>End:</b> {ed.current ? 'Present' : (ed.end_date || '—')}
                                             </Typography>
                                         )}
-                                        {ed.description && <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: .5 }}>{ed.description}</Typography>}
+                                        {ed.description && <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap', mt: .5 }}>{ed.description}</Typography>}
                                     </Box>
                                 ))}
                             </Box>
                         ) : <Typography color="text.secondary">No education history yet.</Typography>}
                     </SectionCard>
 
-                    {/* Followers & Following – updated with header action */}
+                    {/* Followers & Following – header action unchanged */}
                     <SectionCard
                         title="Followers & Following"
                         action={<Button size="small" variant="outlined" onClick={() => followsRef.current?.openAll()}>View All</Button>}
@@ -370,6 +370,15 @@ export default function UserProfilePage({ me }) {
                             profileId={profile?.id}
                             profileHandle={profile?.handle}
                             profileAvatar={avatarSrc || profile?.avatar_url || profile?.profile_picture}
+                            /* NEW: provide name & username for the popup header */
+                            profileName={
+                                `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() ||
+                                profile?.display_name ||
+                                profile?.name ||
+                                profile?.handle ||
+                                ''
+                            }
+                            profileUsername={profile?.handle || profile?.username || ''}
                             onFlash={setFlash}
                             isFollowingProfile={isFollowing}
                             onToggleFollowProfile={toggleFollow}

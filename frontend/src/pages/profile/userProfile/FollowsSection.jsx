@@ -42,12 +42,12 @@ export default forwardRef(function FollowsSection(
         profileId,
         profileHandle,
         profileAvatar,
-        profileName,          // NEW: for popup header (bold)
-        profileUsername,      // NEW: for popup header (bold)
+        profileName,          // shows in popup header (bold)
+        profileUsername,      // shows in popup header (bold)
         onFlash,
         isFollowingProfile,
         onToggleFollowProfile,
-        showFollowingTabInSection = true, // NEW: hide "Following" tab in the section if false
+        showFollowingTabInSection = true, // hide "Following" tab in the section if false
     },
     ref
 ) {
@@ -124,7 +124,9 @@ export default forwardRef(function FollowsSection(
                 setCounts(r.data.counts || { followers: 0, following: 0 });
             } catch (e) {
                 if (alive)
-                    setLoadError(e?.response?.data?.message || 'Failed to load followers.');
+                    setLoadError(
+                        e?.response?.data?.message || 'Failed to load followers.'
+                    );
             } finally {
                 if (alive) setLoading(false);
                 inFlightRef.current = false;
@@ -241,7 +243,9 @@ export default forwardRef(function FollowsSection(
             removeWeFollow(u.id);
             if (isOwnPage) {
                 // remove from "following" lists and update counts
-                setFollowing((list) => list.filter((x) => Number(x.id) !== Number(u.id)));
+                setFollowing((list) =>
+                    list.filter((x) => Number(x.id) !== Number(u.id))
+                );
                 setCounts((c) => ({
                     ...c,
                     following: Math.max(0, (c.following || 0) - 1),
@@ -264,7 +268,7 @@ export default forwardRef(function FollowsSection(
         closeMenu();
     };
 
-    // ------- Section (card) content: grid tiles, max 9 -------
+    // ------- Section (card) content: grid tiles, max 9 for the left rail -------
     const visibleList = (tab === 0 ? followers : following).slice(0, 9);
 
     return (
@@ -329,6 +333,7 @@ export default forwardRef(function FollowsSection(
             {/* ---------- View All Popup ---------- */}
             <Dialog
                 open={allOpen}
+                scroll="paper"
                 onClose={(_, reason) => {
                     // Do not close when clicking outside the popup
                     if (reason === 'backdropClick') return;
@@ -338,10 +343,12 @@ export default forwardRef(function FollowsSection(
                 maxWidth="md"
                 PaperProps={{
                     sx: {
-                        width: 820,
-                        maxWidth: '90vw',
-                        height: 640,
+                        // Bigger popup, responsive, and fixed-height paper so only inner list scrolls
+                        width: { xs: '94vw', sm: '92vw', md: 'min(1000px, 92vw)' },
+                        height: { xs: '92vh', md: 'min(760px, 92vh)' },
                         borderRadius: 3,
+                        display: 'flex',
+                        flexDirection: 'column',
                     },
                 }}
             >
@@ -367,7 +374,16 @@ export default forwardRef(function FollowsSection(
                     </IconButton>
                 </DialogTitle>
 
-                <DialogContent sx={{ p: 0, height: 'calc(100% - 56px)' }}>
+                {/* Everything below stays pinned, only the list area will scroll */}
+                <DialogContent
+                    sx={{
+                        p: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        flex: 1,
+                        minHeight: 0, // allows the inner list to become the scroll container
+                    }}
+                >
                     {/* Header row: avatar center; name/username to the right (both bold) */}
                     <Box
                         sx={{
@@ -386,7 +402,7 @@ export default forwardRef(function FollowsSection(
                             variant="square"
                             sx={{ width: 72, height: 72, borderRadius: 1, mx: 'auto' }}
                         />
-                        <Box sx={{ pl: 1 }}>
+                        <Box sx={{ pl: 1, textAlign: 'left' }}>
                             <Typography sx={{ fontWeight: 700 }} noWrap>
                                 {profileName || ''}
                             </Typography>
@@ -408,12 +424,13 @@ export default forwardRef(function FollowsSection(
 
                     <Divider />
 
-                    {/* Scroll area with 2-up grid cards (own scroll box) */}
+                    {/* Scroll area with 2-up grid cards (OWN SCROLL BOX) */}
                     <Box
                         sx={{
                             p: 1.25,
                             overflowY: 'auto',
-                            height: 'calc(100% - 116px)', // under tabs+divider+header
+                            flex: 1,       // take remaining height
+                            minHeight: 0,  // allow it to be the scroll container
                         }}
                     >
                         {loading ? (
@@ -465,7 +482,12 @@ export default forwardRef(function FollowsSection(
                                                 src={avatar}
                                                 alt={name}
                                                 variant="square"
-                                                sx={{ width: 84, height: 84, borderRadius: 1, cursor: 'pointer' }}
+                                                sx={{
+                                                    width: 84,
+                                                    height: 84,
+                                                    borderRadius: 1,
+                                                    cursor: 'pointer',
+                                                }}
                                                 onClick={() => goProfile(u)}
                                             />
                                             <Box sx={{ minWidth: 0 }}>
@@ -545,9 +567,7 @@ export default forwardRef(function FollowsSection(
                 open={msgOpen}
                 onClose={() => setMsgOpen(false)}
                 toUser={msgTarget}
-                onSent={() =>
-                    onFlash?.({ type: 'success', text: 'Message sent.' })
-                }
+                onSent={() => onFlash?.({ type: 'success', text: 'Message sent.' })}
                 onError={(txt) =>
                     onFlash?.({ type: 'error', text: txt || 'Failed to send message.' })
                 }

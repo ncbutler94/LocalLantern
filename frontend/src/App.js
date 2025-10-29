@@ -17,6 +17,9 @@ import SocialHome         from './pages/social/SocialHome';
 import UserProfilePage    from './pages/profile/userProfile/UserProfilePage';
 
 const BusinessPage = lazy(() => import('./pages/BusinessPage'));
+const EventsPage   = lazy(() => import('./pages/EventsPage'));   // ⬅️ NEW
+const EventDetails = lazy(() => import('./pages/EventDetails')); // ⬅️ NEW
+const EventCreate  = lazy(() => import('./pages/EventCreate'));  // ⬅️ NEW
 
 export default function App() {
     const [user, setUser] = useState(null);
@@ -78,10 +81,15 @@ export default function App() {
 
                                         {/* Social */}
                                         <Route path="social" element={<SocialHome user={user} />} />
+
+                                        {/* Events */}
+                                        <Route path="events" element={<EventsPage user={user} />} />
+                                        <Route path="events/new" element={<EventCreate />} />
+                                        <Route path="events/:eventId" element={<EventDetails user={user} />} />
+
                                         {/* Legacy profile path kept working */}
                                         <Route path="u/:handleOrId" element={<UserProfilePage me={user} />} />
-
-                                        {/* NEW: direct /:handleOrId profile path (comes after explicit routes to avoid conflicts) */}
+                                        {/* direct /:handleOrId profile path (after explicit routes to avoid conflicts) */}
                                         <Route path=":handleOrId" element={<UserProfilePage me={user} />} />
 
                                         {/* Misc */}
