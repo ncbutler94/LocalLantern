@@ -4,9 +4,7 @@ import mysql from 'mysql2/promise';
 
 const router = express.Router();
 
-/* ───────────────────────── DB POOL (MySQL 8) ─────────────────────────
-   Uses DATABASE_URL if provided (e.g. mysql://user:pass@host:3306/dbname).
-   Otherwise falls back to discrete env vars. */
+/* ───────────────────────── DB POOL (MySQL 8) ───────────────────────── */
 const pool = mysql.createPool(
     process.env.DATABASE_URL
         ? process.env.DATABASE_URL
@@ -15,19 +13,31 @@ const pool = mysql.createPool(
             port: Number(process.env.DB_PORT || 3306),
             user: process.env.DB_USER || 'root',
             password: process.env.DB_PASSWORD || '',
-            database: process.env.DB_NAME || 'local_lantern',
+            database: process.env.DB_NAME || 'thelocallantern', // ← default fixed
             waitForConnections: true,
             connectionLimit: 10,
-            queueLimit: 0
+            queueLimit: 0,
         }
 );
 
 /* ─────────────────────────── Constants ──────────────────────────── */
 const ALLOWED_CATEGORIES = new Set([
-    'Festival','Concert','Church','Market','Parade',
-    'Volunteer','Sports','Class/Workshop','Government/School','Other'
+    'Festival',
+    'Concert',
+    'Church',
+    'Market',
+    'Parade',
+    'Volunteer',
+    'Sports',
+    'Class/Workshop',
+    'Government/School',
+    'Charity/Fundraiser',
+    'Educational/Lecture',
+    'Holiday/Celebration',
+    'Family/Kids',
+    'Other',
 ]);
-const ALLOWED_STATUSES = new Set(['published','pending','flagged','cancelled']);
+const ALLOWED_STATUSES = new Set(['published', 'pending', 'flagged', 'cancelled']);
 
 /* ─────────────────────────── Utilities ──────────────────────────── */
 const toMySQLDateTimeUTC = (dLike) => {
@@ -35,9 +45,10 @@ const toMySQLDateTimeUTC = (dLike) => {
     const d = new Date(dLike);
     if (isNaN(+d)) return null;
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(
-        d.getUTCMinutes()
-    )}:${pad(d.getUTCSeconds())}`;
+    return (
+        `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+        `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+    );
 };
 
 const parseBBox = (s) => {
@@ -57,7 +68,7 @@ const toMeters = ({ radius_km, radius_miles }) => {
     return null;
 };
 
-const escLike = (s) => s.replace(/[%_]/g, (m) => '\\' + m); // preserve %/_ in LIKE
+const escLike = (s) => s.replace(/[%_]/g, (m) => '\\' + m);
 
 const isAdmin = (user) => {
     if (!user) return false;
@@ -76,7 +87,7 @@ function validateEventPayload(body) {
     if (!title) errors.push('title is required');
     clean.title = clampLen(title, 255);
 
-    // Category (optional, must be allowed if present)
+    // Category
     const category = (body.category || '').toString().trim();
     clean.category = category ? (ALLOWED_CATEGORIES.has(category) ? category : null) : null;
     if (category && !ALLOWED_CATEGORIES.has(category)) {
@@ -96,11 +107,11 @@ function validateEventPayload(body) {
     clean.start_datetime = startDT;
     clean.end_datetime = endDT;
 
-    // Location & coords
+    // Location & coords (city/county may be null for online events)
     clean.venue_name = clampLen((body.venue_name || '').toString().trim(), 255) || null;
-    clean.address    = clampLen((body.address || '').toString().trim(), 255) || null;
-    clean.city       = clampLen((body.city || '').toString().trim(), 128) || null;
-    clean.county     = clampLen((body.county || '').toString().trim(), 128) || null;
+    clean.address = clampLen((body.address || '').toString().trim(), 255) || null;
+    clean.city = clampLen((body.city || '').toString().trim(), 128) || null;
+    clean.county = clampLen((body.county || '').toString().trim(), 128) || null;
 
     const lat = body.lat === '' || body.lat === null || body.lat === undefined ? null : Number(body.lat);
     const lng = body.lng === '' || body.lng === null || body.lng === undefined ? null : Number(body.lng);
@@ -110,8 +121,15 @@ function validateEventPayload(body) {
     clean.lng = lng;
 
     // Pricing & flags
-    const price_min = body.price_min === '' || body.price_min === null || body.price_min === undefined ? null : Number(body.price_min);
-    const price_max = body.price_max === '' || body.price_max === null || body.price_max === undefined ? null : Number(body.price_max);
+    const toMoney = (x) => {
+        if (x === '' || x === null || x === undefined) return null;
+        const n = Number(x);
+        if (!Number.isFinite(n)) return NaN;
+        return Math.round(n * 100) / 100; // round to cents
+    };
+    const price_min = toMoney(body.price_min);
+    const price_max = toMoney(body.price_max);
+
     if (price_min !== null && (Number.isNaN(price_min) || price_min < 0)) errors.push('price_min invalid');
     if (price_max !== null && (Number.isNaN(price_max) || price_max < 0)) errors.push('price_max invalid');
     if (price_min !== null && price_max !== null && price_max < price_min) errors.push('price_max < price_min');
@@ -119,46 +137,54 @@ function validateEventPayload(body) {
     clean.price_min = price_min;
     clean.price_max = price_max;
     clean.is_online = !!body.is_online;
-    clean.is_free   = !!body.is_free;
+    clean.is_free = !!body.is_free;
 
     // JSON fields
-    clean.audience_flags      = body.audience_flags && typeof body.audience_flags === 'object' ? body.audience_flags : {};
-    clean.accessibility_flags = body.accessibility_flags && typeof body.accessibility_flags === 'object' ? body.accessibility_flags : {};
+    clean.audience_flags =
+        body.audience_flags && typeof body.audience_flags === 'object' ? body.audience_flags : {};
+    clean.accessibility_flags =
+        body.accessibility_flags && typeof body.accessibility_flags === 'object'
+            ? body.accessibility_flags
+            : {};
     clean.tags = Array.isArray(body.tags) ? body.tags : [];
 
     // Media & source
     clean.image_url = (body.image_url || null) ? clampLen(String(body.image_url), 1024) : null;
-    clean.source    = clampLen((body.source || 'user').toString(), 24);
+    clean.source = clampLen((body.source || 'user').toString(), 24);
 
     return { errors, clean };
 }
 
-/* WHERE builder with text/date/geo filters */
-function buildWhere({ q, category, date_from, date_to, county, city, status = 'published', bbox, center, radius_m }) {
+/* WHERE builder */
+function buildWhere({
+                        q, category, date_from, date_to, county, city, status = 'published', bbox, center, radius_m,
+                    }) {
     const parts = [];
     const values = [];
 
-    // Status: by default only published; admins can override upstream
     parts.push(`e.status = ?`);
     values.push(status);
 
     if (q) {
         const like = `%${escLike(q)}%`;
-        parts.push(`(e.title LIKE ? ESCAPE '\\' OR e.description LIKE ? ESCAPE '\\' OR e.venue_name LIKE ? ESCAPE '\\' OR e.city LIKE ? ESCAPE '\\')`);
+        parts.push(
+            `(e.title LIKE ? ESCAPE '\\' OR e.description LIKE ? ESCAPE '\\' OR e.venue_name LIKE ? ESCAPE '\\' OR e.city LIKE ? ESCAPE '\\')`
+        );
         values.push(like, like, like, like);
     }
     if (category) { parts.push('e.category = ?'); values.push(category); }
     if (county)   { parts.push('e.county LIKE ?'); values.push(`%${escLike(county)}%`); }
     if (city)     { parts.push('e.city LIKE ?');   values.push(`%${escLike(city)}%`); }
-    if (date_from){ parts.push('e.start_datetime >= ?'); values.push(toMySQLDateTimeUTC(date_from)); }
-    if (date_to)  { parts.push('e.start_datetime <= ?'); values.push(toMySQLDateTimeUTC(date_to)); }
+    if (date_from) { parts.push('e.start_datetime >= ?'); values.push(toMySQLDateTimeUTC(date_from)); }
+    if (date_to)   { parts.push('e.start_datetime <= ?'); values.push(toMySQLDateTimeUTC(date_to)); }
     if (bbox) {
         parts.push('(e.lat BETWEEN ? AND ? AND e.lng BETWEEN ? AND ?)');
         values.push(bbox.minLat, bbox.maxLat, bbox.minLng, bbox.maxLng);
     }
     if (center && radius_m) {
-        // MySQL 8: ST_Distance_Sphere(POINT(lon, lat), POINT(lon, lat)) <= meters
-        parts.push('e.lat IS NOT NULL AND e.lng IS NOT NULL AND ST_Distance_Sphere(POINT(e.lng, e.lat), POINT(?, ?)) <= ?');
+        parts.push(
+            'e.lat IS NOT NULL AND e.lng IS NOT NULL AND ST_Distance_Sphere(POINT(e.lng, e.lat), POINT(?, ?)) <= ?'
+        );
         values.push(center.lng, center.lat, radius_m);
     }
 
@@ -166,25 +192,24 @@ function buildWhere({ q, category, date_from, date_to, county, city, status = 'p
 }
 
 /* ───────────────────────────── LIST ───────────────────────────── */
-/** GET /api/events
- *  Query:
- *    q, category, county, city, date_from, date_to
- *    sort=upcoming|popular|new
- *    bbox=minLat,minLng,maxLat,maxLng
- *    lat,lng,radius_km (or radius_miles)
- *    status=published|pending|flagged|cancelled (admin only; default published)
- *    page, limit
- */
 router.get('/', async (req, res) => {
     try {
         const {
-            q = '', category = '', county = '', city = '',
-            date_from = '', date_to = '',
+            q = '',
+            category = '',
+            county = '',
+            city = '',
+            date_from = '',
+            date_to = '',
             sort = 'upcoming',
             bbox: bboxStr = '',
-            lat: latStr = '', lng: lngStr = '', radius_km = '', radius_miles = '',
+            lat: latStr = '',
+            lng: lngStr = '',
+            radius_km = '',
+            radius_miles = '',
             status: statusParam = '',
-            page = '1', limit = '20'
+            page = '1',
+            limit = '20',
         } = req.query;
 
         const p = Number(page) > 0 ? Number(page) : 1;
@@ -192,17 +217,26 @@ router.get('/', async (req, res) => {
         const offset = (p - 1) * l;
 
         const bbox = parseBBox(bboxStr);
-        const center = (latStr && lngStr) ? { lat: Number(latStr), lng: Number(lngStr) } : null;
+        const center = latStr && lngStr ? { lat: Number(latStr), lng: Number(lngStr) } : null;
         const radius_m = toMeters({ radius_km, radius_miles });
 
         const isAdminView = isAdmin(req.user);
-        const status = (statusParam && isAdminView && ALLOWED_STATUSES.has(statusParam)) ? statusParam : 'published';
+        const status =
+            statusParam && isAdminView && ALLOWED_STATUSES.has(statusParam)
+                ? statusParam
+                : 'published';
 
         const { whereSql, values } = buildWhere({
-            q: q || undefined, category: category || undefined,
-            county: county || undefined, city: city || undefined,
-            date_from: date_from || undefined, date_to: date_to || undefined,
-            status, bbox, center, radius_m
+            q: q || undefined,
+            category: category || undefined,
+            county: county || undefined,
+            city: city || undefined,
+            date_from: date_from || undefined,
+            date_to: date_to || undefined,
+            status,
+            bbox,
+            center,
+            radius_m,
         });
 
         let orderBy = 'ORDER BY e.start_datetime ASC';
@@ -221,27 +255,56 @@ router.get('/', async (req, res) => {
             orderBy = 'ORDER BY COALESCE(pop.interest, 0) DESC, e.start_datetime ASC';
         }
 
-        const listSql = `
-      SELECT e.*,
-             COALESCE(pop.interest, 0) AS interested_count
-      FROM events e
-      ${popularityJoin}
-      ${whereSql}
-      ${orderBy}
-      LIMIT ? OFFSET ?
-    `;
-        const countSql = `
-      SELECT COUNT(*) AS cnt
-      FROM events e
-      ${whereSql}
-    `;
+        const interestedExpr =
+            sort === 'popular'
+                ? 'COALESCE(pop.interest, 0)'
+                : `(SELECT COUNT(*) FROM event_engagement eg WHERE eg.event_id = e.id AND eg.type = 'interested')`;
 
-        const [rows]  = await pool.execute(listSql, [...values, l, offset]);
+        const goingExpr = `(SELECT COUNT(*) FROM event_engagement eg2 WHERE eg2.event_id = e.id AND eg2.type = 'rsvp')`;
+
+        const viewerId = Number(req.user?.id || 0);
+        const viewerInterestedExpr = viewerId
+            ? `EXISTS (SELECT 1 FROM event_engagement vei WHERE vei.event_id = e.id AND vei.type='interested' AND vei.user_id = ${viewerId})`
+            : '0';
+        const viewerGoingExpr = viewerId
+            ? `EXISTS (SELECT 1 FROM event_engagement vgr WHERE vgr.event_id = e.id AND vgr.type='rsvp' AND vgr.user_id = ${viewerId})`
+            : '0';
+
+        const li = Math.max(1, Math.min(100, Math.trunc(l) || 20));
+        const off = Math.max(0, Math.trunc(offset) || 0);
+
+        const listSql = `
+            SELECT e.*,
+                   ${interestedExpr} AS interested_count,
+                   ${goingExpr}      AS going_count,
+                   ${viewerInterestedExpr} AS viewer_interested,
+                   ${viewerGoingExpr}      AS viewer_going,
+                   u.id   AS organizer_id,
+                   u.first_name AS organizer_first_name,
+                   u.last_name  AS organizer_last_name,
+                   u.handle     AS organizer_handle,
+                   u.avatar_url AS organizer_avatar_url,
+                   u.profile_picture AS organizer_profile_picture
+            FROM events e
+                     LEFT JOIN users u ON u.id = e.organizer_id
+                ${popularityJoin}
+                ${whereSql}
+                ${orderBy}
+                LIMIT ${li} OFFSET ${off}
+        `;
+
+        const countSql = `
+            SELECT COUNT(*) AS cnt
+            FROM events e
+                ${whereSql}
+        `;
+
+        const [rows] = await pool.execute(listSql, values);
         const [count] = await pool.execute(countSql, values);
         const total = Number(count[0]?.cnt || 0);
 
         return res.json({
-            items: rows.map(r => ({
+            items: rows.map((r) => ({
                 id: r.id,
                 title: r.title,
                 description: r.description,
@@ -260,11 +323,22 @@ router.get('/', async (req, res) => {
                 price_max: r.price_max,
                 image_url: r.image_url,
                 status: r.status,
-                interested_count: Number(r.interested_count || 0)
+                interested_count: Number(r.interested_count || 0),
+                going_count: Number(r.going_count || 0),
+                viewer_interested: !!r.viewer_interested,
+                viewer_going: !!r.viewer_going,
+                organizer: {
+                    id: r.organizer_id,
+                    first_name: r.organizer_first_name,
+                    last_name: r.organizer_last_name,
+                    handle: r.organizer_handle,
+                    avatar_url: r.organizer_avatar_url,
+                    profile_picture: r.organizer_profile_picture,
+                },
             })),
             page: p,
-            limit: l,
-            total
+            limit: li,
+            total,
         });
     } catch (err) {
         console.error('[GET /api/events] error', err);
@@ -278,17 +352,44 @@ router.get('/:id', async (req, res) => {
         const id = Number(req.params.id);
         if (!id) return res.status(400).json({ error: 'bad_id' });
 
+        const viewerId = Number(req.user?.id || 0);
+
         const sql = `
-      SELECT e.*,
-        (SELECT COUNT(*) FROM event_engagement WHERE event_id = e.id AND type='interested') AS interested_count,
-        (SELECT COUNT(*) FROM event_engagement WHERE event_id = e.id AND type='rsvp')       AS rsvp_count
-      FROM events e
-      WHERE e.id = ?
-      LIMIT 1
-    `;
+            SELECT e.*,
+                   (SELECT COUNT(*) FROM event_engagement WHERE event_id = e.id AND type='interested') AS interested_count,
+                   (SELECT COUNT(*) FROM event_engagement WHERE event_id = e.id AND type='rsvp')       AS rsvp_count,
+                   ${viewerId ? `EXISTS (SELECT 1 FROM event_engagement WHERE event_id = e.id AND type='interested' AND user_id=${viewerId})` : '0'} AS viewer_interested,
+                   ${viewerId ? `EXISTS (SELECT 1 FROM event_engagement WHERE event_id = e.id AND type='rsvp' AND user_id=${viewerId})` : '0'} AS viewer_going,
+                   u.id   AS organizer_id,
+                   u.first_name AS organizer_first_name,
+                   u.last_name  AS organizer_last_name,
+                   u.handle     AS organizer_handle,
+                   u.avatar_url AS organizer_avatar_url,
+                   u.profile_picture AS organizer_profile_picture
+            FROM events e
+                     LEFT JOIN users u ON u.id = e.organizer_id
+            WHERE e.id = ?
+                LIMIT 1
+        `;
         const [rows] = await pool.execute(sql, [id]);
         if (!rows.length) return res.status(404).json({ error: 'not_found' });
-        return res.json(rows[0]);
+
+        const r = rows[0];
+        return res.json({
+            ...r,
+            interested_count: Number(r.interested_count || 0),
+            rsvp_count: Number(r.rsvp_count || 0),
+            viewer_interested: !!r.viewer_interested,
+            viewer_going: !!r.viewer_going,
+            organizer: {
+                id: r.organizer_id,
+                first_name: r.organizer_first_name,
+                last_name: r.organizer_last_name,
+                handle: r.organizer_handle,
+                avatar_url: r.organizer_avatar_url,
+                profile_picture: r.organizer_profile_picture,
+            },
+        });
     } catch (err) {
         console.error('[GET /api/events/:id] error', err);
         res.status(500).json({ error: 'event_detail_error' });
@@ -301,52 +402,72 @@ router.post('/', async (req, res) => {
         const { errors, clean } = validateEventPayload(req.body || {});
         if (errors.length) return res.status(400).json({ error: 'validation_failed', errors });
 
-        // Duplicate detection: title (loose), same date (day), same city OR same venue
+        // Deduplicate similar events on same day + city/venue
         const dupSql = `
-      SELECT id
-      FROM events
-      WHERE (LOWER(TRIM(title)) = LOWER(TRIM(?)))
-        AND DATE(start_datetime) = DATE(?)
-        AND (
-          (COALESCE(city,'') = COALESCE(?,'')) OR
-          (COALESCE(venue_name,'') = COALESCE(?,'')) )
-      AND status IN ('published','pending')
-      LIMIT 1
-    `;
+            SELECT id
+            FROM events
+            WHERE (LOWER(TRIM(title)) = LOWER(TRIM(?)))
+              AND DATE(start_datetime) = DATE(?)
+              AND (
+                (COALESCE(city,'') = COALESCE(?,'')) OR
+                (COALESCE(venue_name,'') = COALESCE(?,'')) )
+              AND status IN ('published','pending')
+                LIMIT 1
+        `;
         const [dups] = await pool.execute(dupSql, [
-            clean.title, clean.start_datetime, clean.city || '', clean.venue_name || ''
+            clean.title,
+            clean.start_datetime,
+            clean.city || '',
+            clean.venue_name || '',
         ]);
         if (dups.length) {
             return res.status(409).json({ error: 'duplicate_event', duplicate_of: dups[0].id });
         }
 
         const audience = JSON.stringify(clean.audience_flags);
-        const access   = JSON.stringify(clean.accessibility_flags);
-        const tags     = JSON.stringify(clean.tags);
+        const access = JSON.stringify(clean.accessibility_flags);
+        const tags = JSON.stringify(clean.tags);
 
         const organizerId = req.user?.id || null;
-        const initialStatus = isAdmin(req.user) ? 'published' : 'pending';
+        const initialStatus = 'published';
 
         const sql = `
-      INSERT INTO events
-      (title, description, category, start_datetime, end_datetime,
-       venue_name, address, city, county, lat, lng,
-       is_online, price_min, price_max, is_free,
-       audience_flags, accessibility_flags, tags,
-       organizer_id, status, image_url, source, created_at, updated_at)
-      VALUES
-      (?, ?, ?, ?, ?,
-       ?, ?, ?, ?, ?, ?,
-       ?, ?, ?, ?,
-       CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON),
-       ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-    `;
+            INSERT INTO events
+            (title, description, category, start_datetime, end_datetime,
+             venue_name, address, city, county, lat, lng,
+             is_online, price_min, price_max, is_free,
+             audience_flags, accessibility_flags, tags,
+             organizer_id, status, image_url, source, created_at, updated_at)
+            VALUES
+                (?, ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?,
+                 CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON),
+                 ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+        `;
         const params = [
-            clean.title, clean.description || null, clean.category || null, clean.start_datetime, clean.end_datetime,
-            clean.venue_name, clean.address, clean.city, clean.county, clean.lat, clean.lng,
-            clean.is_online ? 1 : 0, clean.price_min, clean.price_max, clean.is_free ? 1 : 0,
-            audience, access, tags,
-            organizerId, initialStatus, clean.image_url, clean.source
+            clean.title,
+            clean.description || null,
+            clean.category || null,
+            clean.start_datetime,
+            clean.end_datetime,
+            clean.venue_name,
+            clean.address,
+            clean.city,
+            clean.county,
+            clean.lat,
+            clean.lng,
+            clean.is_online ? 1 : 0,
+            clean.price_min,
+            clean.price_max,
+            clean.is_free ? 1 : 0,
+            audience,
+            access,
+            tags,
+            organizerId,
+            initialStatus,
+            clean.image_url,
+            clean.source,
         ];
 
         const [result] = await pool.execute(sql, params);
@@ -358,28 +479,6 @@ router.post('/', async (req, res) => {
     }
 });
 
-/* ───────────────────────── Status change ─────────────────────── */
-/** Admin only: PUT /api/events/:id/status  body: { status } */
-router.put('/:id/status', async (req, res) => {
-    try {
-        if (!isAdmin(req.user)) return res.status(403).json({ error: 'forbidden' });
-
-        const id = Number(req.params.id);
-        const status = (req.body?.status || '').toString();
-        if (!id || !ALLOWED_STATUSES.has(status)) return res.status(400).json({ error: 'bad_request' });
-
-        const [r] = await pool.execute(
-            `UPDATE events SET status = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? LIMIT 1`,
-            [status, id]
-        );
-        if (r.affectedRows === 0) return res.status(404).json({ error: 'not_found' });
-        return res.json({ ok: true });
-    } catch (err) {
-        console.error('[PUT /api/events/:id/status] error', err);
-        res.status(500).json({ error: 'status_update_error' });
-    }
-});
-
 /* ─────────────────── Interested toggle (auth) ────────────────── */
 /** POST /api/events/:id/interested  → toggles; returns { interested, count } */
 router.post('/:id/interested', async (req, res) => {
@@ -387,7 +486,7 @@ router.post('/:id/interested', async (req, res) => {
         if (!req.user?.id) return res.status(401).json({ error: 'auth_required' });
 
         const eventId = Number(req.params.id);
-        const userId  = Number(req.user.id);
+        const userId = Number(req.user.id);
         if (!eventId || !userId) return res.status(400).json({ error: 'bad_request' });
 
         const [existing] = await pool.execute(
@@ -416,19 +515,80 @@ router.post('/:id/interested', async (req, res) => {
     }
 });
 
+/* ─────────────────────── Going (RSVP) toggle ─────────────────── */
+/** POST /api/events/:id/going  → toggles; returns { going, count } */
+router.post('/:id/going', async (req, res) => {
+    try {
+        if (!req.user?.id) return res.status(401).json({ error: 'auth_required' });
+
+        const eventId = Number(req.params.id);
+        const userId = Number(req.user.id);
+        if (!eventId || !userId) return res.status(400).json({ error: 'bad_request' });
+
+        const [existing] = await pool.execute(
+            `SELECT id FROM event_engagement WHERE event_id = ? AND user_id = ? AND type = 'rsvp' LIMIT 1`,
+            [eventId, userId]
+        );
+
+        if (existing.length) {
+            await pool.execute(`DELETE FROM event_engagement WHERE id = ? LIMIT 1`, [existing[0].id]);
+        } else {
+            await pool.execute(
+                `INSERT INTO event_engagement (event_id, user_id, type, created_at) VALUES (?, ?, 'rsvp', UTC_TIMESTAMP())`,
+                [eventId, userId]
+            );
+        }
+
+        const [countRows] = await pool.execute(
+            `SELECT COUNT(*) AS cnt FROM event_engagement WHERE event_id = ? AND type = 'rsvp'`,
+            [eventId]
+        );
+        const count = Number(countRows[0]?.cnt || 0);
+        return res.json({ going: existing.length === 0, count });
+    } catch (err) {
+        console.error('[POST /api/events/:id/going] error', err);
+        res.status(500).json({ error: 'going_toggle_error' });
+    }
+});
+
 /* ───────────────────────── Report event ───────────────────────── */
-/** POST /api/events/:id/report  body: { reason }  (any user can flag) */
+/** POST /api/events/:id/report  body: { reason, details } */
 router.post('/:id/report', async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!id) return res.status(400).json({ error: 'bad_request' });
 
-        // Minimal model: move to 'flagged'. (If you want a reports table, we can add it later.)
-        const [r] = await pool.execute(
+        const userId = req.user?.id || null;
+        const reason = (req.body?.reason || '').toString().slice(0, 255);
+        const details = (req.body?.details || '').toString();
+
+        // Create table if missing (simple bootstrap)
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS event_flags (
+                                                       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                                                       event_id BIGINT UNSIGNED NOT NULL,
+                                                       user_id BIGINT UNSIGNED NULL,
+                                                       reason VARCHAR(255) NOT NULL,
+                details TEXT NULL,
+                created_at DATETIME NOT NULL,
+                PRIMARY KEY (id),
+                KEY idx_event_flags_event (event_id),
+                KEY idx_event_flags_user (user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+
+        await pool.execute(
+            `INSERT INTO event_flags (event_id, user_id, reason, details, created_at)
+             VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
+            [id, userId, reason || 'unspecified', details || null]
+        );
+
+        // Keep current event status flow; optionally mark as flagged for moderation
+        await pool.execute(
             `UPDATE events SET status = 'flagged', updated_at = UTC_TIMESTAMP() WHERE id = ? LIMIT 1`,
             [id]
         );
-        if (r.affectedRows === 0) return res.status(404).json({ error: 'not_found' });
+
         return res.json({ ok: true });
     } catch (err) {
         console.error('[POST /api/events/:id/report] error', err);
@@ -438,7 +598,11 @@ router.post('/:id/report', async (req, res) => {
 
 /* ───────────────────────────── ICS ───────────────────────────── */
 const esc = (s = '') =>
-    String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+    String(s)
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\r?\n/g, '\\n');
 
 const toICSDateUTC = (d) => {
     const dt = new Date(d);
@@ -454,7 +618,12 @@ const toICSDateUTC = (d) => {
         'Z'
     );
 };
-const slug = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/(^-|-$)/g, '') || 'event';
+const slug = (s) =>
+    (s || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'event';
 
 /** GET /api/events/:id/ics — download ICS */
 router.get('/:id/ics', async (req, res) => {
@@ -464,7 +633,7 @@ router.get('/:id/ics', async (req, res) => {
 
         const [rows] = await pool.execute(
             `SELECT id, title, description, start_datetime, end_datetime, venue_name, address, city, county, lat, lng
-       FROM events WHERE id = ? LIMIT 1`,
+             FROM events WHERE id = ? LIMIT 1`,
             [id]
         );
         if (!rows.length) return res.status(404).json({ error: 'not_found' });
@@ -493,7 +662,7 @@ router.get('/:id/ics', async (req, res) => {
             location ? `LOCATION:${esc(location)}` : 'LOCATION:',
             `URL:${esc(url)}`,
             'END:VEVENT',
-            'END:VCALENDAR'
+            'END:VCALENDAR',
         ].join('\r\n');
 
         res.setHeader('Content-Type', 'text/calendar; charset=utf-8');

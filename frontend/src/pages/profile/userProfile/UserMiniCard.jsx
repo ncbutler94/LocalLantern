@@ -8,24 +8,26 @@ import {
     Menu,
     MenuItem,
     Paper,
+    ListItemIcon,
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import MailOutlineIcon from '@mui/icons-material/MailOutline';
+import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
+import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 
-/**
- * Compact user card used in the “Followers & Following” surfaces.
- *
- * Variants:
- * - "grid": vertical tile (avatar above, text below) for the left-rail 3-up grid.
- *           Only the avatar, name, or username navigates. No background/tile click.
- * - "row" : horizontal card (avatar left, text center, 3-dots on right) for lists.
- *           Only the avatar, name, or username navigates. 3-dots menu → "View Profile".
- *
- * Props:
- * - user: { id, handle, username, first_name, last_name, avatar_url, profile_picture, public_id }
- * - variant: "grid" | "row"
- * - onViewProfile?: optional handler; if provided, it's used instead of window.location.assign
- */
-function UserMiniCard({ user, variant = 'grid', onViewProfile }) {
+function UserMiniCard({
+                          user,
+                          variant = 'row',
+                          onViewProfile,
+                          hideMenu = false,
+                          // NEW:
+                          isFollowing = false,
+                          onFollow,
+                          onUnfollow,
+                          onMessage,
+                          isSelf = false,
+                      }) {
     const [menuAnchor, setMenuAnchor] = React.useState(null);
 
     const name =
@@ -56,25 +58,21 @@ function UserMiniCard({ user, variant = 'grid', onViewProfile }) {
             <Paper
                 variant="outlined"
                 sx={{
-                    p: 1,
+                    p: 1.25,
                     display: 'grid',
                     gridTemplateColumns: 'auto 1fr auto',
                     alignItems: 'center',
-                    gap: 1,
+                    gap: 1.25,
                     borderRadius: 2,
-                    cursor: 'default', // background is not clickable
                 }}
             >
-                {/* Avatar (clickable) */}
                 <Avatar
                     src={avatar}
                     alt={name}
                     variant="square"
-                    sx={{ width: 72, height: 72, borderRadius: 1, cursor: 'pointer' }}
+                    sx={{ width: 96, height: 96, borderRadius: 1, cursor: 'pointer' }} // ← larger
                     onClick={goProfile}
                 />
-
-                {/* Name + username (clickable) */}
                 <Box sx={{ minWidth: 0 }}>
                     <Typography
                         variant="subtitle2"
@@ -99,32 +97,78 @@ function UserMiniCard({ user, variant = 'grid', onViewProfile }) {
                     )}
                 </Box>
 
-                {/* 3-dots menu (no background click) */}
-                <IconButton size="small" onClick={openMenu}>
-                    <MoreVertIcon fontSize="small" />
-                </IconButton>
+                {!hideMenu && (
+                    <>
+                        <IconButton size="small" onClick={openMenu} aria-label="Open actions">
+                            <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                        <Menu
+                            open={Boolean(menuAnchor)}
+                            anchorEl={menuAnchor}
+                            onClose={closeMenu}
+                            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                        >
+                            <MenuItem
+                                onClick={() => {
+                                    closeMenu();
+                                    goProfile();
+                                }}
+                            >
+                                <ListItemIcon>
+                                    <AccountCircleIcon fontSize="small" />
+                                </ListItemIcon>
+                                View Profile
+                            </MenuItem>
 
-                <Menu
-                    open={Boolean(menuAnchor)}
-                    anchorEl={menuAnchor}
-                    onClose={closeMenu}
-                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                >
-                    <MenuItem
-                        onClick={() => {
-                            closeMenu();
-                            goProfile();
-                        }}
-                    >
-                        View Profile
-                    </MenuItem>
-                </Menu>
+                            {!isSelf && (
+                                <MenuItem
+                                    onClick={() => {
+                                        closeMenu();
+                                        onMessage?.(user);
+                                    }}
+                                >
+                                    <ListItemIcon>
+                                        <MailOutlineIcon fontSize="small" />
+                                    </ListItemIcon>
+                                    Message
+                                </MenuItem>
+                            )}
+
+                            {!isSelf &&
+                                (isFollowing ? (
+                                    <MenuItem
+                                        onClick={() => {
+                                            closeMenu();
+                                            onUnfollow?.(user);
+                                        }}
+                                    >
+                                        <ListItemIcon>
+                                            <PersonRemoveIcon fontSize="small" />
+                                        </ListItemIcon>
+                                        Unfollow
+                                    </MenuItem>
+                                ) : (
+                                    <MenuItem
+                                        onClick={() => {
+                                            closeMenu();
+                                            onFollow?.(user);
+                                        }}
+                                    >
+                                        <ListItemIcon>
+                                            <PersonAddAlt1Icon fontSize="small" />
+                                        </ListItemIcon>
+                                        Follow
+                                    </MenuItem>
+                                ))}
+                        </Menu>
+                    </>
+                )}
             </Paper>
         );
     }
 
-    // Default: "grid" variant (3-up tiles in the left rail)
+    // Fallback "grid" tile (unchanged)
     return (
         <Paper
             variant="outlined"
@@ -133,14 +177,13 @@ function UserMiniCard({ user, variant = 'grid', onViewProfile }) {
                 p: 1,
                 borderRadius: 2,
                 borderColor: 'divider',
-                cursor: 'default', // tile background is not clickable
+                cursor: 'default',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 '&:hover': { boxShadow: 1 },
             }}
         >
-            {/* Avatar (clickable) */}
             <Avatar
                 src={avatar}
                 alt={name}
@@ -148,15 +191,7 @@ function UserMiniCard({ user, variant = 'grid', onViewProfile }) {
                 sx={{ width: 88, height: 88, borderRadius: 1, mb: 1, cursor: 'pointer' }}
                 onClick={goProfile}
             />
-
-            {/* Name + username (each clickable) */}
-            <Typography
-                variant="subtitle2"
-                noWrap
-                sx={{ cursor: 'pointer' }}
-                onClick={goProfile}
-                title={name}
-            >
+            <Typography variant="subtitle2" noWrap sx={{ cursor: 'pointer' }} onClick={goProfile} title={name}>
                 {name}
             </Typography>
             {username && (

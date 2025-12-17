@@ -13,7 +13,25 @@ const MAX = 15;
 const initWork = () => ({ title: '', company: '', location: '', start_date: '', end_date: '', current: false, description: '' });
 const initEdu  = () => ({ school: '', degree: '', field: '', start_date: '', end_date: '', current: false, description: '' });
 
-export default function HistoryDialog({ open, type, initialItems, onSave, onClose }) {
+/**
+ * Props (supports both old and new names)
+ * - open: boolean
+ * - type: 'work' | 'education'
+ * - value: array (NEW, preferred)
+ * - onChange: function(array) (NEW, preferred)
+ * - initialItems: array (legacy)
+ * - onSave: function(array) (legacy)
+ * - onClose: function()
+ */
+export default function HistoryDialog({
+                                          open,
+                                          type,
+                                          value,                // preferred (from parent)
+                                          onChange,             // preferred (from parent)
+                                          initialItems,         // legacy
+                                          onSave,               // legacy
+                                          onClose,
+                                      }) {
     const isWork = type === 'work';
     const label = isWork ? 'Work History' : 'School History';
 
@@ -24,21 +42,27 @@ export default function HistoryDialog({ open, type, initialItems, onSave, onClos
     const scRef = useRef(null);
     const cardRefs = useRef([]);
 
+    // Initialize form state when opened
     useEffect(() => {
         if (open) {
-            const copy = Array.isArray(initialItems) ? JSON.parse(JSON.stringify(initialItems)) : [];
+            // Prefer `value`; fall back to legacy `initialItems`
+            const source = Array.isArray(value) ? value : initialItems;
+            const copy = Array.isArray(source) ? JSON.parse(JSON.stringify(source)) : [];
             setItems(copy);
             setErrors({});
             setDirty(false);
+            cardRefs.current = [];
         }
-    }, [open, initialItems]);
+    }, [open, value, initialItems]);
 
     const add = () => {
         if (items.length >= MAX) return;
         const next = [...items, isWork ? initWork() : initEdu()];
         setItems(next);
         setDirty(true);
-        requestAnimationFrame(() => scRef.current?.scrollTo({ top: scRef.current.scrollHeight, behavior: 'smooth' }));
+        requestAnimationFrame(() =>
+            scRef.current?.scrollTo({ top: scRef.current.scrollHeight, behavior: 'smooth' })
+        );
     };
 
     const removeAt = (i) => {
@@ -75,12 +99,28 @@ export default function HistoryDialog({ open, type, initialItems, onSave, onClos
 
     const handleDone = () => {
         if (!validate()) return;
-        onSave(items);
+
+        // Support both prop styles. Prefer the new `onChange`.
+        if (typeof onChange === 'function') onChange(items);
+        else if (typeof onSave === 'function') onSave(items);
+
+        setDirty(false);
+        if (typeof onClose === 'function') onClose();
     };
 
     return (
         <>
-            <Dialog open={open} onClose={(_, r) => r !== 'backdropClick' && setConfirmCancel(true)} maxWidth="md" fullWidth>
+            <Dialog
+                open={open}
+                // Block click-away close; allow ESC to trigger discard confirmation.
+                onClose={(_, reason) => {
+                    if (reason === 'backdropClick') return; // block outside click
+                    if (dirty) setConfirmCancel(true);
+                    else if (typeof onClose === 'function') onClose();
+                }}
+                maxWidth="md"
+                fullWidth
+            >
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1 }}>
                     {label}
                     <Button startIcon={<AddCircleOutlineIcon />} onClick={add} disabled={items.length >= MAX}>
@@ -159,7 +199,12 @@ export default function HistoryDialog({ open, type, initialItems, onSave, onClos
                                     <input
                                         type="checkbox"
                                         checked={!!it.current}
-                                        onChange={(e) => updateAt(i, { current: e.target.checked, end_date: e.target.checked ? '' : it.end_date })}
+                                        onChange={(e) =>
+                                            updateAt(i, {
+                                                current: e.target.checked,
+                                                end_date: e.target.checked ? '' : it.end_date,
+                                            })
+                                        }
                                     />
                                     {isWork ? 'I currently work here' : 'I currently attend'}
                                 </label>
@@ -187,7 +232,9 @@ export default function HistoryDialog({ open, type, initialItems, onSave, onClos
                 </DialogContent>
 
                 <DialogActions sx={{ px: 2, pb: 2 }}>
-                    <Button onClick={() => (dirty ? setConfirmCancel(true) : onClose())}>Cancel</Button>
+                    <Button onClick={() => (dirty ? setConfirmCancel(true) : (typeof onClose === 'function' && onClose()))}>
+                        Cancel
+                    </Button>
                     <Button variant="contained" onClick={handleDone}>Done</Button>
                 </DialogActions>
             </Dialog>
@@ -200,7 +247,7 @@ export default function HistoryDialog({ open, type, initialItems, onSave, onClos
                     <Button
                         color="error"
                         variant="contained"
-                        onClick={() => { setConfirmCancel(false); onClose(); }}
+                        onClick={() => { setConfirmCancel(false); if (typeof onClose === 'function') onClose(); }}
                     >
                         Yes
                     </Button>

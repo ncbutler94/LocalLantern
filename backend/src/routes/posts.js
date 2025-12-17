@@ -1,7 +1,10 @@
 // backend/src/routes/posts.js
 // =============================================================================
 // POST likes + threaded comments + comment‑likes + comment‑image upload (GCS)
-// + Reposts toggle (new)
+// + Reposts toggle
+// + Flag a post
+// + Flag a comment (NEW)
+// + Accept 'image_url' for Tenor/remote GIFs on comments (NEW)
 // -----------------------------------------------------------------------------
 //
 // Requires (install once in backend):
@@ -12,8 +15,8 @@
 //   GCS_BUCKET=<your bucket name>   // same bucket you use for post photos
 //
 // DB (tables this router touches):
-//   post_likes, post_comments, comment_likes, comment_photos, post_reposts
-//
+//   post_likes, post_comments, comment_likes, comment_photos,
+//   post_reposts, post_flags, comment_flags (NEW)
 // =============================================================================
 
 import express           from 'express';
@@ -69,9 +72,7 @@ router.post('/:postId/like', authenticateToken, async (req, res, next) => {
             await db('post_likes').insert({ category, post_id, user_id });
         }
 
-        const [{ count }] = await db('post_likes')
-            .where({ category, post_id })
-            .count('* as count');
+        const [{ count }] = await db('post_likes').where({ category, post_id }).count('* as count');
 
         return res.json({ liked: !existing, likesCount: Number(count) || 0 });
     } catch (err) {
@@ -80,7 +81,7 @@ router.post('/:postId/like', authenticateToken, async (req, res, next) => {
 });
 
 /* ────────────────────────────────────────────────────────────────
- * 2) POST /api/posts/:postId/repost  (toggle)   ← NEW
+ * 2) POST /api/posts/:postId/repost  (toggle)
  * ──────────────────────────────────────────────────────────────── */
 router.post('/:postId/repost', authenticateToken, async (req, res, next) => {
     const { id: user_id } = req.user;
@@ -127,10 +128,8 @@ router.post('/comments/:commentId/like', authenticateToken, async (req, res, nex
 });
 
 /* ────────────────────────────────────────────────────────────────
- * 4) POST /api/posts/:postId/comments  (text + optional image)
- *    Accepts JSON or multipart/form-data:
- *      - fields: content, parent_id?, category?
- *      - file:   image?  (1 image)
+ * 4) POST /api/posts/:postId/comments  (text + optional image or image_url)
+ *    Accepts either multipart file field `image` or JSON/text field `image_url`
  * ──────────────────────────────────────────────────────────────── */
 router.post(
     '/:postId/comments',
@@ -143,8 +142,9 @@ router.post(
         const content   = (req.body?.content ?? '').toString();
         const parent_id = req.body?.parent_id ? Number(req.body.parent_id) : null;
         const category  = (req.body?.category || 'community_post').trim();
+        const image_url = (req.body?.image_url || '').toString().trim();
 
-        if (!content.trim() && !req.file) {
+        if (!content.trim() && !req.file && !image_url) {
             return res.status(400).json({ error: 'empty_content' });
         }
 
@@ -176,14 +176,18 @@ router.post(
                 const comment_id =
                     typeof insertRes[0] === 'object' ? insertRes[0].id : insertRes[0];
 
-                // 2) optional image
-                let imageUrl = null;
+                // 2) optional image or image_url
+                let storedUrl = null;
                 if (req.file) {
-                    imageUrl = await uploadCommentImage(req.file);
-                    await trx('comment_photos').insert({ comment_id, url: imageUrl, position: 0 });
+                    storedUrl = await uploadCommentImage(req.file);
+                } else if (image_url) {
+                    storedUrl = image_url;
+                }
+                if (storedUrl) {
+                    await trx('comment_photos').insert({ comment_id, url: storedUrl, position: 0 });
                 }
 
-                // 3) hydrate newly created row
+                // 3) hydrate newly created row (include ids/handles for profile links)
                 const row = await trx('post_comments as pc')
                     .join('users as u', 'pc.user_id', 'u.id')
                     .select(
@@ -194,12 +198,14 @@ router.post(
                         'pc.reply_count',
                         'pc.content',
                         'pc.created_at',
+                        'u.id as user_id',
+                        'u.handle as handle',
                         'u.first_name',
                         'u.last_name',
                         'u.avatar_url',
                         trx.raw('0 AS likesCount'),
                         trx.raw('false AS viewerLiked'),
-                        trx.raw('? AS image', [imageUrl]),
+                        trx.raw('(SELECT url FROM comment_photos WHERE comment_id = pc.id ORDER BY position ASC, id ASC LIMIT 1) AS image')
                     )
                     .where('pc.id', comment_id)
                     .first();
@@ -237,6 +243,8 @@ router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
                 'pc.reply_count',
                 'pc.content',
                 'pc.created_at',
+                'u.id as user_id',
+                'u.handle as handle',
                 'u.first_name',
                 'u.last_name',
                 'u.avatar_url',
@@ -245,9 +253,7 @@ router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
                     'EXISTS (SELECT 1 FROM comment_likes WHERE comment_id = pc.id AND user_id = ?) AS viewerLiked',
                     [viewerId]
                 ),
-                db.raw(
-                    '(SELECT url FROM comment_photos WHERE comment_id = pc.id ORDER BY position ASC, id ASC LIMIT 1) AS image'
-                ),
+                db.raw('(SELECT url FROM comment_photos WHERE comment_id = pc.id ORDER BY position ASC, id ASC LIMIT 1) AS image')
             )
             .where({ 'pc.post_id': post_id, 'pc.category': category })
             .modify((q) => {
@@ -256,6 +262,68 @@ router.get('/:postId/comments', optionalAuth, async (req, res, next) => {
             });
 
         return res.json(rows);
+    } catch (err) {
+        return next(err);
+    }
+});
+
+/* ────────────────────────────────────────────────────────────────
+ * 6) POST /api/posts/:postId/flag   (create/replace a flag row)
+ * ──────────────────────────────────────────────────────────────── */
+router.post('/:postId/flag', authenticateToken, async (req, res, next) => {
+    const post_id = Number(req.params.postId);
+    const user_id = Number(req.user.id);
+    const reason  = String(req.body?.reason || '').slice(0, 50);
+    const details = String(req.body?.details || '').slice(0, 2000);
+
+    if (!reason) return res.status(400).json({ error: 'reason_required' });
+
+    try {
+        if (db.client.config.client?.includes('mysql')) {
+            await db('post_flags')
+                .insert({ post_id, user_id, reason, details, created_at: db.fn.now() })
+                .onConflict(['post_id', 'user_id'])
+                .merge({ reason, details });
+        } else {
+            const existing = await db('post_flags').where({ post_id, user_id }).first();
+            if (existing) {
+                await db('post_flags').where({ id: existing.id }).update({ reason, details });
+            } else {
+                await db('post_flags').insert({ post_id, user_id, reason, details, created_at: db.fn.now() });
+            }
+        }
+        return res.status(201).json({ ok: true });
+    } catch (err) {
+        return next(err);
+    }
+});
+
+/* ────────────────────────────────────────────────────────────────
+ * 7) POST /api/posts/comments/:commentId/flag  (create/replace)
+ * ──────────────────────────────────────────────────────────────── */
+router.post('/comments/:commentId/flag', authenticateToken, async (req, res, next) => {
+    const comment_id = Number(req.params.commentId);
+    const user_id    = Number(req.user.id);
+    const reason     = String(req.body?.reason || '').slice(0, 50);
+    const details    = String(req.body?.details || '').slice(0, 2000);
+
+    if (!reason) return res.status(400).json({ error: 'reason_required' });
+
+    try {
+        if (db.client.config.client?.includes('mysql')) {
+            await db('comment_flags')
+                .insert({ comment_id, user_id, reason, details, created_at: db.fn.now() })
+                .onConflict(['comment_id', 'user_id'])
+                .merge({ reason, details });
+        } else {
+            const existing = await db('comment_flags').where({ comment_id, user_id }).first();
+            if (existing) {
+                await db('comment_flags').where({ id: existing.id }).update({ reason, details });
+            } else {
+                await db('comment_flags').insert({ comment_id, user_id, reason, details, created_at: db.fn.now() });
+            }
+        }
+        return res.status(201).json({ ok: true });
     } catch (err) {
         return next(err);
     }

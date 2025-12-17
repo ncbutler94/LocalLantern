@@ -15,20 +15,20 @@ const bucket        = storage.bucket(process.env.GCS_BUCKET);
 const FOLDER_PREFIX = 'community/announcements';              // ★ folder name
 const upload        = multer({ storage: multer.memoryStorage() });
 
-/* ────── validation ────── */
+/* ────── validation (location fields now optional) ────── */
 const validate = [
     body('title').trim().notEmpty().isLength({ max: 50 }),
     body('description').trim().isLength({ max: 1000 }).optional({ nullable: true }),
-    body('city').trim().notEmpty(),
-    body('county').trim().notEmpty(),
-    body('visibility').isIn(['public', 'followers'])
+    body('city').trim().optional({ nullable: true }),
+    body('county').trim().optional({ nullable: true }),
+    body('visibility').isIn(['public', 'followers']).optional({ nullable: true })
 ];
 
 /* ────── POST /api/announcements ────── */
 router.post(
     '/',
     authenticateToken,
-    upload.array('photos', 8),
+    upload.array('photos', 4),
     validate,
     async (req, res, next) => {
         /* 1. validate */
@@ -67,8 +67,8 @@ router.post(
             title,
             description = '',
             visibility = 'public',
-            city,
-            county,
+            city = null,
+            county = null,
             latitude,
             longitude
         } = req.body;

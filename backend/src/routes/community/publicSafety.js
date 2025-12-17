@@ -1,26 +1,24 @@
-// backend/src/routes/community/publicSafety.js
 import express from 'express';
-import multer  from 'multer';
+import multer from 'multer';
 import { Storage } from '@google-cloud/storage';
 import { body, validationResult } from 'express-validator';
 
-import db                 from '../../config/db.js';
-import authenticateToken  from '../../middleware/auth.js';
+import db from '../../config/db.js';
+import authenticateToken from '../../middleware/auth.js';
 
 const router = express.Router();
 
 /* ─────────── Google Cloud Storage ─────────── */
-const storage       = new Storage({ projectId: process.env.GCP_PROJECT_ID });
-const bucket        = storage.bucket(process.env.GCS_BUCKET);
+const storage = new Storage({ projectId: process.env.GCP_PROJECT_ID });
+const bucket = storage.bucket(process.env.GCS_BUCKET);
 const FOLDER_PREFIX = 'community/public-safety';
-const upload        = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage() });
 
-/* ─────────── Validation ───────────
-   (severity / alert_type / alert_type_other removed) */
+/* ─────────── Validation (location optional) ─────────── */
 const validate = [
     body('title').trim().notEmpty().isLength({ max: 50 }),
     body('expires_at').isISO8601().toDate().optional({ nullable: true }),
-    body('county').trim().notEmpty(),
+    body('county').trim().optional({ nullable: true }),
     body('city').trim().optional({ nullable: true }),
 ];
 
@@ -43,18 +41,18 @@ router.post(
             photoUrls = await Promise.all(
                 (req.files || []).map((file) => {
                     const gcsName = `${FOLDER_PREFIX}/${Date.now()}_${file.originalname}`;
-                    const blob    = bucket.file(gcsName);
-                    const stream  = blob.createWriteStream({ metadata: { contentType: file.mimetype } });
+                    const blob = bucket.file(gcsName);
+                    const stream = blob.createWriteStream({ metadata: { contentType: file.mimetype } });
 
                     return new Promise((resolve, reject) => {
                         stream
                             .on('error', reject)
                             .on('finish', () =>
-                                resolve(`https://storage.googleapis.com/${bucket.name}/${gcsName}`)
+                                resolve(`https://storage.googleapis.com/${bucket.name}/${gcsName}`),
                             );
                         stream.end(file.buffer);
                     });
-                })
+                }),
             );
         } catch (err) {
             return next(err);
@@ -64,40 +62,44 @@ router.post(
         const {
             title,
             description = '',
-            expires_at  = null,
-            city,
-            county,
+            expires_at = null,
             latitude,
             longitude,
             visibility = 'public',
         } = req.body;
 
+        // default location to user's profile when not supplied
+        const city =
+            (req.body.city ?? req.user?.city ?? '').toString().trim() || null;
+        const county =
+            (req.body.county ?? req.user?.county ?? '').toString().trim() || null;
+
         try {
             const id = await db.transaction(async (trx) => {
                 /* a) community_posts */
                 const [postId] = await trx('community_posts').insert({
-                    user_id   : req.user.id,
-                    category  : 'public-safety-alerts',
+                    user_id: req.user.id,
+                    category: 'public-safety-alerts',
                     title,
                     description,
                     visibility,
                     city,
                     county,
-                    latitude  : latitude  ? parseFloat(latitude)  : null,
-                    longitude : longitude ? parseFloat(longitude) : null,
-                    posted_at : trx.fn.now(),
+                    latitude: latitude ? parseFloat(latitude) : null,
+                    longitude: longitude ? parseFloat(longitude) : null,
+                    posted_at: trx.fn.now(),
                 });
 
                 /* b) public_safety_alerts  (alert-type columns removed) */
                 await trx('public_safety_alerts').insert({
-                    id        : postId,
-                    user_id   : req.user.id,
+                    id: postId,
+                    user_id: req.user.id,
                     title,
-                    body      : description,
+                    body: description,
                     city,
                     county,
-                    latitude  : latitude  ? parseFloat(latitude)  : null,
-                    longitude : longitude ? parseFloat(longitude) : null,
+                    latitude: latitude ? parseFloat(latitude) : null,
+                    longitude: longitude ? parseFloat(longitude) : null,
                     expires_at,
                 });
 
@@ -105,10 +107,10 @@ router.post(
                 if (photoUrls.length) {
                     await trx('community_photos').insert(
                         photoUrls.map((url, idx) => ({
-                            post_id : postId,
+                            post_id: postId,
                             url,
                             position: idx,
-                        }))
+                        })),
                     );
                 }
 
@@ -119,11 +121,10 @@ router.post(
         } catch (err) {
             next(err);
         }
-    }
+    },
 );
 
-/* ─────────── GET /api/public-safety ───────────
-   Returns all active alerts, auto-filters expired ones. */
+/* ─────────── GET /api/public-safety (list non‑expired, optional geo filters) ─────────── */
 router.get('/', async (req, res, next) => {
     try {
         const { city = '', county = '' } = req.query;
@@ -143,13 +144,14 @@ router.get('/', async (req, res, next) => {
                 'cp.city',
                 'cp.county',
                 'psa.expires_at',
-                db.raw('JSON_ARRAYAGG(p.url) AS photos')
+                db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
             )
             .groupBy('cp.id')
             .where((qb) => {
                 /* remove expired alerts */
                 qb.whereNull('psa.expires_at').orWhere('psa.expires_at', '>', db.fn.now());
-            });
+            })
+            .orderBy('cp.posted_at', 'desc');
 
         if (city.trim()) {
             q.whereRaw('LOWER(cp.city) = ?', city.trim().toLowerCase());

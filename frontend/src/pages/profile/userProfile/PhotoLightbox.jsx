@@ -22,7 +22,7 @@ import SendIcon from '@mui/icons-material/Send';
 
 import axios from 'axios';
 import SharePhotoDialog from './SharePhotoDialog';
-import { useAuthModal } from '../../../contexts/AuthModalContext';
+import { useAuth } from '../../../components/AuthModalContext';
 
 const api = process.env.REACT_APP_API_URL;
 const MAX_CHARS = 1000;
@@ -179,7 +179,7 @@ export default function PhotoLightbox({ open, onClose, photos = [], startIndex =
     const [sort, setSort] = useState('newest');
     const [shareOpen, setShareOpen] = useState(false);
 
-    const { open: openAuth } = useAuthModal?.() || { open: () => {} };
+    const { open: openAuth } = useAuth?.() || { open: () => {} };
 
     const current = photos[idx] || null;
     const pid = current?.id;

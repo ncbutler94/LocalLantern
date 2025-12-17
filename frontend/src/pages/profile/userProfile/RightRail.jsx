@@ -1,4 +1,3 @@
-// src/pages/profile/userProfile/RightRail.jsx
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
     Box,
@@ -12,9 +11,9 @@ import {
     CircularProgress,
     Divider,
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import PublicIcon from '@mui/icons-material/Public';
 
-// Use the same list/card rendering style as Community
 import ProfilePostsList from '../../../pages/profile/userProfile/ProfilePostsList';
 
 /* ──────────────────────────────── styles ──────────────────────────────── */
@@ -40,10 +39,8 @@ const scrollerSx = {
     maxHeight: 520,
     overflowY: 'auto',
     overflowX: 'hidden',
-    // Keep both card borders fully visible—add a little more space on the right
-    // so overlay scrollbars never cover the card border.
-    pl: 2,                 // left padding
-    pr: { xs: 4, md: 4 },  // right padding (32px) — larger to clear overlay scrollbar
+    pl: 2,
+    pr: { xs: 4, md: 4 },
     pt: 1,
     pb: 1,
     scrollbarGutter: 'stable both-edges',
@@ -52,14 +49,17 @@ const scrollerSx = {
     '& > *': { maxWidth: '100%' },
 };
 
-/* ───────────────────────────── normalize post ────────────────────────────
-   Match the shape used by the Community page (likes/reposts/comments counts,
-   viewer flags, avatar/profile picture, photos array, etc.)
---------------------------------------------------------------------------- */
+// Pretty label
+const PRIV_LABEL = { public: 'Public', friends: 'Followers', private: 'Only Me' };
+const privText = (v) => PRIV_LABEL[v] || 'Public';
+
+// API base (for dev where React runs on :3000 and API on :4001)
+const API_BASE = process.env.REACT_APP_API_URL || '';
+
+/* normalize post (unchanged) */
 const normalizePost = (post) => {
     if (!post) return null;
 
-    // Photos: array | JSON string | single URL; filter nulls/"null"
     let photos = [];
     if (post.photos) {
         if (typeof post.photos === 'string') {
@@ -83,7 +83,6 @@ const normalizePost = (post) => {
     return {
         ...post,
         photos,
-        // engagement (camelCase + snake_case fallbacks)
         likesCount: Number(post.likesCount ?? post.likes_count ?? post.like_count ?? post.likes ?? 0),
         commentsCount: Number(
             post.commentsCount ?? post.comments_count ?? post.comment_count ?? post.comments ?? 0
@@ -98,20 +97,33 @@ const normalizePost = (post) => {
     };
 };
 
-export default function RightRail({ me, posts, onOpenPost, profileHandle }) {
-    // Local filter/sort state for the Community Posts section
+export default function RightRail({
+                                      me,
+                                      posts,
+                                      onOpenPost,
+                                      profile, // full profile object (fallback if profileHandle not provided)
+                                      profileHandle, // optional
+                                      editMode = false,
+                                      onPrivacy, // (e, 'posts'|'reposts'|'likes')
+                                      privacy = {}, // { posts, reposts, likes }
+                                      useProvidedPosts = false, // when true, use the posts prop as source of truth and skip fetching
+                                  }) {
     const [subtype, setSubtype] = useState('all');
     const [sort, setSort] = useState('newest');
 
-    // Only the internal scroller should jump to top on filter change (not the whole page)
     const postsScrollRef = useRef(null);
     const scrollToTop = () => {
         if (postsScrollRef.current) postsScrollRef.current.scrollTop = 0;
     };
-    const handleSubtypeChange = (val) => { setSubtype(val); scrollToTop(); };
-    const handleSortChange = (val) => { setSort(val); scrollToTop(); };
+    const handleSubtypeChange = (val) => {
+        setSubtype(val);
+        scrollToTop();
+    };
+    const handleSortChange = (val) => {
+        setSort(val);
+        scrollToTop();
+    };
 
-    // Align UI category to DB slugs (same mapping the Community page uses)
     const normalizedSubtype = useMemo(() => {
         if (subtype === 'public-safety') return 'public-safety-alerts';
         if (subtype === 'recommendation') return 'recommendations-tips';
@@ -119,52 +131,130 @@ export default function RightRail({ me, posts, onOpenPost, profileHandle }) {
         return subtype;
     }, [subtype]);
 
-    /* ─────────────────────────── load posts for this user ──────────────────────────
-     * IMPORTANT: Fetch from /api/community?user= so we get avatar_url/profile_picture,
-     * aggregated photos, likes/comments/reposts counts, and viewer flags exactly like
-     * the Community page. (Route is mounted under /api/community.)                       */
+    // Resolve a usable key (handle or id) for fetches
+    const profileKey = useMemo(
+        () => profileHandle || profile?.handle || profile?.public_id || profile?.id || null,
+        [profileHandle, profile]
+    );
+
+    // Determine if the viewer owns this profile (so they can see/change privacy without edit mode)
+    const isOwner = useMemo(() => {
+        if (!me || !profile) return false;
+        return (
+            (me.id && profile.id && me.id === profile.id) ||
+            (me.handle &&
+                profile.handle &&
+                String(me.handle).toLowerCase() === String(profile.handle).toLowerCase())
+        );
+    }, [me, profile]);
+
+    // Determine if viewer follows this profile (for "friends" privacy == Followers)
+    const isFollower = useMemo(() => {
+        if (!me || !profile) return false;
+        if (isOwner) return true;
+
+        try {
+            const sjRaw = profile.social_json;
+            const sj =
+                sjRaw && typeof sjRaw === 'string'
+                    ? JSON.parse(sjRaw || '{}')
+                    : sjRaw && typeof sjRaw === 'object'
+                        ? sjRaw
+                        : {};
+            const followerIds = Array.isArray(sj?.followers) ? sj.followers : [];
+            const myId = Number(me.id);
+            return Number.isFinite(myId) && followerIds.some((id) => Number(id) === myId);
+        } catch {
+            return false;
+        }
+    }, [me, profile, isOwner]);
+
+    const canViewByPrivacy = (val) => {
+        const v = val || 'public';
+        if (isOwner) return true;
+        if (v === 'private') return false;
+        if (v === 'friends') return !!isFollower;
+        return true;
+    };
+
+    const ownerCanSeePrivacy = editMode || isOwner;
+
     const [loadingPosts, setLoadingPosts] = useState(true);
-    const [rawPosts, setRawPosts] = useState([]);
+    const [rawPosts, setRawPosts] = useState(Array.isArray(posts) ? posts : []);
 
-    const [reloadTick, setReloadTick] = useState(0);
-
+    // Apply in-place updates after an edit/mark-found happens elsewhere on the profile
     useEffect(() => {
-        if (!profileHandle) { setRawPosts([]); setLoadingPosts(false); return; }
+        const onUpdated = (e) => {
+            const updated = e?.detail?.post;
+            if (!updated || !updated.id) return;
+            const idNum = Number(updated.id);
+            if (!Number.isFinite(idNum)) return;
+
+            const patchList = (prev) =>
+                Array.isArray(prev)
+                    ? prev.map((p) => (Number(p?.id) === idNum ? { ...p, ...updated } : p))
+                    : prev;
+
+            setRawPosts((prev) => patchList(prev));
+            setRepostPosts((prev) => patchList(prev));
+            setLikedPosts((prev) => patchList(prev));
+        };
+
+        window.addEventListener('ll:communityPost:updated', onUpdated);
+        return () => window.removeEventListener('ll:communityPost:updated', onUpdated);
+    }, []);
+
+    // Fetch profile posts (includes photos). We refetch on profileKey change unless caller preloaded them.
+    useEffect(() => {
+        if (useProvidedPosts) {
+            setRawPosts(Array.isArray(posts) ? posts : []);
+            setLoadingPosts(false);
+            return;
+        }
+        if (!profileKey) {
+            setRawPosts(Array.isArray(posts) ? posts : []);
+            setLoadingPosts(false);
+            return;
+        }
         let alive = true;
         const ac = new AbortController();
         (async () => {
             setLoadingPosts(true);
             try {
-                // Use the same API the Community page uses
                 const res = await fetch(
-                    `/api/community?user=${encodeURIComponent(profileHandle)}&limit=100`,
+                    `${API_BASE}/api/community?user=${encodeURIComponent(profileKey)}&limit=100`,
                     { credentials: 'include', signal: ac.signal }
                 );
                 const j = await res.json();
                 if (!alive) return;
-                setRawPosts(Array.isArray(j) ? j : []);
+                const arr = Array.isArray(j) ? j : [];
+                setRawPosts(arr);
             } catch {
-                if (alive) setRawPosts([]);
+                if (alive) setRawPosts(Array.isArray(posts) ? posts : []);
             } finally {
                 if (alive) setLoadingPosts(false);
             }
         })();
-        return () => { alive = false; ac.abort(); };
-    }, [profileHandle, reloadTick]);
+        return () => {
+            alive = false;
+            ac.abort();
+        };
+    }, [useProvidedPosts, profileKey, posts]);
 
-    // Normalize → filter → sort (client-side)
     const visiblePosts = useMemo(() => {
         let list = rawPosts.slice().map(normalizePost).filter(Boolean);
 
-        if (normalizedSubtype !== 'all') {
-            list = list.filter((p) => (p?.category || '') === normalizedSubtype);
+        if (normalizedSubtype && normalizedSubtype !== 'all') {
+            list = list.filter((p) => {
+                const cat = String(p?.category || p?.subtype || '').toLowerCase();
+                return cat === normalizedSubtype.toLowerCase();
+            });
         }
 
         if (sort === 'newest') {
             list.sort(
                 (a, b) =>
-                    new Date(b?.posted_at || b?.date_created || 0) -
-                    new Date(a?.posted_at || a?.date_created || 0)
+                    new Date(b?.posted_at || b?.date_created || 0) - new Date(a?.posted_at || a?.date_created || 0)
             );
         } else if (sort === 'popular') {
             list.sort((a, b) => Number(b?.likesCount || 0) - Number(a?.likesCount || 0));
@@ -173,22 +263,24 @@ export default function RightRail({ me, posts, onOpenPost, profileHandle }) {
         return list;
     }, [rawPosts, normalizedSubtype, sort]);
 
-    // (Optional) Reposts & Likes sections – left intact; safe if your backend exposes them.
+    // Likes/Reposts
     const [loadingRL, setLoadingRL] = useState(false);
     const [repostPosts, setRepostPosts] = useState([]);
     const [likedPosts, setLikedPosts] = useState([]);
-    const [engagementReloadTick, setEngagementReloadTick] = useState(0);
 
     useEffect(() => {
-        // If you don’t have this endpoint, you’ll just see “No reposts/likes yet.”
-        if (!profileHandle) { setRepostPosts([]); setLikedPosts([]); return; }
+        if (!profileKey) {
+            setRepostPosts([]);
+            setLikedPosts([]);
+            return;
+        }
         let alive = true;
         const ac = new AbortController();
         (async () => {
             setLoadingRL(true);
             try {
                 const res = await fetch(
-                    `/users/${encodeURIComponent(profileHandle)}/engagement/posts`,
+                    `${API_BASE}/users/${encodeURIComponent(profileKey)}/engagement/posts`,
                     { credentials: 'include', signal: ac.signal }
                 );
                 const j = await res.json();
@@ -197,22 +289,56 @@ export default function RightRail({ me, posts, onOpenPost, profileHandle }) {
                 setRepostPosts(mapN(j?.reposts));
                 setLikedPosts(mapN(j?.likes));
             } catch {
-                if (alive) { setRepostPosts([]); setLikedPosts([]); }
+                if (alive) {
+                    setRepostPosts([]);
+                    setLikedPosts([]);
+                }
             } finally {
                 if (alive) setLoadingRL(false);
             }
         })();
-        return () => { alive = false; ac.abort(); };
-    }, [profileHandle, engagementReloadTick]);
+        return () => {
+            alive = false;
+            ac.abort();
+        };
+    }, [profileKey]);
+
+    // Expand handler — tells UserProfilePage to open the large overlay grid
+    const expandToOverlay = () => {
+        window.dispatchEvent(new CustomEvent('profile-posts-expand'));
+    };
+
+    const canViewReposts = canViewByPrivacy(privacy?.reposts || 'public');
+    const canViewLikes = canViewByPrivacy(privacy?.likes || 'public');
+
+    const cannotViewText = (val) => {
+        const v = val || 'public';
+        if (v === 'private') return 'This section is visible to you only.';
+        return 'This section is visible to followers.';
+    };
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%', minWidth: 0 }}>
             {/* Community Posts */}
             <Box sx={sectionBoxSx}>
                 <Box sx={headerRowSx}>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        Community Posts
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                            Community Posts
+                        </Typography>
+                        {ownerCanSeePrivacy && (
+                            <>
+                                <Tooltip title="Privacy">
+                                    <IconButton size="small" onClick={(e) => onPrivacy?.(e, 'posts')}>
+                                        <PublicIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                                <Typography variant="caption" color="text.secondary">
+                                    ({privText(privacy.posts)})
+                                </Typography>
+                            </>
+                        )}
+                    </Box>
 
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <FormControl size="small" sx={{ minWidth: 150 }}>
@@ -242,13 +368,13 @@ export default function RightRail({ me, posts, onOpenPost, profileHandle }) {
                                 onChange={(e) => handleSortChange(e.target.value)}
                             >
                                 <MenuItem value="newest">Newest</MenuItem>
-                                <MenuItem value="popular">Most Popular</MenuItem>
+                                <MenuItem value="popular">Popular</MenuItem>
                             </Select>
                         </FormControl>
 
-                        <Tooltip title="Refresh posts">
-                            <IconButton onClick={() => setReloadTick((t) => t + 1)}>
-                                <RefreshIcon fontSize="small" />
+                        <Tooltip title="Expand">
+                            <IconButton size="small" onClick={expandToOverlay} aria-label="Expand">
+                                <OpenInFullIcon fontSize="small" />
                             </IconButton>
                         </Tooltip>
                     </Box>
@@ -256,31 +382,47 @@ export default function RightRail({ me, posts, onOpenPost, profileHandle }) {
 
                 <Divider />
 
-                <Box ref={postsScrollRef} sx={scrollerSx}>
-                    <ProfilePostsList
-                        user={me}
-                        posts={visiblePosts}
-                        loading={loadingPosts}
-                        onCardClick={onOpenPost}
-                    />
+                {/* IMPORTANT: add marker for save/restore logic */}
+                <Box ref={postsScrollRef} sx={scrollerSx} data-profile-posts-scroll className="profile-posts-scroller">
+                    <ProfilePostsList user={me} posts={visiblePosts} loading={loadingPosts} onCardClick={onOpenPost} />
                 </Box>
             </Box>
 
             {/* Reposts */}
             <Box sx={sectionBoxSx}>
                 <Box sx={headerRowSx}>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        Reposts
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                            Reposts
+                        </Typography>
+                        {ownerCanSeePrivacy && (
+                            <>
+                                <Tooltip title="Privacy">
+                                    <IconButton size="small" onClick={(e) => onPrivacy?.(e, 'reposts')}>
+                                        <PublicIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                                <Typography variant="caption" color="text.secondary">
+                                    ({privText(privacy.reposts)})
+                                </Typography>
+                            </>
+                        )}
+                    </Box>
                     {loadingRL ? <CircularProgress size={18} /> : null}
                 </Box>
                 <Divider />
                 <Box sx={scrollerSx}>
-                    {repostPosts?.length ? (
-                        <ProfilePostsList user={me} posts={repostPosts} onCardClick={onOpenPost} />
+                    {canViewReposts ? (
+                        repostPosts?.length ? (
+                            <ProfilePostsList user={me} posts={repostPosts} onCardClick={onOpenPost} />
+                        ) : (
+                            <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+                                No reposts yet.
+                            </Typography>
+                        )
                     ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
-                            No reposts yet.
+                            {cannotViewText(privacy?.reposts)}
                         </Typography>
                     )}
                 </Box>
@@ -289,18 +431,38 @@ export default function RightRail({ me, posts, onOpenPost, profileHandle }) {
             {/* Likes */}
             <Box sx={sectionBoxSx}>
                 <Box sx={headerRowSx}>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        Likes
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                            Likes
+                        </Typography>
+                        {ownerCanSeePrivacy && (
+                            <>
+                                <Tooltip title="Privacy">
+                                    <IconButton size="small" onClick={(e) => onPrivacy?.(e, 'likes')}>
+                                        <PublicIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                                <Typography variant="caption" color="text.secondary">
+                                    ({privText(privacy.likes)})
+                                </Typography>
+                            </>
+                        )}
+                    </Box>
                     {loadingRL ? <CircularProgress size={18} /> : null}
                 </Box>
                 <Divider />
                 <Box sx={scrollerSx}>
-                    {likedPosts?.length ? (
-                        <ProfilePostsList user={me} posts={likedPosts} onCardClick={onOpenPost} />
+                    {canViewLikes ? (
+                        likedPosts?.length ? (
+                            <ProfilePostsList user={me} posts={likedPosts} onCardClick={onOpenPost} />
+                        ) : (
+                            <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+                                No likes yet.
+                            </Typography>
+                        )
                     ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
-                            No likes yet.
+                            {cannotViewText(privacy?.likes)}
                         </Typography>
                     )}
                 </Box>

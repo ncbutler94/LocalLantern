@@ -1,52 +1,35 @@
 // src/pages/social/SocialHome.jsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Avatar,
     Box,
     Button,
-    Chip,
-    Grid,
     IconButton,
     InputAdornment,
-    Menu,
-    MenuItem,
     Paper,
     Tab,
     Tabs,
     TextField,
-    Tooltip,
     Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
-import SendIcon from '@mui/icons-material/Send';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
-import CheckIcon from '@mui/icons-material/Check';
-import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
-import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
-import MailOutlineIcon from '@mui/icons-material/MailOutline';
+import axios from 'axios';
 
-import CityCountySelect from '../../components/Common/CityCountySelect/CityCountySelect'
-import MessageCenterDialog from '../../components/messages/MessageCenterDialog';
+import CityCountySelect from '../../components/CityCountySelect';
+import { useAuth } from '../../components/AuthModalContext';
+import UserCardPopover from '../../components/UserCardPopover';
 
 const api = process.env.REACT_APP_API_URL;
+const PAGE_BG = '#EEF2F7';
 
-/* ---------------- helpers ---------------- */
+// --- helpers ---
 const toName = (u) => `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim();
-const toHandle = (u) => `@${u.handle || u.username || ''}`;
-const uniqById = (arr) => {
-    const seen = new Set();
-    return arr.filter((x) => (x && !seen.has(x.id) && seen.add(x.id)));
-};
+const toHandle = (u) => (u?.handle ? `@${u.handle}` : u?.username ? `@${u.username}` : '');
 
-const throttleWindowMs = 2 * 60 * 1000; // 2 minutes
-const cooldownMs = 5 * 60 * 1000; // 5 minutes
-
-/* Card for each user */
-function UserCard({ me, user, isFollowing, onFollow, onUnfollow, onMessage, disabled, disableReason }) {
-    const [menuEl, setMenuEl] = useState(null);
-    const open = Boolean(menuEl);
-
+// --- Card ---
+function UserCard({ user, onOpenUserCard }) {
     const goProfile = () => {
         const slug = user.handle || user.public_id || user.id;
         if (slug) window.location.assign(`/${encodeURIComponent(slug)}`);
@@ -58,164 +41,280 @@ function UserCard({ me, user, isFollowing, onFollow, onUnfollow, onMessage, disa
             sx={{
                 p: 1.5,
                 borderRadius: 2,
-                textAlign: 'center',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
+                width: '100%',
                 transition: 'box-shadow .15s ease',
                 '&:hover': { boxShadow: 2 },
             }}
         >
-            <Avatar
-                src={user.profile_picture || user.avatar_url}
-                alt={toName(user)}
-                sx={{ width: 120, height: 120, borderRadius: 2, mx: 'auto', mb: 1, cursor: 'pointer' }}
-                onClick={goProfile}
-            />
-            <Typography
-                variant="subtitle2"
-                sx={{ cursor: 'pointer' }}
-                noWrap
-                onClick={goProfile}
-                title={toName(user)}
+            <Box
+                sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto',
+                    gap: 1.25,
+                    alignItems: 'center',
+                }}
             >
-                {toName(user) || '(name hidden)'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap title={toHandle(user)}>
-                {toHandle(user)}
-            </Typography>
+                <Avatar
+                    src={user.profile_picture || user.avatar_url || ''}
+                    alt={toName(user)}
+                    variant="square"
+                    sx={{ width: 96, height: 96, borderRadius: 1, cursor: 'pointer' }}
+                    onClick={goProfile}
+                />
+                <Box sx={{ minWidth: 0 }}>
+                    <Typography
+                        variant="subtitle1"
+                        noWrap
+                        sx={{ cursor: 'pointer' }}
+                        onClick={goProfile}
+                        title={toName(user)}
+                    >
+                        {toName(user) || '(name hidden)'}
+                    </Typography>
+                    <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        noWrap
+                        title={toHandle(user)}
+                        sx={{ cursor: 'pointer' }}
+                        onClick={goProfile}
+                    >
+                        {toHandle(user)}
+                    </Typography>
+                </Box>
 
-            <Box sx={{ mt: 1, display: 'flex', gap: 1, justifyContent: 'center', alignItems: 'center' }}>
-                {!me || me.id === user.id ? (
-                    <Tooltip title="This is you">
-            <span>
-              <Button size="small" disabled startIcon={<CheckIcon />}>Following</Button>
-            </span>
-                    </Tooltip>
-                ) : isFollowing ? (
-                    <>
-                        <Tooltip title={disabled ? disableReason : 'Following'}>
-              <span>
-                <Button
-                    size="small"
-                    color="primary"
-                    variant="contained"
-                    startIcon={<CheckIcon />}
-                    onClick={(e) => setMenuEl(e.currentTarget)}
-                    disabled={disabled}
-                >
-                  Following
-                </Button>
-              </span>
-                        </Tooltip>
-                        <Menu
-                            anchorEl={menuEl}
-                            open={open}
-                            onClose={() => setMenuEl(null)}
-                            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-                            transformOrigin={{ vertical: 'top', horizontal: 'center' }}
-                        >
-                            <MenuItem
-                                onClick={() => {
-                                    setMenuEl(null);
-                                    onUnfollow?.(user);
-                                }}
-                            >
-                                <PersonRemoveIcon fontSize="small" style={{ marginRight: 8 }} />
-                                Unfollow
-                            </MenuItem>
-                        </Menu>
-                    </>
-                ) : (
-                    <Tooltip title={disabled ? disableReason : 'Follow'}>
-            <span>
-              <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<PersonAddAltIcon />}
-                  onClick={() => onFollow?.(user)}
-                  disabled={disabled}
-              >
-                Follow
-              </Button>
-            </span>
-                    </Tooltip>
-                )}
-
-                <Tooltip title="Message">
-          <span>
-            <Button
-                size="small"
-                variant="outlined"
-                startIcon={<MailOutlineIcon />}
-                onClick={() => onMessage?.(user)}
-                disabled={!me || me.id === user.id}
-            >
-              Message
-            </Button>
-          </span>
-                </Tooltip>
+                <Box sx={{ justifySelf: 'end' }}>
+                    <IconButton size="small" onClick={(e) => onOpenUserCard(e.currentTarget, user)}>
+                        <MoreHorizIcon fontSize="small" />
+                    </IconButton>
+                </Box>
             </Box>
         </Paper>
     );
 }
 
-/* ---------------- main page ---------------- */
+// --- Page ---
 export default function SocialHome({ me }) {
-    const [tab, setTab] = useState(0); // 0=All,1=Following,2=Followers
+    const auth = useAuth?.() || { open: () => {} };
+
+    // If `me` isn't provided, fetch the viewer like CommunityPage.
+    const [meLocal, setMeLocal] = useState(null);
+    useEffect(() => {
+        if (me) return;
+        let alive = true;
+        fetch('/users/profile', { credentials: 'include' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j) => { if (alive) setMeLocal(j?.user || null); })
+            .catch(() => { if (alive) setMeLocal(null); });
+        return () => { alive = false; };
+    }, [me]);
+    const viewer = me || meLocal;
+
+    const [tab, setTab] = useState(0);
     const [search, setSearch] = useState('');
     const [place, setPlace] = useState({ county: '', city: '' });
 
     const [loading, setLoading] = useState(false);
-    const [rows, setRows] = useState([]); // All
+    const [rows, setRows] = useState([]);
     const [following, setFollowing] = useState([]);
     const [followers, setFollowers] = useState([]);
+
     const counts = useMemo(
         () => ({ following: following.length, followers: followers.length }),
         [following, followers]
     );
 
-    // follow throttle
-    const [actions, setActions] = useState([]); // timestamps (ms)
-    const [cooldownUntil, setCooldownUntil] = useState(0);
-    const isOnCooldown = cooldownUntil && Date.now() < cooldownUntil;
-    const disableReason = isOnCooldown
-        ? 'You are unfollowing/following too often. Disabled for 5 minutes.'
-        : '';
+    // ---------- POPUP STATE + LOGIC (same as CommunityList) ----------
+    const [userAnchor, setUserAnchor] = useState(null);
+    const [userForCard, setUserForCard] = useState(null);
 
-    const canToggleFollow = () => {
-        if (isOnCooldown) return false;
-        const now = Date.now();
-        const winStart = now - throttleWindowMs;
-        const recent = actions.filter((t) => t >= winStart);
-        if (recent.length >= 20) {
-            setCooldownUntil(now + cooldownMs);
-            return false;
+    // Server‑verified following set keyed by user id (target user id)
+    const [serverFollowingSet, setServerFollowingSet] = useState(() => new Set());
+    // Local optimistic flips
+    const [locallyFollowed, setLocallyFollowed] = useState(() => new Set());
+
+    const openAuthUI = useCallback(() => {
+        if (auth && typeof auth.open === 'function') {
+            auth.open();
+            return;
         }
-        setActions([...recent, now]);
-        return true;
+        try { window.dispatchEvent(new CustomEvent('open-auth-modal')); } catch { /* no-op */ }
+    }, [auth]);
+
+    const requireAuth = useCallback(
+        (cb) => {
+            if (viewer) return cb?.();
+            openAuthUI();
+            return undefined;
+        },
+        [viewer, openAuthUI]
+    );
+
+    // Hydrate target from /users/public/:handleOrId to resolve numeric id and current follow state
+    const hydrateTargetFromPublic = useCallback(
+        async (target) => {
+            if (!target) return null;
+            const handleOrId = target.handle || target.id;
+            if (!handleOrId) return null;
+
+            const urls = [
+                `${api}/users/public/${encodeURIComponent(handleOrId)}`,
+                `/users/public/${encodeURIComponent(handleOrId)}`,
+                `/api/users/public/${encodeURIComponent(handleOrId)}`,
+            ].filter(Boolean);
+
+            for (const u of urls) {
+                try {
+                    const res = await axios.get(u, { withCredentials: true });
+                    const profile = res?.data?.profile;
+                    if (!profile) continue;
+
+                    setUserForCard((prev) => {
+                        if (!prev) return prev;
+                        if (!prev.id && profile.id) return { ...prev, id: profile.id };
+                        return prev;
+                    });
+
+                    // Am I in THEIR followers? (same derivation as profile/community)
+                    const sj =
+                        typeof profile.social_json === 'string'
+                            ? JSON.parse(profile.social_json || '{}')
+                            : profile.social_json || {};
+                    const theirFollowers = Array.isArray(sj?.followers) ? sj.followers : [];
+                    const isF = !!viewer?.id && theirFollowers.includes(Number(viewer.id));
+                    if (profile.id && isF) {
+                        setServerFollowingSet((old) => {
+                            const next = new Set(old);
+                            next.add(Number(profile.id));
+                            return next;
+                        });
+                    }
+                    return profile;
+                } catch {
+                    // try next
+                }
+            }
+            return null;
+        },
+        [viewer?.id]
+    );
+
+    const handleOpenUserCard = (el, user) => {
+        setUserAnchor(el);
+        setUserForCard({
+            id: user?.id, // may be undefined; hydrate will fill
+            first_name: user?.first_name,
+            last_name: user?.last_name,
+            handle: user?.handle,
+            avatar_url: user?.avatar_url || user?.profile_picture,
+            profile_picture: user?.profile_picture,
+        });
+        hydrateTargetFromPublic(user); // fire-and-forget
     };
 
-    // messaging dialog
-    const [msgOpen, setMsgOpen] = useState(false);
-    const [msgRecipients, setMsgRecipients] = useState([]);
+    const isSelf = useMemo(() => {
+        if (!viewer || !userForCard) return false;
+        const idMatch = Number(viewer.id) === Number(userForCard.id);
+        const handleMatch =
+            (viewer.handle && userForCard.handle) &&
+            String(viewer.handle).toLowerCase() === String(userForCard.handle).toLowerCase();
+        return idMatch || !!handleMatch;
+    }, [viewer, userForCard]);
 
-    const openMessage = (user) => {
-        setMsgRecipients([user]);
-        setMsgOpen(true);
+    const isFollowingForCard = useMemo(() => {
+        const tid = Number(userForCard?.id);
+        if (!tid) return false;
+        return serverFollowingSet.has(tid) || locallyFollowed.has(tid);
+    }, [userForCard, serverFollowingSet, locallyFollowed]);
+
+    const postFollow = async (targetId) => {
+        const payload = { target_id: targetId, action: 'follow' };
+        const urls = [`${api}/users/follow`, '/api/users/follow', '/users/follow'].filter(Boolean);
+        for (const url of urls) {
+            try {
+                await axios.post(url, payload, { withCredentials: true });
+                return true;
+            } catch {
+                /* try next */
+            }
+        }
+        return false;
     };
 
-    /* ---------- fetching ---------- */
-    const fetchAll = async () => {
+    const handleFollow = async (targetUser) => {
+        const tid0 = Number(targetUser?.id || userForCard?.id);
+        const handle0 = targetUser?.handle || userForCard?.handle;
+        if (!tid0 && !handle0) return;
+        if (isSelf) return;
+
+        requireAuth(async () => {
+            // Ensure numeric id
+            let tid = tid0;
+            if (!tid && handle0) {
+                const p = await hydrateTargetFromPublic({ handle: handle0 });
+                if (p?.id) tid = Number(p.id);
+            }
+            if (!tid) return;
+
+            // Optimistic flip
+            setLocallyFollowed((prev) => {
+                const next = new Set(prev);
+                next.add(tid);
+                return next;
+            });
+
+            const ok = await postFollow(tid);
+            if (ok) {
+                setServerFollowingSet((prev) => {
+                    const next = new Set(prev);
+                    next.add(tid);
+                    return next;
+                });
+            } else {
+                // rollback
+                setLocallyFollowed((prev) => {
+                    const next = new Set(prev);
+                    next.delete(tid);
+                    return next;
+                });
+            }
+        });
+    };
+
+    const handleMessage = (targetUser) => {
+        const tid = Number(targetUser?.id || userForCard?.id);
+        if (!tid) return;
+        requireAuth(() => {
+            window.dispatchEvent(
+                new CustomEvent('open-message-center', { detail: { userId: tid } })
+            );
+        });
+    };
+
+    const handleViewProfile = (u) => {
+        setUserAnchor(null);
+        const slug = u.handle || u.id;
+        if (slug) window.location.assign(`/${slug}`);
+    };
+    // -------------------------------------------------------------------------
+
+    // --- data fetch (All search) ---
+    const fetchAll = async (overrides = {}) => {
         setLoading(true);
         try {
+            const effectiveSearch = overrides.search !== undefined ? overrides.search : search;
+            const effectivePlace  = overrides.place  !== undefined ? overrides.place  : place;
+
             const qs = new URLSearchParams();
-            if (search) qs.set('q', search);
-            if (place.county) qs.set('county', place.county);
-            if (place.city) qs.set('city', place.city);
+            const q = (effectiveSearch || '').trim();
+            if (q) qs.set('q', q);
+            if (effectivePlace?.county) qs.set('county', effectivePlace.county);
+            if (effectivePlace?.city)   qs.set('city',   effectivePlace.city);
+
             const r = await fetch(`${api}/users/search?${qs.toString()}`, { credentials: 'include' });
             const j = await r.json();
-            setRows(Array.isArray(j?.users) ? j.users : []);
+            const arr = Array.isArray(j) ? j : Array.isArray(j?.users) ? j.users : [];
+            setRows(arr);
         } catch {
             setRows([]);
         } finally {
@@ -223,168 +322,158 @@ export default function SocialHome({ me }) {
         }
     };
 
-    const fetchSocial = async () => {
-        if (!me) { setFollowing([]); setFollowers([]); return; }
+    // --- data fetch (Followers/Following like profile FollowsSection) ---
+    const fetchSocial = useCallback(async () => {
         try {
-            const who = me.handle || me.public_id || me.id;
-            const r = await fetch(`${api}/users/social/${encodeURIComponent(who)}`, { credentials: 'include' });
-            const j = await r.json();
-            setFollowing(Array.isArray(j?.following) ? j.following : []);
-            setFollowers(Array.isArray(j?.followers) ? j.followers : []);
-        } catch {
-            setFollowing([]); setFollowers([]);
-        }
-    };
+            if (!viewer) { setFollowing([]); setFollowers([]); setServerFollowingSet(new Set()); return; }
+            // Prefer numeric id or public_id, then handle — same as FollowsSection/Community
+            const who = viewer?.public_id || viewer?.id || viewer?.handle;
+            const r = await axios.get(
+                `${api}/users/social/${encodeURIComponent(who)}`,
+                { withCredentials: true }
+            );
+            const data = r?.data || {};
+            const followingArr = Array.isArray(data?.following) ? data.following : [];
+            const followersArr = Array.isArray(data?.followers) ? data.followers : [];
+            setFollowing(followingArr);
+            setFollowers(followersArr);
 
-    useEffect(() => { fetchSocial(); }, [me]); // counts are ready for tabs
-    useEffect(() => { fetchAll(); /* eslint-disable-next-line */ }, []); // initial
+            // 🔑 Seed "already following" immediately so the popover shows disabled gray “Following”
+            // for anyone you already follow — exactly how Community works.
+            const ids = followingArr.map((u) => Number(u?.id)).filter(Boolean);
+            setServerFollowingSet(new Set(ids));
+        } catch {
+            setFollowing([]); setFollowers([]); setServerFollowingSet(new Set());
+        }
+    }, [viewer]);
+
+    useEffect(() => { fetchSocial(); }, [fetchSocial]);
+    useEffect(() => { fetchAll(); }, []); // initial
 
     const onSearch = () => fetchAll();
-    const onClear = () => { setSearch(''); setPlace({ county: '', city: '' }); setTimeout(fetchAll, 0); };
-
-    /* ---------- follow/unfollow ---------- */
-    const isFollowingUser = (u) => !!following.find((x) => x.id === u.id);
-
-    const onFollow = async (u) => {
-        if (!me || !u || !canToggleFollow()) return;
-        try {
-            const r = await fetch(`${api}/users/follow`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ target_id: u.id, action: 'follow' }),
-            });
-            if (r.ok) {
-                setFollowing((old) => uniqById([...old, u]));
-                // If the user appears in followers list, leave it; otherwise update counts only.
-            }
-        } catch {/* ignore */}
+    const onClear  = () => {
+        const clearedPlace = { county: '', city: '' };
+        setSearch(''); setPlace(clearedPlace);
+        fetchAll({ search: '', place: clearedPlace });
     };
 
-    const onUnfollow = async (u) => {
-        if (!me || !u || !canToggleFollow()) return;
-        try {
-            const r = await fetch(`${api}/users/follow`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ target_id: u.id, action: 'unfollow' }),
-            });
-            if (r.ok) {
-                setFollowing((old) => old.filter((x) => x.id !== u.id));
-            }
-        } catch {/* ignore */}
-    };
-
-    /* ---------- derived lists ---------- */
     const list = tab === 0 ? rows : tab === 1 ? following : followers;
 
-    /* ---------- layout constants ---------- */
-    const tileHeight = 220; // approx total per card including paddings
-    const gridMaxHeight = `calc(${tileHeight}px * 5 + 64px)`; // 5 rows + a little headroom
+    // --- layout constants ---
+    const CARD_W = 450;                // width of each card (px)
+    const GAP_U  = 5;                  // MUI spacing units; 5 => 40px between columns
+
+    // Single card should align LEFT; two-per-row otherwise
+    const isSingleRow = list.length <= 1;
 
     return (
-        <Box sx={{ maxWidth: 1100, mx: 'auto', px: 2, py: 2 }}>
-            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mb: 1 }}>
-                <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="social tabs" sx={{ mb: 1 }}>
-                    <Tab label="All" />
-                    <Tab label={`Following (${counts.following})`} />
-                    <Tab label={`Followers (${counts.followers})`} />
-                </Tabs>
-
+        <Box
+            sx={{
+                bgcolor: PAGE_BG,
+                minHeight: '100vh',   // ensure full-page background (fixes bottom color mismatch)
+                pb: 4,
+            }}
+        >
+            <Box sx={{ maxWidth: 1100, mx: 'auto', px: 2, pt: 4 }}>
                 {/* Filters */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.2fr 1fr 1fr auto auto' }, gap: 1 }}>
-                    <TextField
-                        label="Name or @username"
-                        size="small"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon fontSize="small" />
-                                </InputAdornment>
-                            ),
-                        }}
-                    />
-                    {/* County / City via shared control */}
-                    <CityCountySelect
-                        value={place}
-                        onChange={setPlace}
-                        countyProps={{ size: 'small', label: 'County' }}
-                        cityProps={{ size: 'small', label: 'City' }}
-                    />
+                <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 2 }}>
+                    <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
+                        <Tab label="All" />
+                        <Tab label={`Following (${counts.following})`} />
+                        <Tab label={`Followers (${counts.followers})`} />
+                    </Tabs>
 
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            startIcon={<SearchIcon />}
-                            onClick={onSearch}
-                            disabled={loading}
-                        >
-                            Search
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<ClearIcon />}
-                            onClick={onClear}
-                            disabled={loading && !search && !place.county && !place.city}
-                        >
-                            Clear
-                        </Button>
+                    <Box sx={{ display: 'grid', gap: 1.25 }}>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto auto', md: '1fr auto auto' }, gap: 1 }}>
+                            <TextField
+                                label="Name or @username"
+                                size="small"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                InputProps={{
+                                    startAdornment: (
+                                        <InputAdornment position="start">
+                                            <SearchIcon fontSize="small" />
+                                        </InputAdornment>
+                                    ),
+                                }}
+                            />
+                            <Button variant="contained" size="small" startIcon={<SearchIcon />} onClick={onSearch} disabled={loading}>
+                                Search
+                            </Button>
+                            <Button variant="outlined" size="small" startIcon={<ClearIcon />} onClick={onClear}>
+                                Clear
+                            </Button>
+                        </Box>
+
+                        <CityCountySelect
+                            city={place.city}
+                            setCity={(v) => setPlace((p) => ({ ...p, city: v }))}
+                            county={place.county}
+                            setCounty={(v) => setPlace((p) => ({ ...p, county: v }))}
+                            sx={{ mt: 0.25 }}
+                            selectSx={{ '& .MuiFormLabel-asterisk': { display: 'none' } }}
+                        />
                     </Box>
-                </Box>
-            </Paper>
+                </Paper>
 
-            {/* Grid */}
-            <Paper
-                variant="outlined"
-                sx={{
-                    p: 1.5,
-                    borderRadius: 2,
-                    minHeight: 200,
-                    maxHeight: gridMaxHeight,
-                    overflowY: 'auto',
-                }}
-            >
-                {loading ? (
-                    <Typography sx={{ p: 2 }} color="text.secondary">Loading…</Typography>
-                ) : list.length === 0 ? (
-                    <Typography sx={{ p: 2 }} color="text.secondary">No users found.</Typography>
-                ) : (
-                    <Grid container spacing={2}>
-                        {list.map((u) => {
-                            const followingThis = isFollowingUser(u);
-                            return (
-                                <Grid key={u.id} item xs={12} sm={6} md={3}>
-                                    <UserCard
-                                        me={me}
-                                        user={u}
-                                        isFollowing={followingThis}
-                                        onFollow={onFollow}
-                                        onUnfollow={onUnfollow}
-                                        onMessage={openMessage}
-                                        disabled={isOnCooldown}
-                                        disableReason={disableReason}
-                                    />
-                                </Grid>
-                            );
-                        })}
-                    </Grid>
-                )}
-            </Paper>
+                {/* Results: fixed-height panel that scrolls internally */}
+                <Paper
+                    variant="outlined"
+                    sx={{
+                        p: 2,
+                        borderRadius: 2,
+                        mt: 4,
+                        height: { xs: 375, md: 475 },    // desired internal panel height
+                        overflow: 'hidden',               // child below is the scroll area
+                    }}
+                >
+                    {loading ? (
+                        <Typography sx={{ p: 2 }} color="text.secondary">Loading…</Typography>
+                    ) : list.length === 0 ? (
+                        <Typography sx={{ p: 2 }} color="text.secondary">No users found.</Typography>
+                    ) : (
+                        // SCROLL REGION
+                        <Box sx={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+                            {/* Grid: 2 fixed-width columns on md+, 1 column on xs; center the group,
+                  BUT if there’s only one item, left-align the grid. */}
+                            <Box
+                                sx={{
+                                    display: 'grid',
+                                    gridTemplateColumns: {
+                                        xs: '1fr',
+                                        md: isSingleRow ? '1fr' : `repeat(2, ${CARD_W}px)`,
+                                    },
+                                    justifyContent: { md: isSingleRow ? 'flex-start' : 'center' },
+                                    columnGap: GAP_U,
+                                    rowGap: GAP_U,
+                                }}
+                            >
+                                {list.map((u) => (
+                                    <Box key={u.id} sx={{ width: '100%' }}>
+                                        <UserCard
+                                            user={u}
+                                            onOpenUserCard={handleOpenUserCard}
+                                        />
+                                    </Box>
+                                ))}
+                            </Box>
+                        </Box>
+                    )}
+                </Paper>
+            </Box>
 
-            {/* Messages Center (prefilled) */}
-            {me && (
-                <MessageCenterDialog
-                    open={msgOpen}
-                    onClose={() => setMsgOpen(false)}
-                    me={me}
-                    presetRecipients={msgRecipients}
-                />
-            )}
+            {/* User popover (3‑dots) */}
+            <UserCardPopover
+                anchorEl={userAnchor}
+                onClose={() => setUserAnchor(null)}
+                user={userForCard}
+                isSelf={isSelf}
+                following={isFollowingForCard}
+                onFollow={handleFollow}
+                onMessage={handleMessage}
+                onViewProfile={handleViewProfile}
+            />
         </Box>
     );
 }

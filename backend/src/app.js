@@ -3,8 +3,6 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import session from 'express-session';
-import passport from './config/passport.js';
 
 import communityRoutes         from './routes/community/community.js';
 import lostAndFoundRouter      from './routes/community/lostAndFound.js';
@@ -14,17 +12,21 @@ import publicSafetyRouter      from './routes/community/publicSafety.js';
 import recommendationsRouter   from './routes/community/recommendations.js';
 import volunteerHelpRouter     from './routes/community/volunteerHelp.js';
 
-import authRoutes   from './routes/auth.js';
-import userRoutes   from './routes/user.js';
-import publicRoutes from './routes/public.js';
-import postsRouter  from './routes/posts.js';
-
+import authRoutes       from './routes/auth.js';
+import userRoutes       from './routes/users/user.js';
+import usersMeAliases   from './routes/users/usersMeAliases.js';
+import publicRoutes     from './routes/public.js';
+import postsRouter      from './routes/posts.js';
 import businessesRouter from './routes/businesses/businesses.js';
-import eventsRouter     from './routes/events/events.js';  // ⬅️ NEW
+import eventsRouter     from './routes/events/events.js';
+import jobsRouter       from './routes/jobs/jobs.js';
+import messagesRouter   from './routes/messages/messages.js';
 
 import logger from './utils/logger.js';
 import { Client as GoogleMapsClient } from '@googlemaps/google-maps-services-js';
 import { Storage } from '@google-cloud/storage';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -32,7 +34,7 @@ const isProd = process.env.NODE_ENV === 'production';
 /* ───────────────────────── Core middleware ───────────────────────── */
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
@@ -40,22 +42,6 @@ if (isProd) app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
-app.use(
-    session({
-        name: 'll.sid',
-        secret: process.env.SESSION_SECRET,
-        resave: false,
-        saveUninitialized: false,
-        proxy: isProd,
-        cookie: {
-            secure: isProd,
-            httpOnly: true,
-            sameSite: isProd ? 'none' : 'lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        }
-    })
-);
-app.use(passport.initialize());
 
 /* ───────────────────── Public & community routes ─────────────────── */
 app.use('/public',                 publicRoutes);
@@ -70,15 +56,23 @@ app.use('/api/volunteer-help',     volunteerHelpRouter);
 /* Auth + users */
 app.use('/auth',  authRoutes);
 app.use('/users', userRoutes);
+app.use('/users', usersMeAliases);
+// alias so /api/users/* works too:
+app.use('/api/users', userRoutes);
+app.use('/api/users', usersMeAliases);
 
 /* Posts (likes/comments/images) */
 app.use('/api/posts', postsRouter);
 
-/* 🚀 Businesses API */
+/* Businesses + Events + Jobs */
 app.use('/api/businesses', businessesRouter);
+app.use('/api/events',     eventsRouter);
+app.use('/api/jobs',       jobsRouter);
 
-/* 🚀 NEW: Events API */
-app.use('/api/events', eventsRouter);
+/* Messages */
+app.use('/api/messages', messagesRouter);
+// NEW alias so SPA calls `${api}/messages/...` also work:
+app.use('/messages',     messagesRouter);
 
 /* ───────────────────── Google Geocode proxy ────────── */
 const mapsClient = new GoogleMapsClient({});
@@ -90,7 +84,7 @@ app.post('/api/geocode-google', async (req, res) => {
 
     try {
         const response = await mapsClient.geocode({
-            params: { address: query, key: process.env.GOOGLE_API_KEY }
+            params: { address: query, key: process.env.GOOGLE_API_KEY },
         });
 
         const results = response.data.results || [];
@@ -98,7 +92,10 @@ app.post('/api/geocode-google', async (req, res) => {
 
         const top = results[0];
         const types = top.types || [];
-        const isStreet = types.includes('street_address') || types.includes('premise') || types.includes('route');
+        const isStreet =
+            types.includes('street_address') ||
+            types.includes('premise') ||
+            types.includes('route');
 
         if (!isStreet) return res.status(404).json({ error: 'not_found' });
 
@@ -110,13 +107,13 @@ app.post('/api/geocode-google', async (req, res) => {
     }
 });
 
-/* New: alias used by AddBusinessModal (street + city fallback) */
+/* Alias used by AddBusinessModal (street + city fallback) */
 app.post('/api/geocode', async (req, res) => {
     try {
         const { street = '', city = '', state = 'AL', country = 'US' } = req.body || {};
         const address = [street, city, state, country].filter(Boolean).join(', ');
         const response = await mapsClient.geocode({
-            params: { address, key: process.env.GOOGLE_API_KEY }
+            params: { address, key: process.env.GOOGLE_API_KEY },
         });
         const results = response.data.results || [];
         if (!results.length) return res.status(404).json({ error: 'not_found' });
@@ -129,7 +126,62 @@ app.post('/api/geocode', async (req, res) => {
 });
 
 /* ───────────────────── Signed URL uploads (GCS) ───────────────────── */
-const storage = new Storage();
+function buildGCS() {
+    const projectId = process.env.GCP_PROJECT_ID;
+    const keyPath = (process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim();
+
+    let credentials = null;
+
+    if (keyPath) {
+        try {
+            const resolved = path.isAbsolute(keyPath) ? keyPath : path.resolve(process.cwd(), keyPath);
+            const raw = fs.readFileSync(resolved, 'utf8');
+            const json = JSON.parse(raw);
+            const priv =
+                typeof json.private_key === 'string'
+                    ? json.private_key.replace(/\\n/g, '\n')
+                    : json.private_key;
+            if (json.client_email && priv) {
+                credentials = { client_email: json.client_email, private_key: priv };
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+
+    if (!credentials) {
+        const inline =
+            process.env.GCS_KEY_JSON ||
+            process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON ||
+            process.env.GOOGLE_CLOUD_KEYFILE_JSON ||
+            '';
+        if (inline) {
+            try {
+                const json = JSON.parse(inline);
+                const priv =
+                    typeof json.private_key === 'string'
+                        ? json.private_key.replace(/\\n/g, '\n')
+                        : json.private_key;
+                if (json.client_email && priv) {
+                    credentials = { client_email: json.client_email, private_key: priv };
+                }
+            } catch {
+                /* ignore */
+            }
+        }
+    }
+
+    const storage = credentials
+        ? new Storage({ projectId, credentials })
+        : new Storage({
+            projectId,
+            keyFilename: keyPath ? path.resolve(process.cwd(), keyPath) : undefined,
+        });
+
+    return { storage };
+}
+
+const { storage } = buildGCS();
 const GCS_BUCKET = process.env.GCS_BUCKET;
 
 app.post('/api/uploads/signed-url', async (req, res) => {
@@ -149,7 +201,7 @@ app.post('/api/uploads/signed-url', async (req, res) => {
                 version: 'v4',
                 action: 'write',
                 expires: Date.now() + 15 * 60 * 1000,
-                contentType
+                contentType,
             });
 
         const publicUrl = `https://storage.googleapis.com/${GCS_BUCKET}/${objectPath}`;
@@ -171,15 +223,22 @@ app.get('/api/tenor/featured', async (req, res) => {
         const key = process.env.TENOR_API_KEY;
         if (!key) return res.status(500).json({ error: 'TENOR_API_KEY_not_set' });
 
-        const limit         = clamp(Number(req.query.limit || 20), 1, 50);
-        const pos           = (req.query.pos || '').toString();
-        const media_filter  = (req.query.media_filter || 'gif,tinygif,mp4,tinymp4').toString();
+        const limit = clamp(Number(req.query.limit || 20), 1, 50);
+        const pos = (req.query.pos || '').toString();
+        const media_filter = (req.query.media_filter || 'gif,tinygif,mp4,tinymp4').toString();
         const contentfilter = (req.query.contentfilter || 'medium').toString();
-        const locale        = (req.query.locale || 'en_US').toString();
-        const country       = (req.query.country || 'US').toString();
+        const locale = (req.query.locale || 'en_US').toString();
+        const country = (req.query.country || 'US').toString();
 
         const url = buildTenorUrl('/featured', {
-            key, client_key: TENOR_CLIENT_KEY, limit, pos, media_filter, contentfilter, locale, country
+            key,
+            client_key: TENOR_CLIENT_KEY,
+            limit,
+            pos,
+            media_filter,
+            contentfilter,
+            locale,
+            country,
         });
 
         const r = await fetch(url);
@@ -196,9 +255,9 @@ app.get('/api/tenor/suggestions', async (req, res) => {
         const key = process.env.TENOR_API_KEY;
         if (!key) return res.status(500).json({ error: 'TENOR_API_KEY_not_set' });
 
-        const q     = (req.query.q || '').toString().trim();
+        const q = (req.query.q || '').toString().trim();
         const limit = clamp(Number(req.query.limit || 8), 1, 50);
-        const url   = buildTenorUrl('/search_suggestions', { q, key, client_key: TENOR_CLIENT_KEY, limit });
+        const url = buildTenorUrl('/search_suggestions', { q, key, client_key: TENOR_CLIENT_KEY, limit });
 
         const r = await fetch(url);
         const data = await r.json();

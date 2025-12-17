@@ -1,20 +1,38 @@
 // backend/src/index.js
 import 'dotenv/config';
 import fs from 'fs';
+import http from 'http';
 import https from 'https';
 import path from 'path';
-import app from './app.js';
 import axios from 'axios';
+import { Server as SocketIOServer } from 'socket.io';
+
+import app from './app.js';
+import { attachIO as attachMessagesIO } from './routes/messages/messages.js';
+
 const PORT   = process.env.PORT || 4001;
 const isProd = process.env.NODE_ENV === 'production';
 
 axios.defaults.withCredentials = true;
 axios.defaults.baseURL = process.env.REACT_APP_API_URL;  // http://localhost:4001
 
-if (isProd) {
-    // Trust proxy headers (e.g. if behind Nginx or Heroku)
-    app.set('trust proxy', 1);
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
+console.log('[Env check]', {
+    PORT,
+    FRONTEND_URL: allowedOrigins,
+    GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+    GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    GCS_BUCKET: process.env.GCS_BUCKET,
+    cwd: process.cwd(),
+});
+
+/* ───────────────────────── Create HTTP(S) server ───────────────────── */
+let server;
+if (isProd) {
     // SSL cert/key paths
     const certPath = path.resolve('ssl', 'cert.pem');
     const keyPath  = path.resolve('ssl', 'key.pem');
@@ -27,14 +45,36 @@ if (isProd) {
     const cert = fs.readFileSync(certPath, 'utf8');
     const key  = fs.readFileSync(keyPath,  'utf8');
 
-    https
-        .createServer({ key, cert }, app)
-        .listen(PORT, () => {
-            console.log(`🔒 HTTPS server listening on port ${PORT}`);
-        });
+    server = https.createServer({ key, cert }, app);
 } else {
-    // Development: plain HTTP
-    app.listen(PORT, () => {
-        console.log(`🚀 HTTP server listening on port ${PORT} (dev mode)`);
-    });
+    server = http.createServer(app);
 }
+
+/* ───────────────────────── Attach Socket.IO ─────────────────────────── */
+const io = new SocketIOServer(server, {
+    cors: { origin: allowedOrigins, credentials: true },
+    path: '/socket.io',
+});
+
+// Simple room wiring: user rooms and conversation rooms
+io.on('connection', (socket) => {
+    socket.on('user:join', ({ userId }) => {
+        if (!userId) return;
+        socket.join(`user:${userId}`);
+    });
+    socket.on('conversation:join', ({ conversationId }) => {
+        if (!conversationId) return;
+        socket.join(`conversation:${conversationId}`);
+    });
+    socket.on('disconnect', () => {
+        // nothing special; rooms auto‑cleanup
+    });
+});
+
+// Make io available to the messages router so it can emit events
+attachMessagesIO(io);
+
+/* ───────────────────────── Start server ─────────────────────────────── */
+server.listen(PORT, () => {
+    console.log(`${isProd ? '🔒 HTTPS' : '🚀 HTTP'} server listening on port ${PORT}`);
+});

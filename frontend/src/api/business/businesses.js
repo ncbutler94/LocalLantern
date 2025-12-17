@@ -1,44 +1,82 @@
-export async function listBusinesses(params = {}) {
-    const qs = new URLSearchParams(params).toString();
-    const res = await fetch(`/api/businesses${qs ? `?${qs}` : ''}`);
-    if (!res.ok) throw new Error('Failed to load businesses');
-    return res.json();
+// src/api/businesses.js
+// Canonical business API helpers used across the app.
+// These mirror the backend /api/businesses routes.
+//
+// Notes:
+// - Public reads do not require auth; owner actions send credentials.
+// - Media comment creation uses FormData (multipart) to support optional images.
+
+async function jsonOrThrow(res) {
+    let parsed = null;
+    try {
+        parsed = await res.json();
+    } catch {
+        /* ignore parse errors; we'll still surface HTTP status text below */
+    }
+    if (!res.ok) {
+        const msg = parsed?.error || parsed?.message || `${res.status} ${res.statusText}`;
+        const err = new Error(msg);
+        err.status = res.status;
+        err.payload = parsed;
+        throw err;
+    }
+    return parsed;
 }
 
+/* --------------------------------- List ---------------------------------- */
+export async function listBusinesses(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const res = await fetch(`/api/businesses${qs ? `?${qs}` : ''}`, { credentials: 'include' });
+    return jsonOrThrow(res); // { ok, items }
+}
+
+/* -------------------------------- Create --------------------------------- */
 export async function createBusiness(payload) {
     const res = await fetch('/api/businesses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
     });
-    const json = await res.json();
-    if (!res.ok || !json.ok) throw new Error(json.error || 'Failed to create business');
-    return json.business;
+    const j = await jsonOrThrow(res);
+    if (!j.ok) throw new Error(j.error || 'Failed to create business');
+    return j.business;
 }
 
+/* ---------------------------- Signed URL (opt) ---------------------------- */
 export async function getSignedUrl({ folder, fileName, contentType }) {
     const res = await fetch('/api/uploads/signed-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ folder, fileName, contentType }),
     });
-    if (!res.ok) throw new Error('Could not get signed URL');
-    return res.json();
+    return jsonOrThrow(res);
 }
 
-/* ---------- Detail ---------- */
+/* -------------------------------- Detail --------------------------------- */
 export async function getBusinessById(id) {
     const res = await fetch(`/api/businesses/${id}`, { credentials: 'include' });
-    if (!res.ok) throw new Error('Failed to load business');
-    return res.json();
+    return jsonOrThrow(res);
 }
 
-export async function listReviews(id, { page = 1, pageSize = 50 } = {}) {
-    const res = await fetch(`/api/businesses/${id}/reviews?page=${page}&pageSize=${pageSize}`, {
-        credentials: 'include'
+/* ------------------------------ Update (PATCH) ---------------------------- */
+/** Owner-only: update profile fields, hours/amenities JSON, socials, etc. */
+export async function updateBusiness(id, payload = {}) {
+    const res = await fetch(`/api/businesses/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error('Failed to load reviews');
-    return res.json();
+    return jsonOrThrow(res); // { ok, business }
+}
+
+/* -------------------------------- Reviews -------------------------------- */
+export async function listReviews(id) {
+    // Backend returns { ok, items, can_reply, me_review }
+    const res = await fetch(`/api/businesses/${id}/reviews`, { credentials: 'include' });
+    return jsonOrThrow(res);
 }
 
 export async function upsertReview(id, { rating, comment }) {
@@ -48,8 +86,7 @@ export async function upsertReview(id, { rating, comment }) {
         credentials: 'include',
         body: JSON.stringify({ rating, comment }),
     });
-    if (!res.ok) throw new Error('Failed to submit review');
-    return res.json();
+    return jsonOrThrow(res);
 }
 
 export async function deleteMyReview(id) {
@@ -57,21 +94,30 @@ export async function deleteMyReview(id) {
         method: 'DELETE',
         credentials: 'include',
     });
-    if (!res.ok) throw new Error('Failed to delete review');
-    return res.json();
+    return jsonOrThrow(res);
 }
 
+/* Owner reply to a specific review */
+export async function replyToReviewApi(reviewId, text) {
+    const res = await fetch(`/api/businesses/reviews/${reviewId}/replies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text }),
+    });
+    return jsonOrThrow(res);
+}
+
+/* --------------------------------- Deals --------------------------------- */
 export async function listDeals(id) {
-    const res = await fetch(`/api/businesses/${id}/deals`);
-    if (!res.ok) throw new Error('Failed to load deals');
-    return res.json();
+    const res = await fetch(`/api/businesses/${id}/deals`, { credentials: 'include' });
+    return jsonOrThrow(res); // { ok, items }
 }
 
-/* ---------- Media ---------- */
+/* --------------------------------- Media --------------------------------- */
 export async function listBusinessMedia(businessId) {
-    const res = await fetch(`/api/businesses/${businessId}/media`);
-    if (!res.ok) throw new Error('Failed to load media');
-    return res.json(); // { ok, items }
+    const res = await fetch(`/api/businesses/${businessId}/media`, { credentials: 'include' });
+    return jsonOrThrow(res); // { ok, items }
 }
 
 export async function addBusinessMedia(businessId, { type, url, caption, sort_order = 0 }) {
@@ -81,8 +127,8 @@ export async function addBusinessMedia(businessId, { type, url, caption, sort_or
         credentials: 'include',
         body: JSON.stringify({ type, url, caption, sort_order }),
     });
-    const j = await res.json();
-    if (!res.ok || !j.ok) throw new Error(j.error || 'Failed to add media');
+    const j = await jsonOrThrow(res);
+    if (!j.ok) throw new Error(j.error || 'Failed to add media');
     return j.media;
 }
 
@@ -91,8 +137,8 @@ export async function deleteBusinessMedia(businessId, mediaId) {
         method: 'DELETE',
         credentials: 'include',
     });
-    const j = await res.json();
-    if (!res.ok || !j.ok) throw new Error(j.error || 'Failed to delete media');
+    const j = await jsonOrThrow(res);
+    if (!j.ok) throw new Error(j.error || 'Failed to delete media');
     return j;
 }
 
@@ -103,34 +149,36 @@ export async function reorderBusinessMedia(businessId, items) {
         credentials: 'include',
         body: JSON.stringify({ items }),
     });
-    const j = await res.json();
-    if (!res.ok || !j.ok) throw new Error(j.error || 'Failed to reorder media');
+    const j = await jsonOrThrow(res);
+    if (!j.ok) throw new Error(j.error || 'Failed to reorder media');
     return j;
 }
 
-/* ---------- Media comments & likes ---------- */
-export async function listMediaComments(mediaId) {
-    const res = await fetch(`/api/businesses/media/${mediaId}/comments`);
-    if (!res.ok) throw new Error('Failed to load comments');
-    return res.json();
+/* ----------------------- Media comments & likes --------------------------- */
+export async function listMediaComments(mediaId, { sort = 'popular' } = {}) {
+    const res = await fetch(
+        `/api/businesses/media/${mediaId}/comments?sort=${encodeURIComponent(sort)}`,
+        { credentials: 'include' }
+    );
+    return jsonOrThrow(res); // { ok, items }
 }
 
-export async function addMediaComment(mediaId, text) {
+export async function addMediaComment(mediaId, { text, imageFile, parent_id } = {}) {
+    const fd = new FormData();
+    if (text != null) fd.set('text', String(text));
+    if (parent_id != null) fd.set('parent_id', String(parent_id));
+    if (imageFile instanceof File) fd.set('image', imageFile);
     const res = await fetch(`/api/businesses/media/${mediaId}/comments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ text }),
+        body: fd,
     });
-    const j = await res.json();
-    if (!res.ok || !j.ok) throw new Error(j.error || 'Failed to add comment');
-    return j.comment;
+    return jsonOrThrow(res); // { ok, comment }
 }
 
 export async function getMediaLikeStatus(mediaId) {
     const res = await fetch(`/api/businesses/media/${mediaId}/likes`, { credentials: 'include' });
-    if (!res.ok) throw new Error('Failed to load like status');
-    return res.json(); // { ok, count, liked }
+    return jsonOrThrow(res); // { ok, count, liked }
 }
 
 export async function toggleMediaLike(mediaId) {
@@ -138,7 +186,25 @@ export async function toggleMediaLike(mediaId) {
         method: 'POST',
         credentials: 'include',
     });
-    const j = await res.json();
-    if (!res.ok || !j.ok) throw new Error(j.error || 'Failed to toggle like');
-    return j; // { ok, liked, count }
+    return jsonOrThrow(res); // { ok, liked, count }
+}
+
+/* ------------------------------ Business Posts ---------------------------- */
+/** Posts authored by any owner of the business (community posts). */
+export async function listBusinessPosts(businessId, { limit = 60 } = {}) {
+    const qs = new URLSearchParams({ limit }).toString();
+    const res = await fetch(`/api/businesses/${businessId}/posts?${qs}`, { credentials: 'include' });
+    return jsonOrThrow(res); // { ok, items }
+}
+
+/* --------------------------------- Follow -------------------------------- */
+/** Follow / Unfollow a business (viewer). action: 'follow' | 'unfollow' */
+export async function setBusinessFollow(businessId, action) {
+    const res = await fetch(`/api/businesses/${businessId}/follow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action }),
+    });
+    return jsonOrThrow(res); // { ok, isFollowing, followers }
 }

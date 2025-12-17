@@ -34,7 +34,7 @@ import axios from 'axios';
 
 // Reuse the shared City/County selector from your project.
 // If your local path differs, adjust the import below.
-import CityCountySelect from '../../../components/Common/CityCountySelect/CityCountySelect';
+import CityCountySelect from '../../../components/CityCountySelect';
 
 const api = process.env.REACT_APP_API_URL;
 

@@ -9,7 +9,6 @@ import React, {
 import {
     Avatar,
     Box,
-    Button,
     CircularProgress,
     Dialog,
     DialogContent,
@@ -26,7 +25,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import axios from 'axios';
-import UserMiniCard from './UserMiniCard';
+// Removed UserMiniCard import and implemented an inline mini card to guarantee ellipsis
 import MessageDialog from './MessageDialog';
 
 const api = process.env.REACT_APP_API_URL;
@@ -36,17 +35,66 @@ function idKey(u) {
     return String(u?.id ?? '');
 }
 
+/**
+ * Mini tile used in the section (not the dialog) to preview up to 9 users.
+ * Ensures long names/handles are truncated with ellipsis on one line.
+ */
+function GridMiniCard({ user, onClick }) {
+    const name =
+        `${user?.first_name || ''} ${user?.last_name || ''}`.trim() ||
+        (user?.handle ? `@${user.handle}` : 'User');
+
+    const avatar =
+        user?.avatar_url || user?.profile_picture || '';
+
+    return (
+        <Paper
+            variant="outlined"
+            onClick={onClick}
+            sx={{
+                cursor: 'pointer',
+                borderRadius: 2,
+                p: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 1,
+                transition: 'box-shadow .15s ease, border-color .15s ease',
+                '&:hover': {
+                    boxShadow: 1,
+                },
+            }}
+        >
+            <Avatar
+                src={avatar}
+                alt={name}
+                variant="square"
+                sx={{ width: 72, height: 72, borderRadius: 1 }}
+            />
+            {/* The Box with minWidth: 0 enables Typography noWrap ellipsis */}
+            <Box sx={{ width: '100%', minWidth: 0 }}>
+                <Typography
+                    variant="body2"
+                    noWrap
+                    title={name}
+                    sx={{ textAlign: 'center' }}
+                >
+                    {name}
+                </Typography>
+            </Box>
+        </Paper>
+    );
+}
+
 export default forwardRef(function FollowsSection(
     {
         viewer,
         profileId,
         profileHandle,
         profileAvatar,
-        profileName,          // shows in popup header (bold)
-        profileUsername,      // shows in popup header (bold)
+        profileName,          // for popup header (bold)
+        profileUsername,      // for popup header (bold)
         onFlash,
-        isFollowingProfile,
-        onToggleFollowProfile,
         showFollowingTabInSection = true, // hide "Following" tab in the section if false
     },
     ref
@@ -60,9 +108,8 @@ export default forwardRef(function FollowsSection(
     const [counts, setCounts] = useState({ followers: 0, following: 0 });
     const [loadError, setLoadError] = useState('');
 
-    // Viewer relationship sets (to decide Follow/Follow Back visibility)
+    // Viewer relationship set (to decide Follow/Follow Back visibility)
     const [viewerFollowingIds, setViewerFollowingIds] = useState(new Set());
-    const [viewerFollowerIds, setViewerFollowerIds] = useState(new Set());
 
     // Popup (View All)
     const [allOpen, setAllOpen] = useState(false);
@@ -98,9 +145,11 @@ export default forwardRef(function FollowsSection(
     // cache for which profile is loaded
     const lastKeyRef = useRef(null);
     const inFlightRef = useRef(false);
+
+    // UPDATED: prefer numeric id for API robustness; fall back to handle
     const key =
-        (profileHandle && String(profileHandle).toLowerCase()) ||
-        String(profileId || '');
+        String(profileId || '') ||
+        (profileHandle && String(profileHandle).toLowerCase());
 
     // Load social lists for the viewed profile
     useEffect(() => {
@@ -124,9 +173,7 @@ export default forwardRef(function FollowsSection(
                 setCounts(r.data.counts || { followers: 0, following: 0 });
             } catch (e) {
                 if (alive)
-                    setLoadError(
-                        e?.response?.data?.message || 'Failed to load followers.'
-                    );
+                    setLoadError(e?.response?.data?.message || 'Failed to load followers.');
             } finally {
                 if (alive) setLoading(false);
                 inFlightRef.current = false;
@@ -138,18 +185,18 @@ export default forwardRef(function FollowsSection(
         };
     }, [key]);
 
-    // Load viewer’s own follow sets so we can show correct contextual options
+    // Load viewer’s own follow set so we can show correct contextual options
     useEffect(() => {
         if (!viewer) {
             setViewerFollowingIds(new Set());
-            setViewerFollowerIds(new Set());
             return;
         }
         let alive = true;
         const ctrl = new AbortController();
         (async () => {
             try {
-                const who = viewer.handle || viewer.public_id || viewer.id;
+                // UPDATED: prefer numeric id / public_id for viewer too
+                const who = viewer?.public_id || viewer?.id || viewer?.handle;
                 const r = await axios.get(
                     `${api}/users/social/${encodeURIComponent(who)}`,
                     {
@@ -159,13 +206,10 @@ export default forwardRef(function FollowsSection(
                 );
                 if (!alive) return;
                 const myFollowing = (r.data.following || []).map((u) => idKey(u));
-                const myFollowers = (r.data.followers || []).map((u) => idKey(u));
                 setViewerFollowingIds(new Set(myFollowing));
-                setViewerFollowerIds(new Set(myFollowers));
             } catch {
                 if (alive) {
                     setViewerFollowingIds(new Set());
-                    setViewerFollowerIds(new Set());
                 }
             }
         })();
@@ -243,15 +287,13 @@ export default forwardRef(function FollowsSection(
             removeWeFollow(u.id);
             if (isOwnPage) {
                 // remove from "following" lists and update counts
-                setFollowing((list) =>
-                    list.filter((x) => Number(x.id) !== Number(u.id))
-                );
+                setFollowing((list) => list.filter((x) => Number(x.id) !== Number(u.id)));
                 setCounts((c) => ({
                     ...c,
                     following: Math.max(0, (c.following || 0) - 1),
                 }));
             }
-            onFlash?.({ type: 'success', text: 'Unfollowed.' });
+            // Intentionally no success flash for "Unfollowed." per request.
         } catch (e) {
             onFlash?.({
                 type: 'error',
@@ -268,7 +310,7 @@ export default forwardRef(function FollowsSection(
         closeMenu();
     };
 
-    // ------- Section (card) content: grid tiles, max 9 for the left rail -------
+    // ------- Section (card) content: grid tiles, max 9 -------
     const visibleList = (tab === 0 ? followers : following).slice(0, 9);
 
     return (
@@ -295,45 +337,35 @@ export default forwardRef(function FollowsSection(
                 </Typography>
             ) : (
                 <>
-                    {/* 3 per row grid, capped at 9 (unchanged for left rail) */}
+                    {/* Responsive grid with mini-cards that truncate long names */}
                     <Box
                         sx={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(3, 1fr)',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
                             gap: 1,
                         }}
                     >
                         {visibleList.map((u) => (
-                            <UserMiniCard key={u.id} user={u} variant="grid" />
+                            <GridMiniCard
+                                key={u.id}
+                                user={u}
+                                onClick={() => goProfile(u)}
+                            />
                         ))}
                     </Box>
 
                     {visibleList.length === 0 && (
                         <Typography color="text.secondary" sx={{ py: 2 }}>
-                            {tab === 0 ? 'No followers yet.' : 'Not following anyone yet.'}
+                            {tab === 0 ? 'No Followers.' : 'None Following.'}
                         </Typography>
                     )}
-
-                    {/* Optional helper button for non-owners to follow the profile itself */}
-                    {!viewer || Number(viewer.id) === Number(profileId) ? null : (
-                        <Box sx={{ mt: 1 }}>
-                            <Button
-                                size="small"
-                                variant={isFollowingProfile ? 'outlined' : 'contained'}
-                                onClick={onToggleFollowProfile}
-                                disabled={isFollowingProfile}
-                            >
-                                {isFollowingProfile ? 'Following' : 'Follow this user'}
-                            </Button>
-                        </Box>
-                    )}
+                    {/* NOTE: Removed helper "Follow/Following" button below the grid */}
                 </>
             )}
 
             {/* ---------- View All Popup ---------- */}
             <Dialog
                 open={allOpen}
-                scroll="paper"
                 onClose={(_, reason) => {
                     // Do not close when clicking outside the popup
                     if (reason === 'backdropClick') return;
@@ -343,16 +375,15 @@ export default forwardRef(function FollowsSection(
                 maxWidth="md"
                 PaperProps={{
                     sx: {
-                        // Bigger popup, responsive, and fixed-height paper so only inner list scrolls
-                        width: { xs: '94vw', sm: '92vw', md: 'min(1000px, 92vw)' },
-                        height: { xs: '92vh', md: 'min(760px, 92vh)' },
+                        width: 820,
+                        maxWidth: '90vw',
+                        height: 640,
                         borderRadius: 3,
-                        display: 'flex',
-                        flexDirection: 'column',
+                        overflow: 'hidden', // prevent the dialog itself from scrolling
                     },
                 }}
             >
-                {/* Title bar (separate, top-left) with X close button */}
+                {/* Title bar (separate, top-left) with X close button — pinned */}
                 <DialogTitle
                     sx={{
                         display: 'grid',
@@ -374,63 +405,68 @@ export default forwardRef(function FollowsSection(
                     </IconButton>
                 </DialogTitle>
 
-                {/* Everything below stays pinned, only the list area will scroll */}
+                {/* Content container uses flex + overflow hidden; only the list area scrolls */}
                 <DialogContent
                     sx={{
                         p: 0,
                         display: 'flex',
                         flexDirection: 'column',
-                        flex: 1,
-                        minHeight: 0, // allows the inner list to become the scroll container
+                        height: 'calc(100% - 56px)', // subtract title bar
+                        overflow: 'hidden',          // keep header + tabs pinned
+                        minHeight: 0,
                     }}
                 >
-                    {/* Header row: avatar center; name/username to the right (both bold) */}
+                    {/* Header row: avatar + name/username centered (pinned) */}
                     <Box
                         sx={{
-                            display: 'grid',
-                            gridTemplateColumns: '1fr auto 1fr',
+                            display: 'flex',
+                            flexDirection: 'column',
                             alignItems: 'center',
-                            p: 1.25,
+                            textAlign: 'center',
+                            p: 2,
                             borderBottom: 1,
                             borderColor: 'divider',
                             gap: 1,
+                            flex: '0 0 auto',
                         }}
                     >
-                        <Box /> {/* left spacer for visual balance */}
                         <Avatar
                             src={profileAvatar}
                             variant="square"
-                            sx={{ width: 72, height: 72, borderRadius: 1, mx: 'auto' }}
+                            sx={{ width: 72, height: 72, borderRadius: 1 }}
                         />
-                        <Box sx={{ pl: 1, textAlign: 'left' }}>
-                            <Typography sx={{ fontWeight: 700 }} noWrap>
-                                {profileName || ''}
-                            </Typography>
-                            <Typography sx={{ fontWeight: 700 }} color="text.secondary" noWrap>
-                                @{profileUsername || ''}
-                            </Typography>
-                        </Box>
+                        <Typography sx={{ fontWeight: 700 }} noWrap title={profileName || ''}>
+                            {profileName || ''}
+                        </Typography>
+                        <Typography
+                            sx={{ fontWeight: 700 }}
+                            color="text.secondary"
+                            noWrap
+                            title={profileUsername ? `@${profileUsername}` : ''}
+                        >
+                            @{profileUsername || ''}
+                        </Typography>
                     </Box>
 
-                    {/* Tabs below header; open on whichever was last selected in section */}
+                    {/* Tabs — pinned */}
                     <Tabs
                         value={dialogTab}
                         onChange={(_, v) => setDialogTab(v)}
-                        sx={{ px: 1.25 }}
+                        sx={{ px: 1.25, flex: '0 0 auto' }}
                     >
                         <Tab label={`Followers (${counts.followers || 0})`} />
                         <Tab label={`Following (${counts.following || 0})`} />
                     </Tabs>
 
-                    <Divider />
+                    <Divider sx={{ flex: '0 0 auto' }} />
 
-                    {/* Scroll area with 2-up grid cards (OWN SCROLL BOX) */}
+                    {/* Scroll area with 2-up grid cards (own scroll box) */}
                     <Box
                         sx={{
                             p: 1.25,
+                            flex: '1 1 auto',
+                            minHeight: 0,
                             overflowY: 'auto',
-                            flex: 1,       // take remaining height
-                            minHeight: 0,  // allow it to be the scroll container
                         }}
                     >
                         {loading ? (
@@ -439,9 +475,7 @@ export default forwardRef(function FollowsSection(
                             </Typography>
                         ) : (dialogTab === 0 ? followers : following).length === 0 ? (
                             <Typography sx={{ p: 2 }} color="text.secondary">
-                                {dialogTab === 0
-                                    ? 'No followers yet.'
-                                    : 'Not following anyone yet.'}
+                                {dialogTab === 0 ? 'No Followers.' : 'None Following.'}
                             </Typography>
                         ) : (
                             <Box
@@ -482,18 +516,14 @@ export default forwardRef(function FollowsSection(
                                                 src={avatar}
                                                 alt={name}
                                                 variant="square"
-                                                sx={{
-                                                    width: 84,
-                                                    height: 84,
-                                                    borderRadius: 1,
-                                                    cursor: 'pointer',
-                                                }}
+                                                sx={{ width: 84, height: 84, borderRadius: 1, cursor: 'pointer' }}
                                                 onClick={() => goProfile(u)}
                                             />
                                             <Box sx={{ minWidth: 0 }}>
                                                 <Typography
                                                     variant="subtitle2"
                                                     noWrap
+                                                    title={name}
                                                     sx={{ cursor: 'pointer' }}
                                                     onClick={() => goProfile(u)}
                                                 >
@@ -503,6 +533,7 @@ export default forwardRef(function FollowsSection(
                                                     variant="body2"
                                                     color="text.secondary"
                                                     noWrap
+                                                    title={`@${username}`}
                                                     sx={{ cursor: 'pointer' }}
                                                     onClick={() => goProfile(u)}
                                                 >
@@ -567,7 +598,9 @@ export default forwardRef(function FollowsSection(
                 open={msgOpen}
                 onClose={() => setMsgOpen(false)}
                 toUser={msgTarget}
-                onSent={() => onFlash?.({ type: 'success', text: 'Message sent.' })}
+                onSent={() =>
+                    onFlash?.({ type: 'success', text: 'Message sent.' })
+                }
                 onError={(txt) =>
                     onFlash?.({ type: 'error', text: txt || 'Failed to send message.' })
                 }
