@@ -59,8 +59,22 @@ const validate = [
     // must match ENUM / allowed list in DB
     body('help_type').notEmpty().isIn(HELP_TYPES),
 
-    // required
-    body('needed_date').notEmpty().isISO8601().toDate(),
+    // If help_type is "other", require a short label.
+    body('help_type_other')
+        .custom((value, { req }) => {
+            const helpType = String(req.body.help_type || '').trim().toLowerCase();
+            const otherVal = String(value || '').trim();
+            if (helpType === 'other' && !otherVal) {
+                throw new Error('Please specify the other category.');
+            }
+            return true;
+        })
+        .optional({ nullable: true, checkFalsy: true })
+        .trim()
+        .isLength({ max: 80 }),
+
+    // optional
+    body('needed_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
     body('contact').trim().notEmpty().isLength({ max: 255 }),
 
     // optional: help-request details
@@ -145,6 +159,7 @@ router.post(
         const {
             title,
             help_type,
+            help_type_other = null,
             extra_notes = '',
             needed_date,
             contact,
@@ -188,7 +203,11 @@ router.post(
                 id: postId,
                 request_kind,
                 help_type,
-                needed_date,
+                help_type_other:
+                    String(help_type).trim().toLowerCase() === 'other'
+                        ? String(help_type_other || '').trim() || null
+                        : null,
+                needed_date: needed_date ? needed_date : null,
                 needed_time: needed_time ? String(needed_time).trim() : null,
                 helpers_needed: typeof helpers_needed === 'number' ? helpers_needed : null,
                 urgency: normalizeUrgency(urgency),

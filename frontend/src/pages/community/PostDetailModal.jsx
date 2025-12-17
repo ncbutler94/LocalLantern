@@ -219,26 +219,19 @@ const formatLocalDate = (input) => {
     });
 };
 
-const maskContact = (input) => {
-    const raw = String(input || '').trim();
-    if (!raw) return '';
-    if (raw.includes('@')) {
-        const [name, domain] = raw.split('@');
-        const head = name ? name.slice(0, 1) : '';
-        return `${head || '•'}•••@${domain || '•••'}`;
-    }
-    const digits = raw.replace(/\D/g, '');
-    if (digits.length >= 7) return `•••${digits.slice(-4)}`;
-    if (raw.length <= 4) return '•••';
-    return `${raw.slice(0, 2)}•••${raw.slice(-2)}`;
-};
-
 function HelpVolunteerDetailsPanel({ post, derivedCategory, viewerUser, onRequireLogin, onMessageAuthor, authorUser }) {
     const isHelpRequest = derivedCategory === 'help-requests';
     const isVolunteerOffer = derivedCategory === 'volunteers' || derivedCategory === 'volunteer-requests';
 
     const helpType = String(post?.help_type || '').trim().toLowerCase();
-    const helpTypeLabel = helpType ? HELP_TYPE_LABELS[helpType] || helpType : '';
+    const helpTypeOther = String(post?.help_type_other || post?.other_help_type || '').trim();
+    const helpTypeLabel = helpType
+        ? helpType === 'other'
+            ? helpTypeOther
+                ? `Other: ${helpTypeOther}`
+                : 'Other'
+            : HELP_TYPE_LABELS[helpType] || helpType
+        : '';
 
     const neededDate = post?.needed_date || post?.date_needed;
     const neededTime = String(post?.needed_time || '').trim();
@@ -248,23 +241,23 @@ function HelpVolunteerDetailsPanel({ post, derivedCategory, viewerUser, onRequir
     const travelRadius = String(post?.travel_radius || '').trim().toLowerCase();
     const contact = String(post?.contact || '').trim();
     const contactMethod = String(post?.contact_method || '').trim().toLowerCase();
-
-    const [contactRevealed, setContactRevealed] = useState(false);
     const [copied, setCopied] = useState(false);
+
+    const contactHref = useMemo(() => {
+        if (!contact) return '';
+        const raw = String(contact).trim();
+        if (!raw) return '';
+        if (raw.includes('@')) return `mailto:${raw}`;
+        const digits = raw.replace(/[^\d+]/g, '');
+        if (digits.length >= 7) return `tel:${digits}`;
+        return '';
+    }, [contact]);
 
     if (!isHelpRequest && !isVolunteerOffer) return null;
 
     const dateChipLabel = neededDate
         ? `${isVolunteerOffer ? 'Available' : 'Needed'}: ${formatLocalDate(neededDate)}`
         : '';
-
-    const showContact = () => {
-        if (!viewerUser) {
-            if (typeof onRequireLogin === 'function') onRequireLogin();
-            return;
-        }
-        setContactRevealed(true);
-    };
 
     const copyContact = async () => {
         if (!contact) return;
@@ -361,56 +354,55 @@ function HelpVolunteerDetailsPanel({ post, derivedCategory, viewerUser, onRequir
                     <Box
                         sx={{
                             display: 'flex',
-                            alignItems: 'center',
+                            flexDirection: { xs: 'column', sm: 'row' },
+                            alignItems: { xs: 'stretch', sm: 'center' },
                             justifyContent: 'space-between',
-                            gap: 1,
-                            flexWrap: 'wrap',
+                            gap: 1.25,
                         }}
                     >
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
                                 Contact
                             </Typography>
-                            <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-                                {contactRevealed ? contact : maskContact(contact)}
-                                {CONTACT_METHOD_LABELS[contactMethod] ? (
-                                    <Typography
-                                        component="span"
-                                        variant="body2"
-                                        color="text.secondary"
-                                        sx={{ ml: 0.75 }}
-                                    >
-                                        • {CONTACT_METHOD_LABELS[contactMethod]}
-                                    </Typography>
-                                ) : null}
+
+                            <Typography variant="body2" sx={{ wordBreak: 'break-word', fontWeight: 800 }}>
+                                {contactHref ? (
+                                    <Link href={contactHref} underline="hover">
+                                        {contact}
+                                    </Link>
+                                ) : (
+                                    contact
+                                )}
                             </Typography>
+
+                            {CONTACT_METHOD_LABELS[contactMethod] ? (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    Preferred: {CONTACT_METHOD_LABELS[contactMethod]}
+                                </Typography>
+                            ) : null}
                         </Box>
 
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                            {!contactRevealed ? (
-                                <Button
-                                    size="small"
-                                    variant="contained"
-                                    onClick={showContact}
-                                    sx={{ fontWeight: 800, borderRadius: 999, px: 2 }}
-                                >
-                                    {viewerUser ? 'Show' : 'Log in to view'}
-                                </Button>
-                            ) : (
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<ContentCopyIcon />}
-                                    onClick={copyContact}
-                                    sx={{ fontWeight: 800, borderRadius: 999, px: 2 }}
-                                >
-                                    {copied ? 'Copied' : 'Copy'}
-                                </Button>
-                            )}
-
+                        <Box
+                            sx={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 1,
+                                justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                            }}
+                        >
                             <Button
                                 size="small"
                                 variant="outlined"
+                                startIcon={<ContentCopyIcon />}
+                                onClick={copyContact}
+                                sx={{ fontWeight: 800, borderRadius: 999, px: 2 }}
+                            >
+                                {copied ? 'Copied' : 'Copy'}
+                            </Button>
+
+                            <Button
+                                size="small"
+                                variant="contained"
                                 onClick={messageAuthor}
                                 sx={{ fontWeight: 800, borderRadius: 999, px: 2 }}
                             >

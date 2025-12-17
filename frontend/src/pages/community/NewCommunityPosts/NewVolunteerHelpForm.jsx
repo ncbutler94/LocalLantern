@@ -15,7 +15,6 @@ import {
     Alert,
     Box,
     Button,
-    Chip,
     CircularProgress,
     DialogActions,
     DialogContent,
@@ -23,15 +22,15 @@ import {
     FormControl,
     FormControlLabel,
     FormLabel,
-    IconButton,
     MenuItem,
     Radio,
     RadioGroup,
     TextField,
+    ToggleButton,
+    ToggleButtonGroup,
     Tooltip,
     Typography,
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 
 import useBasePostForm, { MAX_DESCRIPTION, MAX_TITLE } from './useBasePostForm';
 import CityCountySelect from '../../../components/CityCountySelect';
@@ -91,11 +90,22 @@ export default function NewVolunteerHelpForm({
         countyRequired,
     });
 
+    // If defaults are fetched/updated after mount (ex: parent dialog fetches profile),
+    // fill *only* missing fields.
+    useEffect(() => {
+        const dc = String(defaultCity || '').trim();
+        const dco = normalizeCounty(defaultCounty);
+        if (!base.city && dc) base.setCity(dc);
+        if (!base.county && dco) base.setCounty(dco);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [defaultCity, defaultCounty]);
+
     const requestKind =
         String(defaultRequestKind || '').trim().toLowerCase() === 'volunteer' ? 'volunteer' : 'help';
 
     // Separate (but stored together) details
     const [helpType, setHelpType] = useState('labor');
+    const [helpTypeOther, setHelpTypeOther] = useState('');
     const [neededDate, setNeededDate] = useState(''); // yyyy-mm-dd
 
     // Help-request specific
@@ -110,6 +120,10 @@ export default function NewVolunteerHelpForm({
     // Shared
     const [contact, setContact] = useState('');
     const [contactMethod, setContactMethod] = useState('either');
+
+    useEffect(() => {
+        if (helpType !== 'other' && helpTypeOther) setHelpTypeOther('');
+    }, [helpType, helpTypeOther]);
 
     // Photos (drag + drop + cover)
     const [photoSlots, setPhotoSlots] = useState(() => Array.from({ length: MAX_PHOTOS }, () => null));
@@ -259,11 +273,11 @@ export default function NewVolunteerHelpForm({
         const missing = [];
         if (!String(base.title || '').trim()) missing.push('Title');
         if (!String(helpType || '').trim()) missing.push('Category');
-        if (!String(neededDate || '').trim()) missing.push(dateLabel);
+        if (helpType === 'other' && !String(helpTypeOther || '').trim()) missing.push('Other category');
         if (!String(contact || '').trim()) missing.push('Contact info');
         if (countyRequired && !String(base.county || '').trim()) missing.push('County');
         return missing;
-    }, [base.title, helpType, neededDate, contact, base.county, countyRequired, dateLabel]);
+    }, [base.title, helpType, helpTypeOther, contact, base.county, countyRequired]);
 
     const customTooltip = useMemo(() => {
         if (base.tooltipMsg) return base.tooltipMsg;
@@ -287,7 +301,10 @@ export default function NewVolunteerHelpForm({
             form.append('extra_notes', base.description);
             form.append('request_kind', requestKind);
             form.append('help_type', helpType);
-            form.append('needed_date', neededDate);
+            if (String(neededDate || '').trim()) form.append('needed_date', neededDate);
+            if (helpType === 'other' && String(helpTypeOther || '').trim()) {
+                form.append('help_type_other', String(helpTypeOther).trim());
+            }
             form.append('contact', contact);
             form.append('contact_method', contactMethod);
 
@@ -327,7 +344,7 @@ export default function NewVolunteerHelpForm({
         <>
             <DialogTitle
                 sx={{
-                    pr: 7,
+                    pr: 3,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -345,17 +362,6 @@ export default function NewVolunteerHelpForm({
                     </Typography>
                 </Box>
 
-                <IconButton
-                    aria-label="Close"
-                    onClick={onClose}
-                    sx={{
-                        position: 'absolute',
-                        right: 10,
-                        top: 10,
-                    }}
-                >
-                    <CloseIcon />
-                </IconButton>
             </DialogTitle>
 
             <DialogContent
@@ -428,15 +434,27 @@ export default function NewVolunteerHelpForm({
                     </RadioGroup>
                 </FormControl>
 
+                {helpType === 'other' && (
+                    <TextField
+                        label="Other category"
+                        required
+                        fullWidth
+                        value={helpTypeOther}
+                        onChange={(e) => setHelpTypeOther(e.target.value)}
+                        inputProps={{ maxLength: 80 }}
+                        placeholder='Example: "Pet sitting"'
+                    />
+                )}
+
                 {/* Date */}
                 <TextField
                     label={dateLabel}
                     type="date"
-                    required
                     fullWidth
                     value={neededDate}
                     onChange={(e) => setNeededDate(e.target.value)}
                     InputLabelProps={{ shrink: true }}
+                    helperText="Optional"
                 />
 
                 {/* Help-request specific fields */}
@@ -519,27 +537,37 @@ export default function NewVolunteerHelpForm({
                         inputProps={{ maxLength: 255 }}
                     />
 
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            flexWrap: 'wrap',
-                        }}
-                    >
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                             Preferred method:
                         </Typography>
-                        {CONTACT_METHOD_OPTIONS.map((opt) => (
-                            <Chip
-                                key={opt.value}
-                                label={opt.label}
-                                variant={contactMethod === opt.value ? 'filled' : 'outlined'}
-                                onClick={() => setContactMethod(opt.value)}
-                                size="small"
-                                sx={{ fontWeight: 700 }}
-                            />
-                        ))}
+                        <ToggleButtonGroup
+                            exclusive
+                            value={contactMethod}
+                            onChange={(_e, next) => {
+                                if (next) setContactMethod(next);
+                            }}
+                            size="small"
+                            aria-label="Preferred contact method"
+                            sx={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 1,
+                                '& .MuiToggleButton-root': {
+                                    textTransform: 'none',
+                                    fontWeight: 800,
+                                    borderRadius: 999,
+                                    px: 2,
+                                    py: 0.5,
+                                },
+                            }}
+                        >
+                            {CONTACT_METHOD_OPTIONS.map((opt) => (
+                                <ToggleButton key={opt.value} value={opt.value} aria-label={opt.label}>
+                                    {opt.label}
+                                </ToggleButton>
+                            ))}
+                        </ToggleButtonGroup>
                     </Box>
 
                     <Typography variant="caption" sx={{ color: 'text.secondary' }}>

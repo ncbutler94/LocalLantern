@@ -152,7 +152,7 @@ export default function CommunityPage() {
 
     /* ---------- refs ---------- */
     const mapRef = useRef(null);
-
+    const lastMarkerLatLngByIdRef = useRef({});
     // Fix: schedule refetch AFTER state commits (prevents “select twice”)
     const refetchTimerRef = useRef(null);
     const latestRefetchRef = useRef(null);
@@ -482,7 +482,9 @@ export default function CommunityPage() {
         (id, latLng) => {
             const idStr = id != null ? String(id) : null;
             if (!idStr) return;
-
+            if (latLng && Number.isFinite(latLng.lat) && Number.isFinite(latLng.lng)) {
+                lastMarkerLatLngByIdRef.current[idStr] = { lat: latLng.lat, lng: latLng.lng };
+            }
             const fromList = (filteredPosts || []).find((p) => String(p?.id) === idStr) || null;
             const fromCache = popupPostCache?.[idStr] || null;
             const post = fromList || fromCache || { id: idStr };
@@ -834,7 +836,23 @@ export default function CommunityPage() {
                                         (filteredPosts || []).find((p) => String(p?.id) === idStr) ||
                                         { id: idStr };
 
-                                    focusMapForPost(post);
+                                    const savedLatLng = lastMarkerLatLngByIdRef.current[idStr];
+                                    if (savedLatLng) {
+                                        // ✅ Replay marker-click positioning (including your POPUP_LAT_OFFSET logic)
+                                        focusMapForPost(post, savedLatLng);
+                                    } else {
+                                        const lat = Number(post?.latitude ?? post?.lat);
+                                        const lng = Number(post?.longitude ?? post?.lng);
+
+                                        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                                            const POPUP_LAT_OFFSET = 0.01;
+                                            setCenter([lat + POPUP_LAT_OFFSET, lng]);
+                                            // keep zoom as-is
+                                        } else {
+                                            focusMapForPost(post);
+                                        }
+                                    }
+
                                 }
                             }
                         }}
