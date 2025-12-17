@@ -4,6 +4,8 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
+import db from './config/db.js';
+
 import communityRoutes         from './routes/community/community.js';
 import lostAndFoundRouter      from './routes/community/lostAndFound.js';
 import announcementsRouter     from './routes/community/announcements.js';
@@ -20,6 +22,7 @@ import postsRouter      from './routes/posts.js';
 import businessesRouter from './routes/businesses/businesses.js';
 import eventsRouter     from './routes/events/events.js';
 import jobsRouter       from './routes/jobs/jobs.js';
+import createOgPostsPreviewRouter from './routes/ogPostsPreview.js';
 import messagesRouter   from './routes/messages/messages.js';
 
 import logger from './utils/logger.js';
@@ -42,6 +45,56 @@ if (isProd) app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
+
+/* ───────────────────────── OG preview helper ─────────────────────── */
+
+async function getPostFromYourDb(id) {
+    const postId = Number(id);
+    if (!Number.isFinite(postId)) return null;
+
+    const post = await db('community_posts as cp')
+        .select(
+            'cp.id',
+            'cp.title',
+            'cp.description',
+            'cp.city',
+            'cp.county',
+            'cp.category',
+            'cp.posted_at'
+        )
+        .where('cp.id', postId)
+        .first();
+
+    if (!post) return null;
+
+    let photo = null;
+    try {
+        photo = await db('community_photos')
+            .select('url', 'photo_url', 'path')
+            .where('post_id', postId)
+            .orderBy('position', 'asc')
+            .first();
+    } catch {
+        photo = null;
+    }
+
+    const img = photo?.url || photo?.photo_url || photo?.path || '';
+
+    return {
+        ...post,
+        image_url: img,
+        thumbnail_url: img,
+        og_image: img,
+    };
+}
+
+app.use(
+    createOgPostsPreviewRouter({
+        siteBaseUrl: (process.env.PUBLIC_SITE_URL || '').trim() || 'https://thelocallantern.com',
+        buildIndexHtmlPath: () => path.resolve(process.cwd(), 'frontend', 'build', 'index.html'),
+        getPostById: async (id) => getPostFromYourDb(id),
+    })
+);
 
 /* ───────────────────── Public & community routes ─────────────────── */
 app.use('/public',                 publicRoutes);
@@ -215,8 +268,8 @@ app.post('/api/uploads/signed-url', async (req, res) => {
 /* Tenor helpers (unchanged) */
 const TENOR_CLIENT_KEY = 'the-local-lantern';
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const buildTenorUrl = (path, params) =>
-    `https://tenor.googleapis.com/v2${path}?${new URLSearchParams(params).toString()}`;
+const buildTenorUrl = (p, params) =>
+    `https://tenor.googleapis.com/v2${p}?${new URLSearchParams(params).toString()}`;
 
 app.get('/api/tenor/featured', async (req, res) => {
     try {

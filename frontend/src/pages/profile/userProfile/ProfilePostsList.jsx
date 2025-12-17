@@ -1,35 +1,368 @@
 // src/pages/profile/userProfile/ProfilePostsList.jsx
 // Profile feed list that renders the EXACT Community PostCard, with profile-specific overrides:
-// - Location line is *not* clickable — we block via CSS and capture-phase event handlers.
+// - Location line IS clickable: opens a small map popup (single marker) for that post.
 // - Category chip is re-homed under the Edit button (keeping the *original* chip styles + icons).
 // - Lost posts: "Mark as Found" button appears to the right of the category chip.
 // - Infinite render: show 20 initially; when you scroll past the 15th item of the current chunk, load 20 more.
+//
+// FIX (this patch):
+// - Action bar no longer prompts "log in" while logged in.
+//   We now pass the logged-in viewer object through to CommunityPostCard (viewer/me/currentUser/etc).
 
-import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+    memo,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import PropTypes from 'prop-types';
-import { Box, Button, Tooltip, Typography } from '@mui/material';
+import {
+    Box,
+    Button,
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    IconButton,
+    Tooltip,
+    Typography,
+} from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
+import CloseIcon from '@mui/icons-material/Close';
 
-// Use the Community page's card directly (with new optional overrides)
+import { MapContainer, TileLayer, Marker, GeoJSON, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+import '../../../components/MapView.css';
+import alabama from '../../../data/alabama.json';
+
+import communityMarkerPng from '../../../assets/mapMarkers/community/community-marker.png';
+import announcementMarkerPng from '../../../assets/mapMarkers/community/announcement-marker.png';
+import discussionMarkerPng from '../../../assets/mapMarkers/community/discussion-marker.png';
+import lostAndFoundMarkerPng from '../../../assets/mapMarkers/community/lost-and-found-marker.png';
+import publicSafetyAlertMarkerPng from '../../../assets/mapMarkers/community/public-safety-alert-marker.png';
+import recommendationAndTipsMarkerPng from '../../../assets/mapMarkers/community/recommendation-and-tips-marker.png';
+import volunteerHelpRequestsMarkerPng from '../../../assets/mapMarkers/community/volunteer-help-requests-marker.png';
+
 import { PostCard as CommunityPostCard } from '../../community/CommunityList';
 
-// Popover and share dialog (unchanged behavior)
 import UserCardPopover from '../../../components/UserCardPopover';
 import SharePostDialog from '../../../components/SharePostDialog';
 
-/**
- * Find the "category" chip that CommunityPostCard renders (top-right in its header),
- * hide it, then clone+append it to our host container.
- *
- * We do this so we preserve the exact same style + icon mapping that CommunityPostCard already uses.
- */
+/* ───────────────────────────────────────────
+   Map helpers (mirrors CommunityMapView style)
+   ─────────────────────────────────────────── */
+
+const DEFAULT_ZOOM = 7.5;
+const RAW_BOUNDS = L.geoJSON(alabama.features[0]).getBounds();
+
+function computeBoundsWithPad(bounds, { padH = 0.16, padV = 0.16 }) {
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const width = Math.abs(ne.lng - sw.lng);
+    const height = Math.abs(ne.lat - sw.lat);
+
+    const extraLng = width * padH;
+    const extraLat = height * padV;
+
+    const newSw = L.latLng(sw.lat - extraLat, sw.lng - extraLng);
+    const newNe = L.latLng(ne.lat + extraLat, ne.lng + extraLng);
+    return L.latLngBounds(newSw, newNe);
+}
+
+const makeDivIcon = (png) =>
+    L.divIcon({
+        className: 'community-div-icon',
+        iconSize: [48, 64],
+        iconAnchor: [24, 64],
+        popupAnchor: [0, -64],
+        html: `
+      <div style="position:relative;width:48px;height:64px;">
+        <img src="${png}" class="marker-icon" style="position:absolute;bottom:8px;left:0;width:48px;height:48px;" />
+      </div>
+    `,
+    });
+
+const communityDivIcon = makeDivIcon(communityMarkerPng);
+const announcementDivIcon = makeDivIcon(announcementMarkerPng);
+const discussionDivIcon = makeDivIcon(discussionMarkerPng);
+const lostAndFoundDivIcon = makeDivIcon(lostAndFoundMarkerPng);
+const publicSafetyAlertDivIcon = makeDivIcon(publicSafetyAlertMarkerPng);
+const recommendationDivIcon = makeDivIcon(recommendationAndTipsMarkerPng);
+const volunteerHelpDivIcon = makeDivIcon(volunteerHelpRequestsMarkerPng);
+
+const CATEGORY_ICON_MAP = {
+    event: communityDivIcon,
+    events: communityDivIcon,
+    announcement: announcementDivIcon,
+    announcements: announcementDivIcon,
+    'general-discussion': discussionDivIcon,
+    discussion: discussionDivIcon,
+    'lost-and-found': lostAndFoundDivIcon,
+    'lost-found': lostAndFoundDivIcon,
+    'public-safety-alerts': publicSafetyAlertDivIcon,
+    recommendation: recommendationDivIcon,
+    recommendations: recommendationDivIcon,
+    tips: recommendationDivIcon,
+    'recommendations-tips': recommendationDivIcon,
+    'volunteer-requests': volunteerHelpDivIcon,
+    volunteers: volunteerHelpDivIcon,
+    'help-requests': volunteerHelpDivIcon,
+    'volunteer-and-help-requests': volunteerHelpDivIcon,
+    'volunteer-help': volunteerHelpDivIcon,
+    'volunteer-help-requests': volunteerHelpDivIcon,
+};
+
+function normalizeCategory(cat) {
+    const s = String(cat || '').trim().toLowerCase();
+    return s || 'event';
+}
+
+function pickIconForPost(post) {
+    const cat = normalizeCategory(post?.category);
+    return CATEGORY_ICON_MAP[cat] || communityDivIcon;
+}
+
+function pickLatLngForPost(post) {
+    const lat = Number(
+        post?.latitude ??
+        post?.lat ??
+        post?.location_lat ??
+        post?.locationLat ??
+        post?.geo_lat ??
+        post?.geoLat
+    );
+    const lng = Number(
+        post?.longitude ??
+        post?.lng ??
+        post?.location_lng ??
+        post?.locationLng ??
+        post?.geo_lng ??
+        post?.geoLng
+    );
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return [lat, lng];
+}
+
+function pickZoomForPost(post) {
+    const hasStreet = String(post?.street_address || post?.address || '').trim().length > 0;
+    if (hasStreet) return 16;
+    const hasCity = String(post?.city || '').trim().length > 0;
+    if (hasCity) return 14;
+    const hasCounty = String(post?.county || '').trim().length > 0;
+    if (hasCounty) return 10;
+    return 13;
+}
+
+function MaskController() {
+    const map = useMap();
+
+    useEffect(() => {
+        const outer = [
+            [-180, -90],
+            [180, -90],
+            [180, 90],
+            [-180, 90],
+            [-180, -90],
+        ];
+        const hole = alabama.features[0].geometry.coordinates[0];
+
+        const pane = map.createPane('maskPane');
+        if (pane) {
+            pane.style.zIndex = 450;
+            pane.style.pointerEvents = 'none';
+        }
+
+        const mask = L.geoJSON(
+            { type: 'Feature', geometry: { type: 'Polygon', coordinates: [outer, hole] } },
+            {
+                pane: 'maskPane',
+                interactive: false,
+                style: {
+                    fillColor: '#f4f6fb',
+                    fillOpacity: 0.7,
+                    color: 'rgba(0,0,0,0.15)',
+                    weight: 2,
+                },
+            }
+        ).addTo(map);
+
+        return () => {
+            try {
+                map.removeLayer(mask);
+            } catch {
+                // ignore
+            }
+        };
+    }, [map]);
+
+    return null;
+}
+
+function Recenter({ center, zoom }) {
+    const map = useMap();
+    useEffect(() => {
+        if (!center || center.length !== 2) return;
+        try {
+            map.setView(center, zoom);
+        } catch {
+            // ignore
+        }
+    }, [map, center, zoom]);
+    return null;
+}
+
+function RemoveLeafletPrefix() {
+    const map = useMap();
+    useEffect(() => {
+        if (map?.attributionControl) {
+            map.attributionControl.setPrefix(false);
+        }
+    }, [map]);
+    return null;
+}
+
+function LocationMapDialog({ open, post, onClose }) {
+    const latLng = useMemo(() => pickLatLngForPost(post), [post]);
+    const zoom = useMemo(() => pickZoomForPost(post), [post]);
+    const bounds = useMemo(
+        () => computeBoundsWithPad(RAW_BOUNDS, { padH: 0.16, padV: 0.16 }),
+        []
+    );
+
+    const title =
+        String(post?.street_address || post?.address || '').trim() ||
+        [post?.city, post?.county].filter(Boolean).join(', ') ||
+        'Post Location';
+
+    return (
+        <Dialog
+            open={open}
+            fullWidth
+            maxWidth="md"
+            onClose={(_, reason) => {
+                if (reason === 'backdropClick') return;
+                onClose();
+            }}
+            PaperProps={{
+                sx: {
+                    width: 860,
+                    maxWidth: '92vw',
+                    height: 560,
+                    maxHeight: '82vh',
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                },
+            }}
+        >
+            <DialogTitle
+                sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    py: 1.25,
+                    pr: 1,
+                }}
+            >
+                <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 800 }} noWrap title={title}>
+                        {title}
+                    </Typography>
+                    {post?.title ? (
+                        <Typography variant="caption" color="text.secondary" noWrap title={post.title}>
+                            {post.title}
+                        </Typography>
+                    ) : null}
+                </Box>
+
+                <IconButton onClick={onClose} size="small" aria-label="Close">
+                    <CloseIcon />
+                </IconButton>
+            </DialogTitle>
+
+            <DialogContent sx={{ p: 0, height: '100%' }}>
+                {!latLng ? (
+                    <Box
+                        sx={{
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            p: 3,
+                            textAlign: 'center',
+                        }}
+                    >
+                        <Typography color="text.secondary">
+                            This post doesn’t have coordinates saved, so we can’t show it on the map yet.
+                        </Typography>
+                    </Box>
+                ) : (
+                    <Box className="ll-location-map" sx={{ width: '100%', height: '100%' }}>
+                        <MapContainer
+                            center={latLng}
+                            zoom={zoom}
+                            scrollWheelZoom
+                            zoomSnap={0.5}
+                            zoomDelta={0.5}
+                            minZoom={DEFAULT_ZOOM}
+                            maxZoom={18}
+                            maxBounds={bounds}
+                            maxBoundsViscosity={1}
+                            doubleClickZoom={false}
+                            touchZoom={false}
+                            keyboard={false}
+                            zoomControl={false}
+                            closePopupOnClick={false}
+                            attributionControl
+                            style={{ width: '100%', height: '100%' }}
+                        >
+                            <RemoveLeafletPrefix />
+                            <MaskController />
+                            <Recenter center={latLng} zoom={zoom} />
+
+                            <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution="© OpenStreetMap contributors"
+                                noWrap
+                            />
+
+                            <GeoJSON
+                                data={alabama}
+                                style={{
+                                    color: 'rgba(0,0,0,0.15)',
+                                    weight: 2,
+                                    fillOpacity: 0,
+                                }}
+                            />
+
+                            <Marker position={latLng} icon={pickIconForPost(post)} />
+                        </MapContainer>
+                    </Box>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+LocationMapDialog.propTypes = {
+    open: PropTypes.bool.isRequired,
+    post: PropTypes.object,
+    onClose: PropTypes.func.isRequired,
+};
+
+/* ───────────────────────────────────────────
+   Category chip re-home helper
+   ─────────────────────────────────────────── */
+
 function moveCategoryChipToHost(rootEl, hostEl) {
     if (!rootEl || !hostEl) return;
 
-    // Clear host before re-homing
     hostEl.innerHTML = '';
 
-    // Restore any previously hidden chip(s) in this card
     const prevHidden = rootEl.querySelectorAll('[data-ll-hidden-category-chip="1"]');
     prevHidden.forEach((chip) => {
         chip.style.display = chip.dataset.llPrevDisplay || '';
@@ -37,34 +370,25 @@ function moveCategoryChipToHost(rootEl, hostEl) {
         delete chip.dataset.llPrevDisplay;
     });
 
-    // Collect MUI chip roots inside the card
     const chips = Array.from(rootEl.querySelectorAll('.MuiChip-root, [class*="MuiChip-root"]'));
     if (!chips.length) return;
 
     const rootBox = rootEl.getBoundingClientRect();
 
-    // Pick the chip closest to the card's top-right corner (header chip),
-    // and prefer chips that include an SVG icon (category chips typically do).
     let best = null;
     let bestScore = -Infinity;
 
     const scoreChip = (chip) => {
         if (!chip || hostEl.contains(chip)) return -Infinity;
-
-        // ignore our clone
         if (chip.getAttribute('data-ll-cloned-category-chip') === '1') return -Infinity;
 
         const r = chip.getBoundingClientRect();
         const relTop = r.top - rootBox.top;
         const relRight = rootBox.right - r.right;
 
-        // Strongly prefer header zone; most category chips live here.
-        // We still allow a fallback pass if none found.
         const headerPenalty = relTop <= 130 ? 0 : -250;
-
         const hasIcon = !!chip.querySelector('svg');
 
-        // Higher is better: closer to top-right + icon bonus
         return (-(relTop * 2) - relRight) + (hasIcon ? 8 : 0) + headerPenalty;
     };
 
@@ -76,19 +400,16 @@ function moveCategoryChipToHost(rootEl, hostEl) {
         }
     }
 
-    // Nothing reasonable found
     if (!best || bestScore === -Infinity) return;
 
-    // Hide original
     best.dataset.llPrevDisplay = best.style.display || '';
     best.setAttribute('data-ll-hidden-category-chip', '1');
     best.style.display = 'none';
 
-    // Clone and mount into host
     const clone = best.cloneNode(true);
     clone.style.display = best.dataset.llPrevDisplay || '';
     clone.setAttribute('data-ll-cloned-category-chip', '1');
-    // Category chip shouldn't navigate / interfere with card click
+
     clone.style.pointerEvents = 'none';
     clone.style.cursor = 'default';
     clone.style.userSelect = 'none';
@@ -96,10 +417,20 @@ function moveCategoryChipToHost(rootEl, hostEl) {
     hostEl.appendChild(clone);
 }
 
-// Re-export for the expanded overlay in UserProfilePage.jsx
-// Hard-disable location link for all cards rendered via this list.
+/* ───────────────────────────────────────────
+   ProfilePostCard
+   ─────────────────────────────────────────── */
+
 export const ProfilePostCard = memo(function ProfilePostCard(props) {
-    const { post, user, ...rest } = props;
+    const {
+        post,
+        user, // <-- this is the logged-in viewer (me)
+        onCardClick,
+        onOpenUserCard,
+        onOpenShare,
+        onOpenLocationMap,
+        ...rest
+    } = props;
 
     const rootRef = useRef(null);
     const categoryHostRef = useRef(null);
@@ -121,6 +452,7 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
         const viewerId = Number(user?.id || 0);
         const postUserId = Number(post?.user_id || 0);
         if (viewerId && postUserId && viewerId === postUserId) return true;
+
         const vh = normHandle(user?.handle);
         const ph = normHandle(post?.handle);
         return !!(vh && ph && vh === ph);
@@ -131,19 +463,25 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
         if (!ea) return false;
         const posted = new Date(post?.posted_at || post?.date_created || post?.created_at || 0).getTime();
         const edited = new Date(ea).getTime();
-        return edited && posted && edited > posted + 60 * 1000; // >1min after post time
-    }, [post?.edited_at, post?.editedAt, post?.updated_at, post?.posted_at, post?.date_created, post?.created_at]);
+        return edited && posted && edited > posted + 60 * 1000;
+    }, [
+        post?.edited_at,
+        post?.editedAt,
+        post?.updated_at,
+        post?.posted_at,
+        post?.date_created,
+        post?.created_at,
+    ]);
 
-    // Lost & Found helpers (UI only)
-    const lostOrFound = String(post?.lost_or_found || '').toLowerCase(); // 'lost' | 'found' | ''
+    const lostOrFound = String(post?.lost_or_found || '').toLowerCase();
     const resolvedAt = post?.resolved_at || post?.resolvedAt || null;
     const resolvedMessage = post?.resolved_message || post?.resolvedMessage || '';
+
     const showMarkFound =
         isOwner &&
-        (lostOrFound === 'lost' || (!lostOrFound && post?.category === 'lost-and-found')) &&
+        (lostOrFound === 'lost' || (!lostOrFound && String(post?.category || '') === 'lost-and-found')) &&
         !resolvedAt;
 
-    // If resolved, show the update message above the old description.
     const displayPost = useMemo(() => {
         if (!resolvedAt) return post;
 
@@ -156,56 +494,10 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
         return { ...post, description: combined };
     }, [post, resolvedAt, resolvedMessage]);
 
-    // Capture-phase handler: swallow any likely location link navigation.
-    const swallowLocationClicks = useCallback((e) => {
-        const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a') : null;
-        if (!a) return;
-
-        const href = (a.getAttribute('href') || '').toLowerCase();
-        const aria = (a.getAttribute('aria-label') || '').toLowerCase();
-        const role = (a.getAttribute('data-role') || '').toLowerCase();
-        const dataLoc = (a.getAttribute('data-location') || a.getAttribute('data-loc') || '').toLowerCase();
-
-        const looksLikeLocation =
-            role === 'location' ||
-            dataLoc === 'true' ||
-            aria.includes('location') ||
-            /(county|counties|city|cities|place|places|location|locations|neighborhood|map|maps|google\.com\/maps)/.test(
-                href
-            );
-
-        if (looksLikeLocation) {
-            e.preventDefault();
-            e.stopPropagation();
-            a.blur?.();
-        }
-    }, []);
-
-    /**
-     * Move the *original* category chip (with its real icon/colors)
-     * into our dedicated host, under the Edit button.
-     *
-     * useLayoutEffect avoids the user seeing a "flash" of the chip in the old location.
-     */
     useLayoutEffect(() => {
-        const root = rootRef.current;
-        const host = categoryHostRef.current;
-        moveCategoryChipToHost(root, host);
+        moveCategoryChipToHost(rootRef.current, categoryHostRef.current);
+    }, [post?.id, post?.category, post?.lost_or_found, post?.rec_type]);
 
-        // Cleanup: restore the hidden chip if the card unmounts
-        return () => {
-            if (!root) return;
-            const hidden = root.querySelectorAll('[data-ll-hidden-category-chip="1"]');
-            hidden.forEach((chip) => {
-                chip.style.display = chip.dataset.llPrevDisplay || '';
-                chip.removeAttribute('data-ll-hidden-category-chip');
-                delete chip.dataset.llPrevDisplay;
-            });
-        };
-        // Re-run when the post changes, because category/icon may differ per post.
-    }, [post?.id, post?.category, post?.lost_or_found, post?.rec_type, rootRef.current]);
-
-    // Also re-run after first paint if the card loads async content (very cheap).
     useEffect(() => {
         const t = setTimeout(() => {
             moveCategoryChipToHost(rootRef.current, categoryHostRef.current);
@@ -213,33 +505,13 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
         return () => clearTimeout(t);
     }, [post?.id, post?.category, post?.lost_or_found, post?.rec_type]);
 
-    // Layout: Edit is top-right. Category row is just under Edit when owner,
-    // or in the top-right when not owner (so it doesn't leave a "gap").
     const topEdit = 10;
     const topCategory = isOwner ? 46 : 10;
     const topResolved = isOwner ? 78 : 42;
 
     return (
-        <Box
-            ref={rootRef}
-            onClickCapture={swallowLocationClicks}
-            onMouseDownCapture={swallowLocationClicks}
-            onKeyDownCapture={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') swallowLocationClicks(e);
-            }}
-            sx={{
-                position: 'relative',
-                // Visually remove click affordance on any plausible location link inside the card
-                '& a[data-location], & a[data-role="location"], & .post-location a, & [data-post-location] a, & a[href*="/county"], & a[href*="/counties"], & a[href*="/city"], & a[href*="/cities"], & a[href*="/place"], & a[href*="/places"], & a[href*="/location"], & a[href*="/locations"], & a[href*="/map"], & a[href*="google.com/maps"]': {
-                    pointerEvents: 'none',
-                    cursor: 'default',
-                    textDecoration: 'none',
-                    color: 'inherit',
-                },
-            }}
-        >
-            {/* TOP-RIGHT: Edit Post (owner only) */}
-            {isOwner && (
+        <Box ref={rootRef} sx={{ position: 'relative' }}>
+            {isOwner ? (
                 <Box
                     sx={{
                         position: 'absolute',
@@ -273,18 +545,15 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                                 bgcolor: 'rgba(255,255,255,0.92)',
                                 borderColor: 'divider',
                                 boxShadow: '0 4px 14px rgba(0,0,0,0.10)',
-                                '&:hover': {
-                                    bgcolor: 'rgba(255,255,255,1)',
-                                },
+                                '&:hover': { bgcolor: 'rgba(255,255,255,1)' },
                             }}
                         >
                             Edit Post
                         </Button>
                     </Tooltip>
                 </Box>
-            )}
+            ) : null}
 
-            {/* CATEGORY ROW (re-homed original chip) + Mark as Found (lost posts) */}
             <Box
                 sx={{
                     position: 'absolute',
@@ -294,11 +563,9 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 0.75,
-                    // allow long category chips (e.g., Help Requests) to extend left
                     maxWidth: 'calc(100% - 24px)',
                 }}
                 onClick={(e) => {
-                    // do not trigger card navigation
                     e.preventDefault();
                     e.stopPropagation();
                 }}
@@ -306,14 +573,9 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                 <Box
                     ref={categoryHostRef}
                     data-ll-category-host="1"
-                    sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        // Keep the chip tight and prevent it from shrinking oddly
-                        flex: '0 1 auto',
-                    }}
+                    sx={{ display: 'flex', alignItems: 'center', flex: '0 1 auto' }}
                 />
-                {showMarkFound && (
+                {showMarkFound ? (
                     <Button
                         size="small"
                         variant="contained"
@@ -332,11 +594,10 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                     >
                         Mark as Found
                     </Button>
-                )}
+                ) : null}
             </Box>
 
-            {/* “Marked as Found” badge — under the category row */}
-            {!!resolvedAt && (
+            {resolvedAt ? (
                 <Box
                     sx={{
                         position: 'absolute',
@@ -356,26 +617,29 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                         Marked as Found by the Owner
                     </Typography>
                 </Box>
-            )}
+            ) : null}
 
             <CommunityPostCard
                 {...rest}
                 post={displayPost || post}
-                // Force the underlying card to render as non-interactive (belt & suspenders)
-                locationClickable={false}
-                onLocationClick={undefined}
+                // ✅ FIX: provide the viewer so the action bar knows you're logged in
+                viewer={user}
+                me={user}
+                currentUser={user}
+                loggedInUser={user}
+                sessionUser={user}
+                locationClickable
+                onLocationClick={(arg1) => {
+                    const p = arg1 && typeof arg1 === 'object' ? arg1 : displayPost || post;
+                    onOpenLocationMap?.(p);
+                }}
+                onCardClick={onCardClick}
+                onOpenUserCard={onOpenUserCard}
+                onOpenShare={onOpenShare}
             />
 
-            {/* Edited tag (click to open history) */}
-            {isEdited && (
-                <Box
-                    sx={{
-                        position: 'absolute',
-                        right: 12,
-                        bottom: 10,
-                        zIndex: 4,
-                    }}
-                >
+            {isEdited ? (
+                <Box sx={{ position: 'absolute', right: 12, bottom: 10, zIndex: 4 }}>
                     <Typography
                         variant="caption"
                         onClick={(e) => {
@@ -393,24 +657,39 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                             bgcolor: 'rgba(255,255,255,0.75)',
                             border: '1px solid',
                             borderColor: 'divider',
-                            '&:hover': {
-                                bgcolor: 'rgba(255,235,59,0.60)', // yellow highlight
-                            },
+                            '&:hover': { bgcolor: 'rgba(255,235,59,0.60)' },
                         }}
                         title="Click to view edit history"
                     >
                         Edited
                     </Typography>
                 </Box>
-            )}
+            ) : null}
         </Box>
     );
 });
+
 ProfilePostCard.displayName = 'ProfilePostCard';
 
-// Chunking strategy for controlled lists
+ProfilePostCard.propTypes = {
+    post: PropTypes.object,
+    user: PropTypes.object,
+    hoveredId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    setHoveredId: PropTypes.func,
+    previewWords: PropTypes.number,
+    previewLineClamp: PropTypes.number,
+    onCardClick: PropTypes.func,
+    onOpenUserCard: PropTypes.func,
+    onOpenShare: PropTypes.func,
+    onOpenLocationMap: PropTypes.func,
+};
+
+/* ───────────────────────────────────────────
+   List chunking
+   ─────────────────────────────────────────── */
+
 const CHUNK_SIZE = 20;
-const LOAD_MORE_AT = 15; // when the 15th item of the *current* chunk is reached, render the next 20
+const LOAD_MORE_AT = 15;
 
 export default function ProfilePostsList({
                                              user,
@@ -422,15 +701,13 @@ export default function ProfilePostsList({
                                          }) {
     const list = useMemo(() => (Array.isArray(posts) ? posts : []), [posts]);
 
-    // Render window (virtualized in chunks; no API change)
     const [renderCount, setRenderCount] = useState(CHUNK_SIZE);
     useEffect(() => {
-        // Reset window when incoming posts change
         setRenderCount(CHUNK_SIZE);
     }, [list.length]);
 
     const visibleCount = Math.min(renderCount, list.length);
-    const sentinelAfterIndex = Math.max(0, visibleCount - (CHUNK_SIZE - LOAD_MORE_AT)); // e.g., 20 - 5 = 15
+    const sentinelAfterIndex = Math.max(0, visibleCount - (CHUNK_SIZE - LOAD_MORE_AT));
     const loadMoreRef = useRef(null);
 
     useEffect(() => {
@@ -440,21 +717,34 @@ export default function ProfilePostsList({
         const io = new IntersectionObserver(
             (entries) => {
                 if (!entries[0].isIntersecting) return;
-                // grow by CHUNK_SIZE each time, up to the total list length
                 setRenderCount((c) => Math.min(c + CHUNK_SIZE, list.length));
             },
-            { root: null, rootMargin: '600px' } // prefetch a bit early
+            { root: null, rootMargin: '600px' }
         );
 
         io.observe(el);
         return () => io.disconnect();
     }, [list.length, visibleCount]);
 
-    // Popover + Share
     const [userAnchor, setUserAnchor] = useState(null);
     const [userForCard, setUserForCard] = useState(null);
+
     const [shareOpen, setShareOpen] = useState(false);
     const [sharePost, setSharePost] = useState(null);
+
+    const [locOpen, setLocOpen] = useState(false);
+    const [locPost, setLocPost] = useState(null);
+
+    const closeLoc = useCallback(() => {
+        setLocOpen(false);
+        setLocPost(null);
+    }, []);
+
+    const openLocForPost = useCallback((p) => {
+        if (!p) return;
+        setLocPost(p);
+        setLocOpen(true);
+    }, []);
 
     const handleOpenUserCard = useCallback((el, authorLike) => {
         const id =
@@ -488,16 +778,14 @@ export default function ProfilePostsList({
                 </Typography>
             ) : null}
 
-            {/* One card per row to keep the profile rail width */}
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
                 {list.slice(0, visibleCount).map((p, i) => (
-                    <React.Fragment key={`${p.category || 'post'}-${p.id}`}>
+                    <React.Fragment key={`${p?.category || 'post'}-${p?.id || i}`}>
                         <ProfilePostCard
                             post={p}
                             user={user}
                             hoveredId={hoveredId}
                             setHoveredId={setHoveredId}
-                            // Profile-specific overrides:
                             previewWords={28}
                             previewLineClamp={4}
                             onCardClick={onCardClick}
@@ -506,9 +794,9 @@ export default function ProfilePostsList({
                                 setSharePost(post0);
                                 setShareOpen(true);
                             }}
+                            onOpenLocationMap={openLocForPost}
                         />
-                        {/* Sentinel: appears right after the 15th item of the current chunk */}
-                        {i === sentinelAfterIndex - 1 && <Box ref={loadMoreRef} sx={{ height: 1 }} />}
+                        {i === sentinelAfterIndex - 1 ? <Box ref={loadMoreRef} sx={{ height: 1 }} /> : null}
                     </React.Fragment>
                 ))}
             </Box>
@@ -529,7 +817,6 @@ export default function ProfilePostsList({
                 </Box>
             ) : null}
 
-            {/* Popover + Share — same UX as Community */}
             <UserCardPopover
                 anchorEl={userAnchor}
                 onClose={() => setUserAnchor(null)}
@@ -544,10 +831,17 @@ export default function ProfilePostsList({
                         })
                     )
                 }
-                onViewProfile={(u) => window.location.assign(`/${u.handle || u.id}`)}
+                onViewProfile={(u) => window.location.assign(`/${u?.handle || u?.id}`)}
             />
 
-            <SharePostDialog open={shareOpen} onClose={() => setShareOpen(false)} viewer={user} post={sharePost} />
+            <SharePostDialog
+                open={shareOpen}
+                onClose={() => setShareOpen(false)}
+                viewer={user}
+                post={sharePost}
+            />
+
+            <LocationMapDialog open={locOpen} post={locPost} onClose={closeLoc} />
         </Box>
     );
 }

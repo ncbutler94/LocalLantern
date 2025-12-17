@@ -18,7 +18,6 @@ import React, {
     useMemo,
     useRef,
     useState,
-    useTransition,
 } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -281,6 +280,12 @@ export default function UserProfilePage({ me }) {
     const [markFoundSaving, setMarkFoundSaving] = useState(false);
     const [markFoundError, setMarkFoundError] = useState('');
 
+
+    // Delete post (profile page)
+    const [deletePostOpen, setDeletePostOpen] = useState(false);
+    const [deletePostId, setDeletePostId] = useState(null);
+    const [deletePostBusy, setDeletePostBusy] = useState(false);
+    const [deletePostError, setDeletePostError] = useState('');
     const isMine = me && profile && me.id === profile.id;
 
     // Username (handle) editing
@@ -327,14 +332,25 @@ export default function UserProfilePage({ me }) {
             setMarkFoundOpen(true);
         };
 
+
+        const onReqDelete = (e) => {
+            const pid = Number(e?.detail?.postId || e?.detail?.post?.id || 0);
+            if (!pid) return;
+            setDeletePostError('');
+            setDeletePostId(pid);
+            setDeletePostOpen(true);
+        };
+
         window.addEventListener('ll:communityPost:requestEdit', onReqEdit);
         window.addEventListener('ll:communityPost:requestHistory', onReqHistory);
         window.addEventListener('ll:communityPost:requestMarkFound', onReqMarkFound);
+        window.addEventListener('ll:communityPost:requestDelete', onReqDelete);
 
         return () => {
             window.removeEventListener('ll:communityPost:requestEdit', onReqEdit);
             window.removeEventListener('ll:communityPost:requestHistory', onReqHistory);
             window.removeEventListener('ll:communityPost:requestMarkFound', onReqMarkFound);
+            window.removeEventListener('ll:communityPost:requestDelete', onReqDelete);
         };
     }, []);
 
@@ -804,6 +820,34 @@ export default function UserProfilePage({ me }) {
         });
     }, []);
 
+    // Remove a deleted post across the profile UI (right rail + expanded grid + lists)
+    const removeDeletedCommunityPost = useCallback((deletedId) => {
+        const idNum = Number(deletedId);
+        if (!Number.isFinite(idNum)) return;
+
+        try {
+            window.dispatchEvent(
+                new CustomEvent('ll:communityPost:deleted', { detail: { postId: idNum } })
+            );
+        } catch {
+            /* ignore */
+        }
+
+        const dropFromList = (prev) =>
+            Array.isArray(prev) ? prev.filter((p) => Number(p?.id) !== idNum) : prev;
+
+        setFeedPosts((prev) => dropFromList(prev));
+        setActivity((prev) => {
+            if (!prev) return prev;
+            const next = { ...prev };
+            if (Array.isArray(prev.posts)) next.posts = dropFromList(prev.posts);
+            if (Array.isArray(prev.reposts)) next.reposts = dropFromList(prev.reposts);
+            if (Array.isArray(prev.likes)) next.likes = dropFromList(prev.likes);
+            return next;
+        });
+    }, []);
+
+
     const closeEditDialog = useCallback(() => {
         setEditOpen(false);
         setEditPostId(null);
@@ -830,6 +874,14 @@ export default function UserProfilePage({ me }) {
         setMarkFoundError('');
         setMarkFoundSaving(false);
     }, []);
+
+    const closeDeletePostDialog = useCallback(() => {
+        setDeletePostOpen(false);
+        setDeletePostId(null);
+        setDeletePostBusy(false);
+        setDeletePostError('');
+    }, []);
+
 
     const submitEditPost = useCallback(async () => {
         if (!editPostId || !editDraft) return;
@@ -892,6 +944,49 @@ export default function UserProfilePage({ me }) {
         }
     }, [markFoundPostId, markFoundMessage, applyUpdatedCommunityPost, closeMarkFoundDialog]);
 
+    const openDeleteFromEdit = useCallback(() => {
+        if (!editPostId) return;
+        setDeletePostError('');
+        setDeletePostId(editPostId);
+        setDeletePostOpen(true);
+    }, [editPostId]);
+
+    const submitDeletePost = useCallback(async () => {
+        if (!deletePostId) return;
+        setDeletePostBusy(true);
+        setDeletePostError('');
+        try {
+            await axios.delete(`${api}/api/community/${deletePostId}`, { withCredentials: true });
+
+            removeDeletedCommunityPost(deletePostId);
+
+            // If the user was editing/marking this post, close those dialogs too
+            if (Number(editPostId) === Number(deletePostId)) {
+                closeEditDialog();
+            }
+            if (Number(markFoundPostId) === Number(deletePostId)) {
+                closeMarkFoundDialog();
+            }
+            closeDeletePostDialog();
+        } catch (err) {
+            const msg =
+                err?.response?.data?.message ||
+                err?.message ||
+                'Could not delete this post.';
+            setDeletePostError(msg);
+            setDeletePostBusy(false);
+        }
+    }, [
+        deletePostId,
+        removeDeletedCommunityPost,
+        editPostId,
+        closeEditDialog,
+        markFoundPostId,
+        closeMarkFoundDialog,
+        closeDeletePostDialog,
+    ]);
+
+
     // Avoid object-URL churn and memory leaks for staged images
     const avatarObjectUrl = useMemo(
         () => (pendingAvatar ? URL.createObjectURL(pendingAvatar) : null),
@@ -922,6 +1017,26 @@ export default function UserProfilePage({ me }) {
 
     // Posts privacy
     const canViewPosts = canViewSection(privacy?.posts || 'public');
+
+    // About edits bubble up from <AboutSection /> so Save Profile persists them
+    const onAboutEdit = useCallback((partial) => {
+        if (!partial || typeof partial !== 'object') return;
+        if (Object.prototype.hasOwnProperty.call(partial, 'bio')) {
+            setBioDraft(partial.bio ?? '');
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, 'relationship')) {
+            setRelationship(partial.relationship ?? '');
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, 'birthday')) {
+            setBirthday(partial.birthday ?? '');
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, 'home_city')) {
+            setHomeCity(partial.home_city ?? '');
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, 'home_county')) {
+            setHomeCounty(partial.home_county ?? '');
+        }
+    }, []);
 
     // --- helpers to save/restore scroll for profile page ---
     const saveProfileScrollState = useCallback(() => {
@@ -1029,16 +1144,10 @@ export default function UserProfilePage({ me }) {
         ]
     );
 
-    // Keep typing responsive
-    const [, startTransition] = useTransition();
-    const onChangeContact = useCallback(
-        (next) => {
-            startTransition(() => {
-                setContact(next);
-            });
-        },
-        [startTransition]
-    );
+    // Contact updates (kept simple to avoid hook-lint issues)
+    const onChangeContact = (next) => {
+        setContact(next);
+    };
 
     // FOLLOW/UNFOLLOW — aligned with user-card follow endpoint
     const toggleFollow = async () => {
@@ -1481,6 +1590,7 @@ export default function UserProfilePage({ me }) {
                                     profile={profile}
                                     privacyValue={privacy?.about || 'public'}
                                     isFollower={isFollowing}
+                                    onEdit={onAboutEdit}
                                 />
                             </SectionCard>
                         )}
@@ -2098,6 +2208,59 @@ export default function UserProfilePage({ me }) {
                         disabled={!editDraft || editLoading || editSaving}
                     >
                         {editSaving ? 'Saving…' : 'Save'}
+                    </Button>
+                    {isMine ? (
+                        <Button
+                            color="error"
+                            variant="outlined"
+                            onClick={openDeleteFromEdit}
+                            disabled={editLoading || editSaving || deletePostBusy}
+                        >
+                            Delete Post
+                        </Button>
+                    ) : null}
+                </DialogActions>
+            </Dialog>
+
+
+
+            {/* Delete post confirmation dialog */}
+            <Dialog
+                open={deletePostOpen}
+                fullWidth
+                maxWidth="xs"
+                onClose={(_, reason) => {
+                    if (reason === 'backdropClick') return;
+                    closeDeletePostDialog();
+                }}
+            >
+                <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    Delete Post
+                    <IconButton onClick={closeDeletePostDialog} size="small" aria-label="Close">
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent dividers>
+                    {deletePostError ? (
+                        <Alert severity="error" sx={{ mb: 1 }}>
+                            {deletePostError}
+                        </Alert>
+                    ) : null}
+                    <Typography variant="body2">
+                        Are you sure you want to delete this post? This can&apos;t be undone.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={closeDeletePostDialog} disabled={deletePostBusy}>
+                        Cancel
+                    </Button>
+                    <Button
+                        color="error"
+                        variant="contained"
+                        onClick={submitDeletePost}
+                        disabled={deletePostBusy}
+                    >
+                        {deletePostBusy ? 'Deleting…' : 'Delete'}
                     </Button>
                 </DialogActions>
             </Dialog>

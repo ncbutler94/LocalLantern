@@ -1,7 +1,7 @@
 // src/pages/community/CommunityPanel.jsx
 // Fixed header row + separate scroll area for the cards (CommunityList).
 // UPDATED:
-//  • Removed the "Map View" toggle logic and UI.
+//  • Adds "Show Filters" / "Hide Filters" toggle in the header row so it's always accessible.
 //  • Accepts `selectable` prop to control whether left-list cards show selection styling.
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -11,7 +11,7 @@ import {
     Typography,
     Collapse,
 } from '@mui/material';
-import { ExpandMore } from '@mui/icons-material';
+import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 
 import CommunityFilter from './CommunityFilter';
@@ -105,6 +105,10 @@ export default function CommunityPanel(props) {
         }
     };
 
+    const handleToggleFiltersClick = () => {
+        if (typeof onToggleFilters === 'function') onToggleFilters();
+    };
+
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '97%', overflow: 'hidden' }}>
             {/* Filters --------------------------------------------------- */}
@@ -132,7 +136,6 @@ export default function CommunityPanel(props) {
                         selectedDateRange={selectedDateRange}
                         dateRangeOptions={dateRangeOptions}
                         onDateRangeChange={onDateRangeChange}
-                        onHideFilters={onToggleFilters}
                     />
                 </Box>
             </Collapse>
@@ -178,7 +181,37 @@ export default function CommunityPanel(props) {
                             alt="Community marker"
                             sx={{ width: 26, height: 26, display: 'block' }}
                         />
-                        <Typography variant="h6" sx={{ fontWeight: 700 }}>Community Posts</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                            Community Posts
+                        </Typography>
+                    </Box>
+
+                    {/* Middle/right: filter toggle (always visible) */}
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            order: { xs: 3, md: 2 },
+                            width: { xs: '100%', md: 'auto' },
+                            justifyContent: { xs: 'flex-start', md: 'center' },
+                        }}
+                    >
+                        <Button
+                            variant="outlined"
+                            onClick={handleToggleFiltersClick}
+                            startIcon={showFilters ? <ExpandLess /> : <ExpandMore />}
+                            sx={{
+                                borderRadius: 999,
+                                px: 1.75,
+                                fontWeight: 800,
+                                textTransform: 'none',
+                                whiteSpace: 'nowrap',
+                            }}
+                            aria-label={showFilters ? 'Hide filters' : 'Show filters'}
+                        >
+                            {showFilters ? 'Hide Filters' : 'Show Filters'}
+                        </Button>
                     </Box>
 
                     {/* Right: new post */}

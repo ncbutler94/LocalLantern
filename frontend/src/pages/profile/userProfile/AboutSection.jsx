@@ -1,15 +1,10 @@
 // src/pages/profile/userProfile/AboutSection.jsx
-// Renders the About body only. Privacy is handled by SectionCard / UserProfilePage popover.
-// Updates (this version):
-// - Bio input is fixed-height and scrolls (no autosize while typing).
-// - County shown above City on the edit form (this section only).
-// - Header color now matches the Community Posts header (uses SectionCard default; no override).
-// - Relationship dropdown: removed "Do not display". If "Prefer not to say" is chosen, it is hidden on profile.
-// - Emits edits via onEdit(partial).
-// - NEW: Shows Birthday with a blue cake icon, and adds a Birthday date field in edit mode.
-// - NEW: Location icon is now orange.
+// Updates in this version:
+// - Adds a bit more spacing between Bio and Relationship in edit mode.
+// - Moves the "Location" label up slightly (less top margin and a tighter label spacing).
+// - Keeps: birthday auto-populate + 18+ enforcement + onEdit wiring.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
     Box,
@@ -50,11 +45,9 @@ const toCountyDisplay = (county) =>
 const locationLabel = (city, county) =>
     [city, toCountyDisplay(county)].filter(Boolean).join(', ');
 
-// Normalize DB/raw values into our internal enum.
 const normalizeRelationshipRaw = (raw) => {
     if (raw == null || raw === '') return 'prefer-not';
     if (typeof raw === 'number') {
-        // legacy numeric codes if any
         const mapNum = { 1: 'single', 2: 'in-relationship', 3: 'married', 4: 'its-complicated' };
         return mapNum[raw] || 'prefer-not';
     }
@@ -77,6 +70,31 @@ const prettyRelationship = (v) => {
     return map[v] || '';
 };
 
+const normalizeToISODate = (raw) => {
+    if (!raw) return '';
+    if (raw instanceof Date) {
+        if (Number.isNaN(raw.valueOf())) return '';
+        return raw.toISOString().slice(0, 10);
+    }
+
+    const s = String(raw).trim();
+    if (!s) return '';
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+        const [mm, dd, yyyy] = s.split('/').map((x) => parseInt(x, 10));
+        if (!yyyy || !mm || !dd) return '';
+        const mm2 = String(mm).padStart(2, '0');
+        const dd2 = String(dd).padStart(2, '0');
+        return `${yyyy}-${mm2}-${dd2}`;
+    }
+
+    const d = new Date(s);
+    if (Number.isNaN(d.valueOf())) return '';
+    return d.toISOString().slice(0, 10);
+};
+
 async function fetchProfileIfNeeded(existing) {
     if (existing && typeof existing === 'object') return existing;
     const urls = ['/users/profile', '/api/users/profile'];
@@ -95,22 +113,97 @@ export default function AboutSection({
                                          profile: initialProfile = null,
                                          editMode = false,
                                          isOwner = false,
-                                         privacyValue = 'public', // from SectionCard/UserProfilePage
-                                         isFollower = false, // whether viewer follows this user
-                                         onEdit = null, // optional: parent collects partial edits for "Save Profile"
+                                         privacyValue = 'public',
+                                         isFollower = false,
+                                         onEdit = null,
                                      }) {
     const [profile, setProfile] = useState(initialProfile);
     const [loading, setLoading] = useState(!initialProfile);
 
     const [bio, setBio] = useState('');
-    const [relationship, setRelationship] = useState('prefer-not'); // internal enum
+    const [relationship, setRelationship] = useState('prefer-not');
     const [joined, setJoined] = useState('');
 
     const [city, setCity] = useState('');
     const [county, setCounty] = useState('');
-    const [birthday, setBirthday] = useState(''); // YYYY-MM-DD
 
-    // Load profile if not provided
+    const [birthday, setBirthday] = useState(''); // YYYY-MM-DD
+    const [birthdayError, setBirthdayError] = useState('');
+
+    const prevEditModeRef = useRef(false);
+    const birthdayTouchedRef = useRef(false);
+
+    const maxDob = useMemo(() => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        d.setFullYear(d.getFullYear() - 18);
+        return d.toISOString().slice(0, 10);
+    }, []);
+
+    const isUnder18 = (dateStr) => {
+        if (!dateStr) return false;
+        return dateStr > maxDob;
+    };
+
+    const getProfileUser = (rawProfile) => {
+        const raw = rawProfile || {};
+        return raw.user || raw;
+    };
+
+    const readBirthdayFromProfile = (p) => {
+        const candidates = [p.birthday, p.birthdate, p.date_of_birth, p.dob, p.birth_date];
+        for (const c of candidates) {
+            const iso = normalizeToISODate(c);
+            if (iso) return iso;
+        }
+        return '';
+    };
+
+    const syncFieldsFromProfile = (rawProfile) => {
+        const p = getProfileUser(rawProfile);
+
+        const nextBio = p.bio ?? p.about ?? p.about_me ?? '';
+        const nextRelationship = normalizeRelationshipRaw(p.relationship);
+        const nextJoined = p.created_at ?? p.joined_at ?? '';
+        const nextCity = p.home_city ?? p.city ?? '';
+        const nextCounty = p.home_county ?? p.county ?? '';
+
+        setBio(String(nextBio).slice(0, BIO_LIMIT));
+        setRelationship(nextRelationship);
+        setJoined(nextJoined);
+        setCity(nextCity || '');
+        setCounty(nextCounty || '');
+
+        const nextBirthday = readBirthdayFromProfile(p);
+        if (nextBirthday && isUnder18(nextBirthday)) {
+            setBirthday('');
+            setBirthdayError('You must be at least 18 years old.');
+        } else {
+            setBirthday(nextBirthday || '');
+            setBirthdayError('');
+        }
+
+        birthdayTouchedRef.current = false;
+    };
+
+    const maybeAutofillBirthdayFromProfile = (rawProfile) => {
+        if (birthdayTouchedRef.current) return;
+        if (birthday) return;
+
+        const p = getProfileUser(rawProfile);
+        const nextBirthday = readBirthdayFromProfile(p);
+        if (!nextBirthday) return;
+
+        if (isUnder18(nextBirthday)) {
+            setBirthday('');
+            setBirthdayError('You must be at least 18 years old.');
+            return;
+        }
+
+        setBirthday(nextBirthday);
+        setBirthdayError('');
+    };
+
     useEffect(() => {
         let alive = true;
         (async () => {
@@ -124,35 +217,41 @@ export default function AboutSection({
         };
     }, [initialProfile]);
 
-    // Sync local inputs from profile
     useEffect(() => {
-        // Accept either { ...user } or { user: { ... } }
-        const raw = profile || {};
-        const p = raw.user || raw;
+        if (!profile) return;
+        if (!editMode) {
+            syncFieldsFromProfile(profile);
+        }
+    }, [profile, editMode]);
 
-        const initialBio = p.bio ?? p.about ?? p.about_me ?? '';
-        setBio(String(initialBio).slice(0, BIO_LIMIT));
-        setRelationship(normalizeRelationshipRaw(p.relationship));
-        setJoined(p.created_at ?? p.joined_at ?? '');
-        setCity(p.home_city ?? p.city ?? '');
-        setCounty(p.home_county ?? p.county ?? '');
-        setBirthday(p.birthday ?? '');
-    }, [profile]);
+    useEffect(() => {
+        const wasEditing = prevEditModeRef.current;
 
-    // Emit edits to parent so the header "Save Profile" can handle persistence.
+        if (editMode && !wasEditing && profile) {
+            syncFieldsFromProfile(profile);
+        }
+
+        prevEditModeRef.current = editMode;
+    }, [editMode, profile]);
+
+    useEffect(() => {
+        if (!editMode) return;
+        if (!profile) return;
+        maybeAutofillBirthdayFromProfile(profile);
+    }, [editMode, profile, birthday]);
+
     useEffect(() => {
         if (typeof onEdit === 'function') {
             onEdit({
                 bio,
-                relationship,       // keep raw value; view layer hides "prefer-not"
+                relationship,
                 home_city: city || '',
                 home_county: county || '',
-                birthday: birthday || '', // ISO date (YYYY-MM-DD)
+                birthday: birthday || '',
             });
         }
     }, [onEdit, bio, relationship, city, county, birthday]);
 
-    // Same view rules as other sections: public, followers/friends, or private
     const canViewAbout = useMemo(() => {
         if (isOwner) return true;
         if (privacyValue === 'public') return true;
@@ -162,7 +261,6 @@ export default function AboutSection({
 
     const labelLocation = useMemo(() => locationLabel(city, county), [city, county]);
 
-    // Hide relationship entirely when "prefer-not"
     const showRelationship = relationship && relationship !== 'prefer-not';
     const hasAny = useMemo(
         () => Boolean((bio && bio.trim()) || showRelationship || birthday || (city || county) || joined),
@@ -187,14 +285,12 @@ export default function AboutSection({
         <Box id="about-body" sx={{ display: 'grid', rowGap: 1.25 }}>
             {hasAny ? (
                 <>
-                    {/* Bio — plain text with extra bottom spacing */}
                     {bio ? (
                         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mb: 1.25 }}>
                             {bio}
                         </Typography>
                     ) : null}
 
-                    {/* Relationship — hidden if "prefer-not" */}
                     {showRelationship ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <FavoriteIcon fontSize="small" color="error" />
@@ -202,7 +298,6 @@ export default function AboutSection({
                         </Box>
                     ) : null}
 
-                    {/* Birthday */}
                     {birthday ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <CakeIcon fontSize="small" sx={{ color: '#1976d2' }} />
@@ -210,7 +305,6 @@ export default function AboutSection({
                         </Box>
                     ) : null}
 
-                    {/* Location */}
                     {city || county ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                             <LocationOnIcon fontSize="small" sx={{ color: 'orange' }} />
@@ -218,7 +312,6 @@ export default function AboutSection({
                         </Box>
                     ) : null}
 
-                    {/* Joined */}
                     {joined ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <CalendarMonthIcon fontSize="small" />
@@ -236,12 +329,11 @@ export default function AboutSection({
             sx={{
                 display: 'grid',
                 rowGap: 1.25,
-                maxWidth: 640, // keep inputs from getting too wide
-                mt: 2, // move inputs down away from title bar
+                maxWidth: 640,
+                mt: 2,
                 width: '100%',
             }}
         >
-            {/* Bio — fixed height; scrolls instead of growing */}
             <TextField
                 label="Bio"
                 value={bio}
@@ -251,18 +343,18 @@ export default function AboutSection({
                 }}
                 helperText={`${bio.length} / ${BIO_LIMIT}`}
                 multiline
-                rows={4} // fixed height
+                rows={4}
                 fullWidth
                 inputProps={{ maxLength: BIO_LIMIT }}
                 sx={{
+                    mb: 2, // ✅ extra space between Bio and Relationship
                     '& .MuiInputBase-inputMultiline': {
                         overflow: 'auto',
-                        resize: 'none', // prevent manual resize handles
+                        resize: 'none',
                     },
                 }}
             />
 
-            {/* Relationship dropdown (no "Do not display") */}
             <FormControl fullWidth>
                 <InputLabel id="about-relationship-label">Relationship</InputLabel>
                 <Select
@@ -279,30 +371,51 @@ export default function AboutSection({
                 </Select>
             </FormControl>
 
-            {/* Birthday */}
             <TextField
                 label="Birthday"
                 type="date"
                 value={birthday || ''}
-                onChange={(e) => setBirthday(e.target.value || '')}
+                onChange={(e) => {
+                    const next = e.target.value || '';
+                    birthdayTouchedRef.current = true;
+
+                    if (next && isUnder18(next)) {
+                        setBirthdayError('You must be at least 18 years old.');
+                        return;
+                    }
+
+                    setBirthdayError('');
+                    setBirthday(next);
+                }}
                 fullWidth
+                error={Boolean(birthdayError)}
+                helperText={birthdayError || ' '}
                 InputLabelProps={{ shrink: true }}
+                inputProps={{
+                    max: maxDob,
+                }}
             />
 
-            {/* County above City (this section only) */}
-            <Box sx={{ display: 'grid', rowGap: 1 }}>
-                <TextField
-                    label="County"
-                    value={county}
-                    onChange={(e) => setCounty(e.target.value)}
-                    fullWidth
-                />
-                <TextField
-                    label="City"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    fullWidth
-                />
+            <Box sx={{ mt: 0 /* ✅ move Location up */ }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2 /* ✅ tighter */ }}>
+                    Location
+                </Typography>
+
+                {/* County above City */}
+                <Box sx={{ display: 'grid', rowGap: 1 }}>
+                    <TextField
+                        label="County"
+                        value={county}
+                        onChange={(e) => setCounty(e.target.value)}
+                        fullWidth
+                    />
+                    <TextField
+                        label="City"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        fullWidth
+                    />
+                </Box>
             </Box>
         </Box>
     );
@@ -314,5 +427,5 @@ AboutSection.propTypes = {
     isOwner: PropTypes.bool,
     privacyValue: PropTypes.string,
     isFollower: PropTypes.bool,
-    onEdit: PropTypes.func, // receives { bio, relationship, birthday, home_city, home_county }
+    onEdit: PropTypes.func,
 };

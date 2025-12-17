@@ -17,7 +17,7 @@ import React, {
     useReducer,
     useRef,
 } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Box,
     CircularProgress,
@@ -26,8 +26,7 @@ import {
     Tabs,
     Tab,
 } from '@mui/material';
-import OpenInFullIcon from '@mui/icons-material/OpenInFull';
-import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import CommunityMap from './CommunityMapView';
 import CommunityPanel from './CommunityPanel';
@@ -114,10 +113,6 @@ const deriveSplitCategory = (post) => {
     }
     return cat || 'announcement';
 };
-const categoryColorOf = (post) => CATEGORY_META[deriveSplitCategory(post)]?.color || '#CBD5E1';
-
-const getNum = (v) => Number(v ?? 0);
-const pickCount = (...xs) => getNum(xs.find((x) => typeof x !== 'undefined'));
 
 export default function CommunityPage() {
     /* ---------- window/body scroll lock + header measurement ---------- */
@@ -153,11 +148,8 @@ export default function CommunityPage() {
     /* ---------- refs ---------- */
     const mapRef = useRef(null);
     const lastMarkerLatLngByIdRef = useRef({});
-    // Fix: schedule refetch AFTER state commits (prevents “select twice”)
     const refetchTimerRef = useRef(null);
     const latestRefetchRef = useRef(null);
-
-    // Used to force a popup re-open when switching tabs (Map tab should always show the selected post popup)
     const reopenPopupTimerRef = useRef(null);
 
     useEffect(() => {
@@ -212,10 +204,19 @@ export default function CommunityPage() {
 
     const [selectedPost, setSelectedPost] = useState(null);
     const selectedPostId = selectedPost?.id ?? null;
+
+    // Keeping this state so we don't disrupt your existing sizing logic.
+    // (The button is repurposed to "View Post Page".)
     const [detailExpanded, setDetailExpanded] = useState(false);
 
     const clearSelection = useCallback(() => {
         setSelectedPost(null);
+    }, []);
+
+    /* ✅ Show/Hide filters state (so header button works) */
+    const [showFilters, setShowFilters] = useState(true);
+    const handleToggleFilters = useCallback(() => {
+        setShowFilters((v) => !v);
     }, []);
 
     /* ---------- filters ---------- */
@@ -236,8 +237,6 @@ export default function CommunityPage() {
     const [openedPopupId, setOpenedPopupId] = useState(null);
     const [hoveredId, setHoveredId] = useState(null);
 
-    // Cache for map popups when a marker exists but the corresponding post
-    // isn't present in the current left feed result set.
     const [popupPostCache, setPopupPostCache] = useState(() => ({}));
     const popupFetchInFlightRef = useRef(new Set());
 
@@ -342,7 +341,6 @@ export default function CommunityPage() {
             const idStr = id != null ? String(id) : '';
             if (!idStr) return;
 
-            // Already in current list or cache
             if ((filteredPosts || []).some((p) => String(p?.id) === idStr)) return;
             if (popupPostCache?.[idStr]) return;
             if (popupFetchInFlightRef.current.has(idStr)) return;
@@ -362,13 +360,12 @@ export default function CommunityPage() {
                     return next;
                 });
 
-                // If the user is currently focused on this post, upgrade the selected post with full data.
                 setSelectedPost((prev) => {
                     if (prev?.id == null) return prev;
                     return String(prev.id) === idStr ? data : prev;
                 });
             } catch {
-                // swallow (we'll keep showing the lightweight loading state)
+                // ignore
             } finally {
                 popupFetchInFlightRef.current.delete(idStr);
             }
@@ -381,15 +378,13 @@ export default function CommunityPage() {
             const p = post || {};
             const idStr = p?.id != null ? String(p.id) : null;
 
-            // Prefer the exact marker click latLng if provided (accounts for de-stacked markers)
             if (latLngOverride && Number.isFinite(latLngOverride.lat) && Number.isFinite(latLngOverride.lng)) {
-                const POPUP_LAT_OFFSET = 0.01; // try 0.01 first, then 0.02 if needed
+                const POPUP_LAT_OFFSET = 0.01;
                 setCenter([latLngOverride.lat + POPUP_LAT_OFFSET, latLngOverride.lng]);
                 setZoomLevel(ZOOM_BY_LEVEL.city);
                 return;
             }
 
-            // If we can get lat/lng from the points geojson (best for consistency)
             if (idStr) {
                 const pt = getPointLatLngById(idStr);
                 if (pt) {
@@ -399,7 +394,6 @@ export default function CommunityPage() {
                 }
             }
 
-            // Otherwise fall back to the post itself (direct lat/lng), then city/county coords.
             const lat = Number(p.latitude ?? p.lat);
             const lng = Number(p.longitude ?? p.lng);
             if (Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -434,8 +428,6 @@ export default function CommunityPage() {
             setActiveTabSafe('map');
             setDetailExpanded(false);
 
-            // Keep the clicked post "selected" even when switching to Map,
-            // so returning to the Posts tab still shows the same details.
             if (arg1 && typeof arg1 === 'object' && arg1.id != null) {
                 setSelectedPost((prev) => {
                     const prevId = prev?.id;
@@ -444,7 +436,6 @@ export default function CommunityPage() {
                 });
             }
 
-            // numeric signature: (lat, lng, level)
             if (typeof arg1 === 'number' && typeof arg2 === 'number') {
                 const level = levelArg || 'city';
                 setCenter([arg1, arg2]);
@@ -482,9 +473,11 @@ export default function CommunityPage() {
         (id, latLng) => {
             const idStr = id != null ? String(id) : null;
             if (!idStr) return;
+
             if (latLng && Number.isFinite(latLng.lat) && Number.isFinite(latLng.lng)) {
                 lastMarkerLatLngByIdRef.current[idStr] = { lat: latLng.lat, lng: latLng.lng };
             }
+
             const fromList = (filteredPosts || []).find((p) => String(p?.id) === idStr) || null;
             const fromCache = popupPostCache?.[idStr] || null;
             const post = fromList || fromCache || { id: idStr };
@@ -517,7 +510,6 @@ export default function CommunityPage() {
                 />
             );
 
-            // Support both string and numeric ids (and a few legacy key patterns)
             map.set(idStr, node);
             map.set(post.id, node);
             const idNum = Number(idStr);
@@ -563,6 +555,8 @@ export default function CommunityPage() {
 
     /* ---------- deep-link: /community?post=:id ---------- */
     const loc = useLocation();
+    const navigate = useNavigate();
+
     const deepPostId = useMemo(() => {
         const s = new URLSearchParams(loc.search);
         const id = s.get('post');
@@ -576,7 +570,6 @@ export default function CommunityPage() {
             setSelectedPost(found);
             setActiveTabSafe('posts');
             setDetailExpanded(false);
-            return;
         }
     }, [deepPostId, communityPosts, setActiveTabSafe]);
 
@@ -584,11 +577,9 @@ export default function CommunityPage() {
     const handleSearchClick = useCallback(
         (mode) => {
             clearSelection();
-
             if (mode === 'manual') {
                 dispatch({ type: 'appliedSearch', value: search });
             }
-
             scheduleRefetch();
         },
         [search, clearSelection, scheduleRefetch]
@@ -620,7 +611,6 @@ export default function CommunityPage() {
         fetchTrendingSummary();
     }, [fetchTrendingSummary]);
 
-    /* ---------- when clicking a Trending summary ---------- */
     const handleTrendingSelect = useCallback(
         (categoryId) => {
             clearSelection();
@@ -639,7 +629,6 @@ export default function CommunityPage() {
         [clearSelection, scheduleRefetch, setActiveTabSafe]
     );
 
-    /* ---------- UI helpers ---------- */
     const locationLabel = useMemo(() => {
         if (selectedCity) return selectedCity;
         if (selectedCounty) return `${selectedCounty} County`.replace(/ County County$/, ' County');
@@ -750,8 +739,8 @@ export default function CommunityPage() {
                         dispatch({ type: 'dateRange', value: val });
                         handleSearchClick('auto');
                     }}
-                    showFilters={true}
-                    onToggleFilters={() => {}}
+                    showFilters={showFilters}
+                    onToggleFilters={handleToggleFilters}
                     onNewPost={openStepOne}
                     selectedPostId={selectedPostId}
                     selectable={true}
@@ -763,7 +752,8 @@ export default function CommunityPage() {
                 sx={{
                     position: 'relative',
                     mt: 2,
-                    height: 'calc(100% - 30px)',
+                    top: '15px',
+                    height: '94%',
                     p: 0,
                     borderLeft: { md: 2 },
                     borderRight: { md: 2 },
@@ -806,7 +796,6 @@ export default function CommunityPage() {
                             setActiveTabSafe(v);
                             if (v !== 'posts') setDetailExpanded(false);
 
-                            // When switching to the Map tab, always show the selected post popup (like clicking its marker).
                             if (v === 'map') {
                                 const idStr =
                                     selectedPost?.id != null
@@ -821,7 +810,6 @@ export default function CommunityPage() {
                                         reopenPopupTimerRef.current = null;
                                     }
 
-                                    // Force a true state transition so Leaflet reliably opens the popup on mount.
                                     setOpenedPopupId(null);
                                     reopenPopupTimerRef.current = setTimeout(() => {
                                         reopenPopupTimerRef.current = null;
@@ -838,7 +826,6 @@ export default function CommunityPage() {
 
                                     const savedLatLng = lastMarkerLatLngByIdRef.current[idStr];
                                     if (savedLatLng) {
-                                        // ✅ Replay marker-click positioning (including your POPUP_LAT_OFFSET logic)
                                         focusMapForPost(post, savedLatLng);
                                     } else {
                                         const lat = Number(post?.latitude ?? post?.lat);
@@ -847,12 +834,10 @@ export default function CommunityPage() {
                                         if (Number.isFinite(lat) && Number.isFinite(lng)) {
                                             const POPUP_LAT_OFFSET = 0.01;
                                             setCenter([lat + POPUP_LAT_OFFSET, lng]);
-                                            // keep zoom as-is
                                         } else {
                                             focusMapForPost(post);
                                         }
                                     }
-
                                 }
                             }
                         }}
@@ -865,23 +850,36 @@ export default function CommunityPage() {
                         <Tab label="Posts" value="posts" />
                     </Tabs>
 
+                    {/* ✅ Replace Expand with View Post Page */}
                     {activeTab === 'posts' && (
                         <Box sx={{ ml: 'auto' }}>
                             <Button
                                 size="small"
-                                color="inherit"
-                                onClick={() => setDetailExpanded((v) => !v)}
-                                startIcon={detailExpanded ? <CloseFullscreenIcon /> : <OpenInFullIcon />}
+                                variant="outlined"
+                                startIcon={<OpenInNewIcon />}
+                                disabled={!selectedPost || selectedPost.id == null}
+                                onClick={() => {
+                                    if (!selectedPost || selectedPost.id == null) return;
+
+                                    try {
+                                        // Save where to return + scroll position (PostPage uses this)
+                                        sessionStorage.setItem('ll:community:url', window.location.pathname + window.location.search);
+                                        const listEl = document.querySelector('[data-community-scroll]');
+                                        const top = listEl?.scrollTop || 0;
+                                        sessionStorage.setItem('ll:community:scrollTop', String(top));
+                                    } catch {}
+
+                                    navigate(`/posts/${selectedPost.id}`, { state: { post: selectedPost, from: 'community' } });
+                                }}
                                 sx={{
                                     textTransform: 'none',
-                                    fontWeight: 700,
-                                    bgcolor: 'rgba(0,0,0,0.05)',
-                                    '&:hover': { bgcolor: 'rgba(0,0,0,0.1)' },
+                                    fontWeight: 800,
                                     borderRadius: 999,
+                                    whiteSpace: 'nowrap',
                                 }}
-                                aria-label={detailExpanded ? 'Collapse details' : 'Expand details'}
+                                aria-label="View Post Page"
                             >
-                                {detailExpanded ? 'Collapse' : 'Expand'}
+                                View Post Page
                             </Button>
                         </Box>
                     )}

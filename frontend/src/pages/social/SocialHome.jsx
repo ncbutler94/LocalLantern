@@ -1,5 +1,5 @@
 // src/pages/social/SocialHome.jsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
     Avatar,
     Box,
@@ -96,6 +96,33 @@ function UserCard({ user, onOpenUserCard }) {
 // --- Page ---
 export default function SocialHome({ me }) {
     const auth = useAuth?.() || { open: () => {} };
+
+    // ---- Viewport-fit layout ----
+    // This page lives under the site header, so using `minHeight: 100vh` makes the document
+    // taller than the viewport (header + 100vh), which creates an "empty" body scroll.
+    // We measure how far from the top of the viewport this component starts, then size it to
+    // exactly fill the remaining viewport height and keep scrolling inside the results panel.
+    const pageRef = useRef(null);
+    const [availableHeight, setAvailableHeight] = useState(null);
+
+    const measureAvailableHeight = useCallback(() => {
+        if (!pageRef.current) return;
+        const rect = pageRef.current.getBoundingClientRect();
+        const h = Math.max(0, window.innerHeight - rect.top);
+        setAvailableHeight(h);
+    }, []);
+
+    useLayoutEffect(() => {
+        measureAvailableHeight();
+        // One extra frame helps when the header height settles after hydration/layout.
+        const raf = window.requestAnimationFrame(measureAvailableHeight);
+        return () => window.cancelAnimationFrame(raf);
+    }, [measureAvailableHeight]);
+
+    useEffect(() => {
+        window.addEventListener('resize', measureAvailableHeight);
+        return () => window.removeEventListener('resize', measureAvailableHeight);
+    }, [measureAvailableHeight]);
 
     // If `me` isn't provided, fetch the viewer like CommunityPage.
     const [meLocal, setMeLocal] = useState(null);
@@ -368,13 +395,29 @@ export default function SocialHome({ me }) {
 
     return (
         <Box
+            ref={pageRef}
             sx={{
                 bgcolor: PAGE_BG,
-                minHeight: '100vh',   // ensure full-page background (fixes bottom color mismatch)
-                pb: 4,
+                // Fit the remaining viewport height so the browser page itself doesn't scroll.
+                // The results panel below will scroll internally.
+                height: availableHeight ? `${availableHeight}px` : '100dvh',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
             }}
         >
-            <Box sx={{ maxWidth: 1100, mx: 'auto', px: 2, pt: 4 }}>
+            <Box
+                sx={{
+                    maxWidth: 1100,
+                    mx: 'auto',
+                    px: 2,
+                    pt: 4,
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                    minHeight: 0,
+                }}
+            >
                 {/* Filters */}
                 <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 2 }}>
                     <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
@@ -383,60 +426,88 @@ export default function SocialHome({ me }) {
                         <Tab label={`Followers (${counts.followers})`} />
                     </Tabs>
 
-                    <Box sx={{ display: 'grid', gap: 1.25 }}>
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto auto', md: '1fr auto auto' }, gap: 1 }}>
-                            <TextField
-                                label="Name or @username"
-                                size="small"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                InputProps={{
-                                    startAdornment: (
-                                        <InputAdornment position="start">
-                                            <SearchIcon fontSize="small" />
-                                        </InputAdornment>
-                                    ),
-                                }}
-                            />
-                            <Button variant="contained" size="small" startIcon={<SearchIcon />} onClick={onSearch} disabled={loading}>
-                                Search
-                            </Button>
-                            <Button variant="outlined" size="small" startIcon={<ClearIcon />} onClick={onClear}>
-                                Clear
-                            </Button>
-                        </Box>
+                    {/* Put County/City to the RIGHT of the search box (same row on md+). */}
+                    <Box
+                        sx={{
+                            display: 'grid',
+                            gap: 1,
+                            alignItems: 'center',
+                            gridTemplateColumns: {
+                                xs: '1fr',
+                                md: 'minmax(260px, 1fr) minmax(320px, 420px) auto auto',
+                            },
+                        }}
+                    >
+                        <TextField
+                            label="Name or @username"
+                            size="small"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            sx={{ minWidth: 0 }}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" />
+                                    </InputAdornment>
+                                ),
+                            }}
+                        />
 
                         <CityCountySelect
                             city={place.city}
                             setCity={(v) => setPlace((p) => ({ ...p, city: v }))}
                             county={place.county}
                             setCounty={(v) => setPlace((p) => ({ ...p, county: v }))}
-                            sx={{ mt: 0.25 }}
+                            sx={{ m: 0, width: '100%' }}
                             selectSx={{ '& .MuiFormLabel-asterisk': { display: 'none' } }}
                         />
+
+                        <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={<SearchIcon />}
+                            onClick={onSearch}
+                            disabled={loading}
+                            sx={{ whiteSpace: 'nowrap' }}
+                        >
+                            Search
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<ClearIcon />}
+                            onClick={onClear}
+                            sx={{ whiteSpace: 'nowrap' }}
+                        >
+                            Clear
+                        </Button>
                     </Box>
                 </Paper>
 
-                {/* Results: fixed-height panel that scrolls internally */}
+                {/* Results: fills remaining height; scrolls internally (no page scroll) */}
                 <Paper
                     variant="outlined"
                     sx={{
                         p: 2,
                         borderRadius: 2,
-                        mt: 4,
-                        height: { xs: 375, md: 475 },    // desired internal panel height
-                        overflow: 'hidden',               // child below is the scroll area
+                        flex: 1,
+                        minHeight: 320,
+                        overflow: 'hidden', // child below is the scroll area
                     }}
                 >
                     {loading ? (
-                        <Typography sx={{ p: 2 }} color="text.secondary">Loading…</Typography>
+                        <Typography sx={{ p: 2 }} color="text.secondary">
+                            Loading…
+                        </Typography>
                     ) : list.length === 0 ? (
-                        <Typography sx={{ p: 2 }} color="text.secondary">No users found.</Typography>
+                        <Typography sx={{ p: 2 }} color="text.secondary">
+                            No users found.
+                        </Typography>
                     ) : (
                         // SCROLL REGION
                         <Box sx={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
                             {/* Grid: 2 fixed-width columns on md+, 1 column on xs; center the group,
-                  BUT if there’s only one item, left-align the grid. */}
+                                BUT if there’s only one item, left-align the grid. */}
                             <Box
                                 sx={{
                                     display: 'grid',
@@ -451,10 +522,7 @@ export default function SocialHome({ me }) {
                             >
                                 {list.map((u) => (
                                     <Box key={u.id} sx={{ width: '100%' }}>
-                                        <UserCard
-                                            user={u}
-                                            onOpenUserCard={handleOpenUserCard}
-                                        />
+                                        <UserCard user={u} onOpenUserCard={handleOpenUserCard} />
                                     </Box>
                                 ))}
                             </Box>

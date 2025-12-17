@@ -100,3 +100,22 @@
     text-overflow: ellipsis;
     display: block;
 }
+
+.leaflet-control-attribution a[href*="leafletjs.com"] {
+    display: none !important;
+}
+.leaflet-control-attribution a[href*="leafletjs.com"] + span {
+    display: none !important;
+}
+
+/* Give the attribution some breathing room inside rounded dialogs */
+.leaflet-control-attribution {
+    margin-right: 14px !important;
+    margin-bottom: 12px !important;
+    border-radius: 8px;
+}
+
+.ll-location-map .leaflet-bottom.leaflet-right {
+    right: 14px !important;
+    bottom: 12px !important;
+}

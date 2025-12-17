@@ -145,6 +145,12 @@ function ReportDialog({ open, onClose, onSubmit }) {
     );
 }
 
+ReportDialog.propTypes = {
+    open: PropTypes.bool.isRequired,
+    onClose: PropTypes.func.isRequired,
+    onSubmit: PropTypes.func.isRequired,
+};
+
 /* ────────────────────────────────────────────────────────────────────────────
    Component
    ─────────────────────────────────────────────────────────────────────────── */
@@ -159,12 +165,15 @@ export default function ActionBar({
                                       onComment,
                                       onShare,
                                       enableFlag = true,
-                                      showLabels = false, // kept for API compatibility; UI remains icon-first as requested
+                                      showLabels = false, // kept for API compatibility; UI remains icon-first
                                       onLikeChange,
                                       onRepostChange,
                                   }) {
     const apiBase = ''; // same-origin
     const auth = useAuth();
+
+    // Use AuthModalContext as a fallback if caller forgot to pass `user`
+    const viewer = user || auth?.user || null;
 
     // state
     const [likes, setLikes] = useState(clamp0(initialLikes));
@@ -184,10 +193,18 @@ export default function ActionBar({
     const repostsRef = useRef(reposts);
     const repostedRef = useRef(reposted);
 
-    useEffect(() => { likesRef.current = likes; }, [likes]);
-    useEffect(() => { likedRef.current = liked; }, [liked]);
-    useEffect(() => { repostsRef.current = reposts; }, [reposts]);
-    useEffect(() => { repostedRef.current = reposted; }, [reposted]);
+    useEffect(() => {
+        likesRef.current = likes;
+    }, [likes]);
+    useEffect(() => {
+        likedRef.current = liked;
+    }, [liked]);
+    useEffect(() => {
+        repostsRef.current = reposts;
+    }, [reposts]);
+    useEffect(() => {
+        repostedRef.current = reposted;
+    }, [reposted]);
 
     // sync when switching to a different post
     useEffect(() => {
@@ -226,20 +243,24 @@ export default function ActionBar({
             window.dispatchEvent(new CustomEvent('open-login'));
             window.dispatchEvent(new CustomEvent('open-auth-dialog'));
             window.dispatchEvent(new CustomEvent('open-login-popup'));
-        } catch {/* no-op */}
+        } catch {
+            /* no-op */
+        }
     }, [auth]);
 
+    // ✅ FIX: treat user as logged in if either props.user OR auth.user exists
     const requireAuth = useCallback(
         (cb) => {
-            if (user && (user.id || user.handle)) return cb?.();
+            const u = viewer;
+            if (u && (u.id || u.handle)) return cb?.();
             openAuthUI();
             return undefined;
         },
-        [user, openAuthUI]
+        [viewer, openAuthUI]
     );
 
     /* ────────────────────────────────────────────────────────────────────────
-       LIKE (sanitized optimistic update + authoritative server reconciliation)
+       LIKE (optimistic + server reconciliation)
        ──────────────────────────────────────────────────────────────────────── */
     const likeReqId = useRef(0);
     const handleLike = useCallback(() => {
@@ -248,19 +269,16 @@ export default function ActionBar({
             setLikeBusy(true);
             const reqId = ++likeReqId.current;
 
-            // compute from latest refs, not stale closures
             const prevLiked = Boolean(likedRef.current);
             const prevLikes = clamp0(likesRef.current);
             const nextLiked = !prevLiked;
             const newLikes = clamp0(prevLikes + (nextLiked ? 1 : -1));
 
-            // optimistic state + broadcast sanitized value
             setLiked(nextLiked);
             setLikes(newLikes);
             broadcast(LIKE_EVT, { postId, liked: nextLiked, likes: newLikes });
             onLikeChange?.({ postId, liked: nextLiked });
 
-            // ask the server; accept whatever authoritative shape it returns
             const result = await tryPost(
                 [
                     `/api/community/posts/${encodeURIComponent(postId)}/like`,
@@ -271,16 +289,18 @@ export default function ActionBar({
                 {}
             );
 
-            // Only handle the most recent request
             if (reqId !== likeReqId.current) return;
 
             if (result) {
                 const serverLiked =
                     result.viewerLiked ?? result.viewer_liked ?? result.is_liked ?? result.liked;
                 const serverLikes =
-                    result.likesCount ?? result.likes_count ?? result.like_count ?? result.count ?? result.likes;
+                    result.likesCount ??
+                    result.likes_count ??
+                    result.like_count ??
+                    result.count ??
+                    result.likes;
 
-                // If server provided values, sanitize, adopt, and rebroadcast
                 if (serverLiked != null || serverLikes != null) {
                     const finalLiked = serverLiked != null ? Boolean(serverLiked) : nextLiked;
                     const finalLikes = clamp0(serverLikes != null ? Number(serverLikes) : newLikes);
@@ -297,7 +317,7 @@ export default function ActionBar({
     }, [apiBase, postId, likeBusy, requireAuth, onLikeChange]);
 
     /* ────────────────────────────────────────────────────────────────────────
-       REPOST (kept, mirrors like approach; not shown in screenshots, but intact)
+       REPOST (mirrors like)
        ──────────────────────────────────────────────────────────────────────── */
     const repostReqId = useRef(0);
     const handleRepost = useCallback(() => {
@@ -332,7 +352,11 @@ export default function ActionBar({
                 const serverReposted =
                     result.viewerReposted ?? result.viewer_reposted ?? result.is_reposted ?? result.reposted;
                 const serverReposts =
-                    result.repostsCount ?? result.reposts_count ?? result.repost_count ?? result.count ?? result.reposts;
+                    result.repostsCount ??
+                    result.reposts_count ??
+                    result.repost_count ??
+                    result.count ??
+                    result.reposts;
 
                 if (serverReposted != null || serverReposts != null) {
                     const finalReposted = serverReposted != null ? Boolean(serverReposted) : nextReposted;
@@ -364,14 +388,14 @@ export default function ActionBar({
                 { reason, details }
             );
             setReportOpen(false);
-            setToast({ open: true, msg: ok ? 'Thanks for the report.' : 'Could not send report. Please try again.' });
+            setToast({
+                open: true,
+                msg: ok ? 'Thanks for the report.' : 'Could not send report. Please try again.',
+            });
         },
         [apiBase, postId]
     );
 
-    /* ────────────────────────────────────────────────────────────────────────
-       Layout (icon-first — no extra text labels unless you flip showLabels)
-       ──────────────────────────────────────────────────────────────────────── */
     return (
         <>
             <Box
@@ -390,7 +414,11 @@ export default function ActionBar({
                     <Tooltip title={liked ? 'Unlike' : 'Like'}>
                         <Box
                             onClick={handleLike}
-                            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), handleLike()) : null)}
+                            onKeyDown={(e) =>
+                                e.key === 'Enter' || e.key === ' '
+                                    ? (e.preventDefault(), handleLike())
+                                    : null
+                            }
                             tabIndex={0}
                             role="button"
                             aria-pressed={liked ? 'true' : 'false'}
@@ -417,7 +445,11 @@ export default function ActionBar({
                     <Tooltip title="Comments">
                         <Box
                             onClick={() => onComment?.()}
-                            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), onComment?.()) : null)}
+                            onKeyDown={(e) =>
+                                e.key === 'Enter' || e.key === ' '
+                                    ? (e.preventDefault(), onComment?.())
+                                    : null
+                            }
                             tabIndex={0}
                             role="button"
                             aria-label="Open comments"
@@ -445,7 +477,11 @@ export default function ActionBar({
                     <Tooltip title={reposted ? 'Undo repost' : 'Repost'}>
                         <Box
                             onClick={handleRepost}
-                            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), handleRepost()) : null)}
+                            onKeyDown={(e) =>
+                                e.key === 'Enter' || e.key === ' '
+                                    ? (e.preventDefault(), handleRepost())
+                                    : null
+                            }
                             tabIndex={0}
                             role="button"
                             aria-pressed={reposted ? 'true' : 'false'}
@@ -457,7 +493,7 @@ export default function ActionBar({
                                 py: 0.5,
                                 borderRadius: 999,
                                 bgcolor: reposted ? 'success.main' : 'transparent',
-                                cursor: likeBusy ? 'default' : 'pointer',
+                                cursor: repostBusy ? 'default' : 'pointer',
                                 color: reposted ? '#fff' : 'text.primary',
                                 '&:hover': { bgcolor: reposted ? 'success.dark' : 'action.hover' },
                             }}
@@ -489,14 +525,8 @@ export default function ActionBar({
                 </Box>
             </Box>
 
-            {/* Report dialog */}
-            <ReportDialog
-                open={reportOpen}
-                onClose={() => setReportOpen(false)}
-                onSubmit={submitReport}
-            />
+            <ReportDialog open={reportOpen} onClose={() => setReportOpen(false)} onSubmit={submitReport} />
 
-            {/* Toast */}
             <Snackbar
                 open={toast.open}
                 autoHideDuration={3000}

@@ -1,4 +1,4 @@
-// src/components/SidePanel/Community/CommunityFilter.jsx
+// src/pages/community/CommunityFilter.jsx
 // -----------------------------------------------------------------------------
 // Change summary (desktop + mobile):
 // • FIX: Category label overlap — InputLabel now uses `shrink` and is linked
@@ -11,6 +11,8 @@
 // • "All Counties" / "All Cities" are present and keep the field readable.
 // • Avoided useMemo pitfalls; no unused variables; mobile-friendly spacing.
 // -----------------------------------------------------------------------------
+// NOTE: The Show/Hide Filters toggle now lives in CommunityPanel's header row,
+// so it is always accessible even when filters are collapsed.
 
 import React, { useMemo, useState, useEffect } from 'react';
 import {
@@ -21,31 +23,29 @@ import {
     InputLabel,
     Select,
     MenuItem,
-    Button
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import SearchInput from '../../components/SearchInput';
 import { useAuth } from '../../components/AuthModalContext';
-import { ExpandLess } from '@mui/icons-material';
 
 /* ───────── fallback categories reflect the split ───────── */
 const DEFAULT_CATEGORIES = [
-    { id: 'announcement',         label: 'Announcements' },
-    { id: 'general-discussion',   label: 'General Discussion' },
-    { id: 'lost-and-found',       label: 'Lost & Found' },
+    { id: 'announcement', label: 'Announcements' },
+    { id: 'general-discussion', label: 'General Discussion' },
+    { id: 'lost-and-found', label: 'Lost & Found' },
     { id: 'public-safety-alerts', label: 'Public Safety Alerts' },
     // Split “Recommendations & Tips”
-    { id: 'tips',                 label: 'Tips' },
-    { id: 'recommendations',      label: 'Recommendations' },
+    { id: 'tips', label: 'Tips' },
+    { id: 'recommendations', label: 'Recommendations' },
     // Split “Volunteer & Help Requests”
-    { id: 'help-requests',        label: 'Help Requests' },
-    { id: 'volunteers',           label: 'Volunteers' },
+    { id: 'help-requests', label: 'Help Requests' },
+    { id: 'volunteers', label: 'Volunteers' },
 ];
 
 const VIEW_OPTIONS = [
-    { value: 'all',       label: 'All Posts' },
-    { value: 'mine',      label: 'My Posts' },
-    { value: 'following', label: 'Following' }
+    { value: 'all', label: 'All Posts' },
+    { value: 'mine', label: 'My Posts' },
+    { value: 'following', label: 'Following' },
 ];
 
 /* "All" labels for filter-only UX */
@@ -55,11 +55,11 @@ const ALL_CITIES_LABEL = 'All Cities';
 export default function CommunityFilter({
                                             /* search */
                                             view,
-                                            selectedView,         // legacy alias; will be normalized
+                                            selectedView, // legacy alias; will be normalized
                                             onViewChange,
                                             searchTerm,
                                             onSearchTermChange,
-                                            onSearchClick,        // manual for top search AND auto for other controls
+                                            onSearchClick, // manual for top search AND auto for other controls
                                             onClearClick,
                                             /* city / county */
                                             filteredCities,
@@ -80,8 +80,6 @@ export default function CommunityFilter({
                                             selectedDateRange,
                                             dateRangeOptions,
                                             onDateRangeChange,
-                                            /* hide handler from parent */
-                                            onHideFilters
                                         }) {
     const { isAuthenticated } = useAuth();
 
@@ -128,7 +126,6 @@ export default function CommunityFilter({
 
         return deduped;
     }, [subtypes]);
-
 
     const sharedMenuProps = { disablePortal: true };
 
@@ -188,7 +185,9 @@ export default function CommunityFilter({
                     const cnty = typeof c === 'string' ? null : c?.county;
                     return !cnty || cnty === countyName;
                 })
-        ).map((c) => (typeof c === 'string' ? c : c?.name || c?.label || '')).filter(Boolean);
+        )
+            .map((c) => (typeof c === 'string' ? c : c?.name || c?.label || ''))
+            .filter(Boolean);
         const uniq = Array.from(new Set(base));
         return [ALL_CITIES_LABEL, ...uniq];
     }, [safeCities, countyName]);
@@ -227,7 +226,7 @@ export default function CommunityFilter({
                     display: 'flex',
                     flexWrap: 'wrap',
                     gap: 2,
-                    alignItems: 'center'
+                    alignItems: 'center',
                 }}
             >
                 {/* View (auto-search) */}
@@ -235,7 +234,7 @@ export default function CommunityFilter({
                     sx={{
                         flexGrow: { xs: 1, sm: 0 },
                         flexShrink: { xs: 1, sm: 0 },
-                        flexBasis: { xs: '100%', sm: '120px' }
+                        flexBasis: { xs: '100%', sm: '120px' },
                     }}
                 >
                     <FormControl size="small" fullWidth sx={{ minWidth: 110 }}>
@@ -263,7 +262,7 @@ export default function CommunityFilter({
                     sx={{
                         flexGrow: { xs: 1, sm: 0 },
                         flexShrink: { xs: 1, sm: 0 },
-                        flexBasis: { xs: '100%', sm: '200px' }
+                        flexBasis: { xs: '100%', sm: '200px' },
                     }}
                 >
                     <FormControl size="small" fullWidth sx={{ minWidth: 170 }}>
@@ -274,7 +273,7 @@ export default function CommunityFilter({
                             id="community-category-select"
                             labelId="community-category-label"
                             label="Category"
-                            value={selectedSubtype ?? ''}   // normalize undefined → ''
+                            value={selectedSubtype ?? ''} // normalize undefined → ''
                             onChange={(e) => {
                                 onSubtypeChange(e.target.value);
                                 if (typeof onSearchClick === 'function') onSearchClick('auto');
@@ -302,7 +301,7 @@ export default function CommunityFilter({
                     sx={{
                         flexGrow: { xs: 1, sm: 0 },
                         flexShrink: { xs: 1, sm: 0 },
-                        flexBasis: { xs: '100%', sm: '140px' }
+                        flexBasis: { xs: '100%', sm: '140px' },
                     }}
                 >
                     <FormControl size="small" fullWidth sx={{ minWidth: 130 }}>
@@ -330,7 +329,7 @@ export default function CommunityFilter({
                     sx={{
                         flexGrow: { xs: 1, sm: 0 },
                         flexShrink: { xs: 1, sm: 0 },
-                        flexBasis: { xs: '100%', sm: '140px' }
+                        flexBasis: { xs: '100%', sm: '140px' },
                     }}
                 >
                     <FormControl size="small" fullWidth sx={{ minWidth: 130 }}>
@@ -362,7 +361,7 @@ export default function CommunityFilter({
                         minWidth: { xs: '100%', sm: 320 },
                         display: 'flex',
                         gap: 2,
-                        flexDirection: { xs: 'column', sm: 'row' }
+                        flexDirection: { xs: 'column', sm: 'row' },
                     }}
                 >
                     {/* County */}
@@ -395,7 +394,7 @@ export default function CommunityFilter({
                                     error={countyError}
                                     inputProps={{
                                         ...p.inputProps,
-                                        maxLength: maxCountyChars
+                                        maxLength: maxCountyChars,
                                     }}
                                 />
                             )}
@@ -425,7 +424,7 @@ export default function CommunityFilter({
                                     label={cityLabel}
                                     inputProps={{
                                         ...p.inputProps,
-                                        maxLength: maxCityChars
+                                        maxLength: maxCityChars,
                                     }}
                                 />
                             )}
@@ -435,18 +434,6 @@ export default function CommunityFilter({
                         />
                     </Box>
                 </Box>
-            </Box>
-
-            {/* Bottom-right "Hide Filters" inside the filter panel */}
-            <Divider sx={{ mt: 2 }} />
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-                <Button
-                    startIcon={<ExpandLess />}
-                    onClick={() => onHideFilters?.()}
-                    sx={{ fontWeight: 600, letterSpacing: 0.15 }}
-                >
-                    Hide Filters
-                </Button>
             </Box>
         </Box>
     );

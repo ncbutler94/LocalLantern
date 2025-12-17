@@ -25,27 +25,28 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import axios from 'axios';
-// Removed UserMiniCard import and implemented an inline mini card to guarantee ellipsis
 import MessageDialog from './MessageDialog';
 
 const api = process.env.REACT_APP_API_URL;
 
 function idKey(u) {
-    // normalize id for Set membership checks
     return String(u?.id ?? '');
 }
 
 /**
  * Mini tile used in the section (not the dialog) to preview up to 9 users.
  * Ensures long names/handles are truncated with ellipsis on one line.
+ * UPDATED: slightly larger tile + shows @username under name.
  */
 function GridMiniCard({ user, onClick }) {
     const name =
         `${user?.first_name || ''} ${user?.last_name || ''}`.trim() ||
+        user?.display_name ||
+        user?.name ||
         (user?.handle ? `@${user.handle}` : 'User');
 
-    const avatar =
-        user?.avatar_url || user?.profile_picture || '';
+    const username = user?.handle || user?.username || '';
+    const avatar = user?.avatar_url || user?.profile_picture || '';
 
     return (
         <Paper
@@ -54,7 +55,7 @@ function GridMiniCard({ user, onClick }) {
             sx={{
                 cursor: 'pointer',
                 borderRadius: 2,
-                p: 1,
+                p: 1.25,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -69,18 +70,30 @@ function GridMiniCard({ user, onClick }) {
                 src={avatar}
                 alt={name}
                 variant="square"
-                sx={{ width: 72, height: 72, borderRadius: 1 }}
+                sx={{ width: 84, height: 84, borderRadius: 1 }}
             />
-            {/* The Box with minWidth: 0 enables Typography noWrap ellipsis */}
+
             <Box sx={{ width: '100%', minWidth: 0 }}>
                 <Typography
                     variant="body2"
                     noWrap
                     title={name}
-                    sx={{ textAlign: 'center' }}
+                    sx={{ textAlign: 'center', fontWeight: 700 }}
                 >
                     {name}
                 </Typography>
+
+                {username ? (
+                    <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        noWrap
+                        title={`@${username}`}
+                        sx={{ textAlign: 'center', display: 'block' }}
+                    >
+                        @{username}
+                    </Typography>
+                ) : null}
             </Box>
         </Paper>
     );
@@ -92,10 +105,10 @@ export default forwardRef(function FollowsSection(
         profileId,
         profileHandle,
         profileAvatar,
-        profileName,          // for popup header (bold)
-        profileUsername,      // for popup header (bold)
+        profileName,
+        profileUsername,
         onFlash,
-        showFollowingTabInSection = true, // hide "Following" tab in the section if false
+        showFollowingTabInSection = true,
     },
     ref
 ) {
@@ -134,7 +147,6 @@ export default forwardRef(function FollowsSection(
     const canMessage = (u) => viewer && u && Number(viewer.id) !== Number(u.id);
     const isOwnPage = viewer && Number(viewer.id) === Number(profileId);
 
-    // expose "openAll" to parent so header button can open with current tab
     useImperativeHandle(ref, () => ({
         openAll: () => {
             setDialogTab(tab);
@@ -155,13 +167,16 @@ export default forwardRef(function FollowsSection(
     useEffect(() => {
         if (!key) return;
         if (inFlightRef.current || lastKeyRef.current === key) return;
+
         let alive = true;
         const ctrl = new AbortController();
+
         (async () => {
             inFlightRef.current = true;
             lastKeyRef.current = key;
             setLoading(true);
             setLoadError('');
+
             try {
                 const r = await axios.get(
                     `${api}/users/social/${encodeURIComponent(key)}`,
@@ -172,13 +187,15 @@ export default forwardRef(function FollowsSection(
                 setFollowing(r.data.following || []);
                 setCounts(r.data.counts || { followers: 0, following: 0 });
             } catch (e) {
-                if (alive)
+                if (alive) {
                     setLoadError(e?.response?.data?.message || 'Failed to load followers.');
+                }
             } finally {
                 if (alive) setLoading(false);
                 inFlightRef.current = false;
             }
         })();
+
         return () => {
             alive = false;
             ctrl.abort();
@@ -191,28 +208,25 @@ export default forwardRef(function FollowsSection(
             setViewerFollowingIds(new Set());
             return;
         }
+
         let alive = true;
         const ctrl = new AbortController();
+
         (async () => {
             try {
-                // UPDATED: prefer numeric id / public_id for viewer too
                 const who = viewer?.public_id || viewer?.id || viewer?.handle;
                 const r = await axios.get(
                     `${api}/users/social/${encodeURIComponent(who)}`,
-                    {
-                        withCredentials: true,
-                        signal: ctrl.signal,
-                    }
+                    { withCredentials: true, signal: ctrl.signal }
                 );
                 if (!alive) return;
                 const myFollowing = (r.data.following || []).map((u) => idKey(u));
                 setViewerFollowingIds(new Set(myFollowing));
             } catch {
-                if (alive) {
-                    setViewerFollowingIds(new Set());
-                }
+                if (alive) setViewerFollowingIds(new Set());
             }
         })();
+
         return () => {
             alive = false;
             ctrl.abort();
@@ -237,7 +251,6 @@ export default forwardRef(function FollowsSection(
     const goProfile = (u) => {
         if (!u) return;
         const path = u.handle ? `/${u.handle}` : `/${u.public_id || u.id}`;
-        // Close any open UI then navigate
         setAllOpen(false);
         window.location.assign(path);
     };
@@ -252,15 +265,15 @@ export default forwardRef(function FollowsSection(
                 { withCredentials: true }
             );
             addWeFollow(u.id);
+
             if (isOwnPage) {
-                // reflect counts and lists if this is the viewer's own page
                 setCounts((c) => ({ ...c, following: (c.following || 0) + 1 }));
-                // keep following list unique
                 setFollowing((list) => {
                     const exists = list.find((x) => Number(x.id) === Number(u.id));
                     return exists ? list : [...list, u];
                 });
             }
+
             onFlash?.({
                 type: 'success',
                 text: asFollowBack ? 'Followed back.' : 'Followed.',
@@ -278,22 +291,20 @@ export default forwardRef(function FollowsSection(
     const unfollowUser = async (u) => {
         if (!viewer || !u || Number(viewer.id) === Number(u.id)) return;
         try {
-            // backend supports this action payload (mirrors follow)
             await axios.post(
                 `${api}/users/follow`,
                 { target_id: u.id, action: 'unfollow' },
                 { withCredentials: true }
             );
             removeWeFollow(u.id);
+
             if (isOwnPage) {
-                // remove from "following" lists and update counts
                 setFollowing((list) => list.filter((x) => Number(x.id) !== Number(u.id)));
                 setCounts((c) => ({
                     ...c,
                     following: Math.max(0, (c.following || 0) - 1),
                 }));
             }
-            // Intentionally no success flash for "Unfollowed." per request.
         } catch (e) {
             onFlash?.({
                 type: 'error',
@@ -310,12 +321,11 @@ export default forwardRef(function FollowsSection(
         closeMenu();
     };
 
-    // ------- Section (card) content: grid tiles, max 9 -------
+    // ------- Section content: preview up to 9 -------
     const visibleList = (tab === 0 ? followers : following).slice(0, 9);
 
     return (
         <Box>
-            {/* SECTION TABS (left rail): hide "Following" label if requested */}
             {showFollowingTabInSection ? (
                 <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 1 }}>
                     <Tab label={`Followers (${counts.followers || 0})`} />
@@ -337,20 +347,19 @@ export default forwardRef(function FollowsSection(
                 </Typography>
             ) : (
                 <>
-                    {/* Responsive grid with mini-cards that truncate long names */}
+                    {/* UPDATED: 3 per row on desktop, responsive on smaller screens */}
                     <Box
                         sx={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
-                            gap: 1,
+                            gridTemplateColumns: {
+                                xs: 'repeat(2, minmax(0, 1fr))',
+                                sm: 'repeat(3, minmax(0, 1fr))',
+                            },
+                            gap: 1.25,
                         }}
                     >
                         {visibleList.map((u) => (
-                            <GridMiniCard
-                                key={u.id}
-                                user={u}
-                                onClick={() => goProfile(u)}
-                            />
+                            <GridMiniCard key={u.id} user={u} onClick={() => goProfile(u)} />
                         ))}
                     </Box>
 
@@ -359,7 +368,6 @@ export default forwardRef(function FollowsSection(
                             {tab === 0 ? 'No Followers.' : 'None Following.'}
                         </Typography>
                     )}
-                    {/* NOTE: Removed helper "Follow/Following" button below the grid */}
                 </>
             )}
 
@@ -367,7 +375,6 @@ export default forwardRef(function FollowsSection(
             <Dialog
                 open={allOpen}
                 onClose={(_, reason) => {
-                    // Do not close when clicking outside the popup
                     if (reason === 'backdropClick') return;
                     setAllOpen(false);
                 }}
@@ -375,15 +382,14 @@ export default forwardRef(function FollowsSection(
                 maxWidth="md"
                 PaperProps={{
                     sx: {
-                        width: 820,
-                        maxWidth: '90vw',
-                        height: 640,
+                        width: 860,
+                        maxWidth: '92vw',
+                        height: 660,
                         borderRadius: 3,
-                        overflow: 'hidden', // prevent the dialog itself from scrolling
+                        overflow: 'hidden',
                     },
                 }}
             >
-                {/* Title bar (separate, top-left) with X close button — pinned */}
                 <DialogTitle
                     sx={{
                         display: 'grid',
@@ -396,27 +402,21 @@ export default forwardRef(function FollowsSection(
                     <Typography variant="h6" sx={{ fontWeight: 700 }}>
                         Followers &amp; Following
                     </Typography>
-                    <IconButton
-                        aria-label="Close"
-                        onClick={() => setAllOpen(false)}
-                        size="small"
-                    >
+                    <IconButton aria-label="Close" onClick={() => setAllOpen(false)} size="small">
                         <CloseIcon />
                     </IconButton>
                 </DialogTitle>
 
-                {/* Content container uses flex + overflow hidden; only the list area scrolls */}
                 <DialogContent
                     sx={{
                         p: 0,
                         display: 'flex',
                         flexDirection: 'column',
-                        height: 'calc(100% - 56px)', // subtract title bar
-                        overflow: 'hidden',          // keep header + tabs pinned
+                        height: 'calc(100% - 56px)',
+                        overflow: 'hidden',
                         minHeight: 0,
                     }}
                 >
-                    {/* Header row: avatar + name/username centered (pinned) */}
                     <Box
                         sx={{
                             display: 'flex',
@@ -448,7 +448,6 @@ export default forwardRef(function FollowsSection(
                         </Typography>
                     </Box>
 
-                    {/* Tabs — pinned */}
                     <Tabs
                         value={dialogTab}
                         onChange={(_, v) => setDialogTab(v)}
@@ -460,7 +459,6 @@ export default forwardRef(function FollowsSection(
 
                     <Divider sx={{ flex: '0 0 auto' }} />
 
-                    {/* Scroll area with 2-up grid cards (own scroll box) */}
                     <Box
                         sx={{
                             p: 1.25,
@@ -481,8 +479,12 @@ export default forwardRef(function FollowsSection(
                             <Box
                                 sx={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(2, minmax(0,1fr))',
-                                    gap: 1,
+                                    gridTemplateColumns: {
+                                        xs: 'repeat(1, minmax(0, 1fr))',
+                                        sm: 'repeat(2, minmax(0, 1fr))',
+                                        md: 'repeat(3, minmax(0, 1fr))', // ✅ 3 per row on desktop
+                                    },
+                                    gap: 1.25,
                                 }}
                             >
                                 {(dialogTab === 0 ? followers : following).map((u) => {
@@ -492,11 +494,9 @@ export default forwardRef(function FollowsSection(
                                     const username = u.handle || u.username || '';
                                     const avatar = u.avatar_url || u.profile_picture || '';
 
-                                    // Decide menu items based on context
-                                    const canFollowOption = !isOwnPage && !weFollow(u); // viewing someone else's lists
-                                    const canUnfollowOption = isOwnPage && dialogTab === 1; // own Following tab
-                                    const canFollowBackOption =
-                                        isOwnPage && dialogTab === 0 && !weFollow(u); // own Followers tab
+                                    const canFollowOption = !isOwnPage && !weFollow(u);
+                                    const canUnfollowOption = isOwnPage && dialogTab === 1;
+                                    const canFollowBackOption = isOwnPage && dialogTab === 0 && !weFollow(u);
 
                                     return (
                                         <Paper
@@ -506,25 +506,30 @@ export default forwardRef(function FollowsSection(
                                                 display: 'grid',
                                                 gridTemplateColumns: 'auto 1fr auto',
                                                 alignItems: 'center',
-                                                gap: 1,
-                                                p: 1,
+                                                gap: 1.25,
+                                                p: 1.25,
                                                 borderRadius: 2,
                                             }}
                                         >
-                                            {/* Only avatar/name/username navigate to profile */}
                                             <Avatar
                                                 src={avatar}
                                                 alt={name}
                                                 variant="square"
-                                                sx={{ width: 84, height: 84, borderRadius: 1, cursor: 'pointer' }}
+                                                sx={{
+                                                    width: 96,
+                                                    height: 96,
+                                                    borderRadius: 1,
+                                                    cursor: 'pointer',
+                                                }}
                                                 onClick={() => goProfile(u)}
                                             />
+
                                             <Box sx={{ minWidth: 0 }}>
                                                 <Typography
                                                     variant="subtitle2"
                                                     noWrap
                                                     title={name}
-                                                    sx={{ cursor: 'pointer' }}
+                                                    sx={{ cursor: 'pointer', fontWeight: 700 }}
                                                     onClick={() => goProfile(u)}
                                                 >
                                                     {name}
@@ -540,50 +545,42 @@ export default forwardRef(function FollowsSection(
                                                     @{username}
                                                 </Typography>
                                             </Box>
+
                                             <IconButton size="small" onClick={(e) => openMenu(e, u)}>
                                                 <MoreVertIcon fontSize="small" />
                                             </IconButton>
 
-                                            {/* Contextual menu for this user */}
-                                            {menuUser && menuUser.id === u.id && (
+                                            {menuUser && menuUser.id === u.id ? (
                                                 <Menu
                                                     open={Boolean(menuAnchor)}
                                                     anchorEl={menuAnchor}
                                                     onClose={closeMenu}
-                                                    anchorOrigin={{
-                                                        vertical: 'bottom',
-                                                        horizontal: 'right',
-                                                    }}
-                                                    transformOrigin={{
-                                                        vertical: 'top',
-                                                        horizontal: 'right',
-                                                    }}
+                                                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                                                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
                                                 >
-                                                    {canUnfollowOption && (
-                                                        <MenuItem onClick={() => unfollowUser(u)}>
-                                                            Unfollow
-                                                        </MenuItem>
-                                                    )}
-                                                    {canFollowBackOption && (
+                                                    {canUnfollowOption ? (
+                                                        <MenuItem onClick={() => unfollowUser(u)}>Unfollow</MenuItem>
+                                                    ) : null}
+
+                                                    {canFollowBackOption ? (
                                                         <MenuItem onClick={() => followUser(u, true)}>
                                                             Follow Back
                                                         </MenuItem>
-                                                    )}
-                                                    {canFollowOption && (
-                                                        <MenuItem onClick={() => followUser(u, false)}>
-                                                            Follow
-                                                        </MenuItem>
-                                                    )}
-                                                    {canMessage(u) && (
+                                                    ) : null}
+
+                                                    {canFollowOption ? (
+                                                        <MenuItem onClick={() => followUser(u, false)}>Follow</MenuItem>
+                                                    ) : null}
+
+                                                    {canMessage(u) ? (
                                                         <MenuItem onClick={() => openMessage(u)}>
                                                             Send Message
                                                         </MenuItem>
-                                                    )}
-                                                    <MenuItem onClick={() => goProfile(u)}>
-                                                        View Profile
-                                                    </MenuItem>
+                                                    ) : null}
+
+                                                    <MenuItem onClick={() => goProfile(u)}>View Profile</MenuItem>
                                                 </Menu>
-                                            )}
+                                            ) : null}
                                         </Paper>
                                     );
                                 })}
@@ -593,17 +590,12 @@ export default forwardRef(function FollowsSection(
                 </DialogContent>
             </Dialog>
 
-            {/* Message dialog (existing component) */}
             <MessageDialog
                 open={msgOpen}
                 onClose={() => setMsgOpen(false)}
                 toUser={msgTarget}
-                onSent={() =>
-                    onFlash?.({ type: 'success', text: 'Message sent.' })
-                }
-                onError={(txt) =>
-                    onFlash?.({ type: 'error', text: txt || 'Failed to send message.' })
-                }
+                onSent={() => onFlash?.({ type: 'success', text: 'Message sent.' })}
+                onError={(txt) => onFlash?.({ type: 'error', text: txt || 'Failed to send message.' })}
             />
         </Box>
     );

@@ -8,6 +8,7 @@ import { Storage } from '@google-cloud/storage';
 import { body, validationResult } from 'express-validator';
 import db from '../../config/db.js';
 import authenticateToken from '../../middleware/auth.js';
+import optionalAuth from '../../middleware/optionalAuth.js';
 
 const router = express.Router();
 
@@ -696,6 +697,221 @@ router.get('/public/:handleOrId', async (req, res, next) => {
         next(err);
     }
 });
+
+
+/* GET /users/:handleOrId/engagement/posts — liked + reposted Community posts
+   Returns: { likes: [...], reposts: [...] }
+   Notes:
+   - Likes are pulled from post_likes WHERE category='community_post'
+   - Reposts are pulled from post_reposts
+   - Results are hydrated to match CommunityPostCard needs: author, photos, counts, lost & found state.
+*/
+router.get('/:handleOrId/engagement/posts', optionalAuth, async (req, res, next) => {
+    try {
+        const key = String(req.params.handleOrId || '').replace(/^@/, '');
+        const types = String(req.query.types || 'likes,reposts')
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean);
+        const limit = Math.min(Math.max(parseInt(req.query.limit || '200', 10) || 200, 1), 500);
+
+        // Resolve the target user id (handle OR numeric id/public_id)
+        let u = await db('users')
+            .select('id')
+            .whereRaw('LOWER(handle)=LOWER(?)', [key])
+            .first();
+
+        if (!u && /^\d+$/.test(key)) {
+            const n = Number(key);
+            u =
+                (await db('users').select('id').where({ public_id: n }).first()) ||
+                (await db('users').select('id').where({ id: n }).first());
+        }
+        if (!u) return res.status(404).json({ message: 'User not found' });
+
+        const viewerId = req.user?.id ? Number(req.user.id) : 0;
+
+        const likedIds = types.includes('likes')
+            ? await db('post_likes')
+                .select('post_id')
+                .where({ user_id: u.id, category: 'community_post' })
+                .orderBy('created_at', 'desc')
+                .limit(limit)
+            : [];
+
+        const repostIds = types.includes('reposts')
+            ? await db('post_reposts')
+                .select('post_id')
+                .where({ user_id: u.id })
+                .orderBy('created_at', 'desc')
+                .limit(limit)
+            : [];
+
+        const likedOrder = likedIds.map((r) => Number(r.post_id)).filter((n) => Number.isFinite(n));
+        const repostOrder = repostIds.map((r) => Number(r.post_id)).filter((n) => Number.isFinite(n));
+
+        const hydrateByOrder = async (idOrder) => {
+            if (!idOrder.length) return [];
+
+            // Fetch posts
+            const postRows = await db('community_posts')
+                .select('*')
+                .whereIn('id', idOrder);
+
+            const postMap = new Map(postRows.map((p) => [Number(p.id), p]));
+            const postIds = Array.from(postMap.keys());
+
+            // Photos
+            let photosRaw = [];
+            try {
+                photosRaw = await db('community_photos')
+                    .select('post_id', 'url', 'photo_url', 'path', 'position')
+                    .whereIn('post_id', postIds)
+                    .orderBy('position', 'asc');
+            } catch {
+                photosRaw = [];
+            }
+            const photosByPost = {};
+            for (const r of photosRaw) {
+                const pid = Number(r.post_id);
+                const url = r?.url || r?.photo_url || r?.path || null;
+                if (!Number.isFinite(pid) || !url) continue;
+                (photosByPost[pid] ||= []).push(url);
+            }
+
+            // Counts
+            const counts = { likes: {}, comments: {}, reposts: {} };
+            try {
+                const likeCounts = await db('post_likes')
+                    .select('post_id')
+                    .count({ c: '*' })
+                    .whereIn('post_id', postIds)
+                    .andWhere({ category: 'community_post' })
+                    .groupBy('post_id');
+                counts.likes = Object.fromEntries(likeCounts.map((r) => [Number(r.post_id), Number(r.c) || 0]));
+            } catch {}
+            try {
+                const commentCounts = await db('post_comments')
+                    .select('post_id')
+                    .count({ c: '*' })
+                    .whereIn('post_id', postIds)
+                    .groupBy('post_id');
+                counts.comments = Object.fromEntries(commentCounts.map((r) => [Number(r.post_id), Number(r.c) || 0]));
+            } catch {}
+            try {
+                const repostCounts = await db('post_reposts')
+                    .select('post_id')
+                    .count({ c: '*' })
+                    .whereIn('post_id', postIds)
+                    .groupBy('post_id');
+                counts.reposts = Object.fromEntries(repostCounts.map((r) => [Number(r.post_id), Number(r.c) || 0]));
+            } catch {}
+
+            // Viewer flags
+            let viewerLikeSet = new Set();
+            let viewerRepostSet = new Set();
+            if (viewerId) {
+                try {
+                    const rows = await db('post_likes')
+                        .select('post_id')
+                        .whereIn('post_id', postIds)
+                        .andWhere({ user_id: viewerId, category: 'community_post' });
+                    viewerLikeSet = new Set(rows.map((r) => Number(r.post_id)).filter((n) => Number.isFinite(n)));
+                } catch {
+                    viewerLikeSet = new Set();
+                }
+                try {
+                    const rows = await db('post_reposts')
+                        .select('post_id')
+                        .whereIn('post_id', postIds)
+                        .andWhere({ user_id: viewerId });
+                    viewerRepostSet = new Set(rows.map((r) => Number(r.post_id)).filter((n) => Number.isFinite(n)));
+                } catch {
+                    viewerRepostSet = new Set();
+                }
+            }
+
+            // Authors
+            const authorIds = Array.from(
+                new Set(
+                    postRows
+                        .map((p) => Number(p.user_id))
+                        .filter((n) => Number.isFinite(n) && n > 0)
+                )
+            );
+            const authors = authorIds.length
+                ? await db('users')
+                    .select('id', 'first_name', 'last_name', 'handle', 'profile_picture', 'avatar_url')
+                    .whereIn('id', authorIds)
+                : [];
+            const authorMap = new Map(authors.map((a) => [Number(a.id), a]));
+
+            // Lost & Found state (+ optional resolution fields)
+            let lfMap = new Map();
+            try {
+                const hasLF = await hasTable('lost_and_found');
+                if (hasLF) {
+                    const select = ['id', 'lost_or_found'];
+                    if (await hasColumn('lost_and_found', 'resolved_at')) select.push('resolved_at');
+                    if (await hasColumn('lost_and_found', 'resolved_message')) select.push('resolved_message');
+                    if (await hasColumn('lost_and_found', 'resolved_by_user_id')) select.push('resolved_by_user_id');
+                    const lfRows = await db('lost_and_found').select(select).whereIn('id', postIds);
+                    lfMap = new Map(lfRows.map((r) => [Number(r.id), r]));
+                }
+            } catch {
+                lfMap = new Map();
+            }
+
+            // Return in the exact order requested
+            const out = [];
+            for (const id of idOrder) {
+                const p = postMap.get(Number(id));
+                if (!p) continue;
+
+                const a = authorMap.get(Number(p.user_id)) || {};
+                const lf = lfMap.get(Number(p.id)) || null;
+
+                out.push({
+                    ...p,
+                    first_name: a.first_name || '',
+                    last_name: a.last_name || '',
+                    handle: a.handle || '',
+                    avatar_url: a.profile_picture || a.avatar_url || '',
+                    profile_picture: a.profile_picture || '',
+                    // unify date fields used across the UI
+                    posted_at: p.posted_at || p.date_created || p.created_at || null,
+                    date_created: p.date_created || p.created_at || p.posted_at || null,
+
+                    likesCount: counts.likes[Number(p.id)] || 0,
+                    commentsCount: counts.comments[Number(p.id)] || 0,
+                    repostsCount: counts.reposts[Number(p.id)] || 0,
+
+                    photos: photosByPost[Number(p.id)] || [],
+
+                    lost_or_found: lf ? (lf.lost_or_found || null) : null,
+                    resolved_at: lf ? (lf.resolved_at || null) : null,
+                    resolved_message: lf ? (lf.resolved_message || '') : '',
+                    resolved_by_user_id: lf ? (lf.resolved_by_user_id || null) : null,
+
+                    viewerLiked: viewerLikeSet.has(Number(p.id)),
+                    viewerReposted: viewerRepostSet.has(Number(p.id)),
+                });
+            }
+
+            return out;
+        };
+
+        const out = {
+            likes: types.includes('likes') ? await hydrateByOrder(likedOrder) : [],
+            reposts: types.includes('reposts') ? await hydrateByOrder(repostOrder) : [],
+        };
+
+        return res.json(out);
+    } catch (err) {
+        return next(err);
+    }
+});
+
 
 /* GET /users/social/:handleOrId — followers/following lists */
 router.get('/social/:handleOrId', async (req, res, next) => {
