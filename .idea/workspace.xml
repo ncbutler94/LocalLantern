@@ -5,35 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="85d913a2-29a9-4691-be92-ce88b393eda8" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/babel-loader/05b1e4402d09a38912f288fecd6aad58320c75a811b4fa319d12109ff2fdfd41.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/babel-loader/f42190bbe847efdbcb9d0c5506adadfa0e6c86c25489f5ef99a0fdbfbbe2cc4e.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/13.pack_" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/community/DeletePostConfirmDialog.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/community/EditCommunityPostDialog.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/combined.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/combined.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/error.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/error.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/community.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/community.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/.eslintcache" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/.eslintcache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/0.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/0.pack_" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/3.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/3.pack_" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/5.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/5.pack_" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/6.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/6.pack_" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityFilter.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityFilter.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityList.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPage.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPanel.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPanel.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewAnnouncementForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewAnnouncementForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewGeneralDiscussionForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewGeneralDiscussionForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewLostAndFoundForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewLostAndFoundForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewPublicSafetyForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewPublicSafetyForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewRecommendationForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewRecommendationForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewVolunteerHelpForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewVolunteerHelpForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/PostPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/PostPage.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/ProfilePostsList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/ProfilePostsList.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/RightRail.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/RightRail.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/UserProfilePage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/UserProfilePage.jsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -168,7 +140,7 @@
       <workItem from="1766007557208" duration="47000" />
       <workItem from="1766012170202" duration="9550000" />
       <workItem from="1766029786661" duration="705000" />
-      <workItem from="1766066442742" duration="7689000" />
+      <workItem from="1766066442742" duration="8653000" />
     </task>
     <servers />
   </component>
