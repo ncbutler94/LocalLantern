@@ -3,14 +3,14 @@
 //
 // Community Help Requests + Volunteer Offers (separate UX, shared endpoint)
 //
-// Goals:
-//  • Differentiate “Ask for Help” vs “Offer to Volunteer” (not the Services page)
-//  • Auto-prefill city/county from the user's profile when the dialog opens
-//  • Modern photo picker with drag-and-drop upload + cover photo selection
-//  • Keep mobile UI clean and readable
+// Edit-mode support added:
+//  • Accepts editMode + initialData and renders identical UI as “New”
+//  • Save uses JSON payload via shared EditCommunityPostDialog (PATCH)
+//  • Delete button appears when editMode + onDelete provided (handled by wrapper)
+//  • Photo editor supports existing photo URLs + reordering (cover = first)
 // -----------------------------------------------------------------------------
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Box,
@@ -75,6 +75,28 @@ function normalizeCounty(v) {
     return raw.replace(/\s+County$/i, '').trim();
 }
 
+function makeId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+// Photo slot: { id, url, file?: File, existing?: boolean }
+function toExistingPhotoSlots(urls) {
+    const list = Array.isArray(urls) ? urls : [];
+    const cleaned = list
+        .map((u) => String(u || '').trim())
+        .filter(Boolean)
+        .slice(0, MAX_PHOTOS)
+        .map((url) => ({ id: makeId(), url, existing: true }));
+
+    // pad to MAX_PHOTOS
+    const next = [...cleaned];
+    while (next.length < MAX_PHOTOS) next.push(null);
+    return next;
+}
+
 export default function NewVolunteerHelpForm({
                                                  onClose,
                                                  onRefresh,
@@ -82,28 +104,34 @@ export default function NewVolunteerHelpForm({
                                                  defaultCity = '',
                                                  defaultCounty = '',
                                                  countyRequired = true,
+
+                                                 // injected by EditCommunityPostDialog
+                                                 editMode = false,
+                                                 initialData = null,
+                                                 onDelete,
+                                                 onSubmit, // in edit mode: receives JSON payload (PATCH wrapper). In create-mode we ignore and call createVolunteerRequest.
                                              }) {
-    // Shared fields (title, description, location, etc.)
+    // Shared fields
     const base = useBasePostForm({
         defaultCity,
         defaultCounty: normalizeCounty(defaultCounty),
         countyRequired,
     });
 
-    // If defaults are fetched/updated after mount (ex: parent dialog fetches profile),
-    // fill *only* missing fields.
+    // If defaults are fetched/updated after mount (create-mode only), fill missing
     useEffect(() => {
+        if (editMode) return;
         const dc = String(defaultCity || '').trim();
         const dco = normalizeCounty(defaultCounty);
         if (!base.city && dc) base.setCity(dc);
         if (!base.county && dco) base.setCounty(dco);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [defaultCity, defaultCounty]);
+    }, [editMode, defaultCity, defaultCounty]);
 
     const requestKind =
         String(defaultRequestKind || '').trim().toLowerCase() === 'volunteer' ? 'volunteer' : 'help';
 
-    // Separate (but stored together) details
+    // Separate details
     const [helpType, setHelpType] = useState('labor');
     const [helpTypeOther, setHelpTypeOther] = useState('');
     const [neededDate, setNeededDate] = useState(''); // yyyy-mm-dd
@@ -121,11 +149,7 @@ export default function NewVolunteerHelpForm({
     const [contact, setContact] = useState('');
     const [contactMethod, setContactMethod] = useState('either');
 
-    useEffect(() => {
-        if (helpType !== 'other' && helpTypeOther) setHelpTypeOther('');
-    }, [helpType, helpTypeOther]);
-
-    // Photos (drag + drop + cover)
+    // Photos (fixed slots; cover = slot 0)
     const [photoSlots, setPhotoSlots] = useState(() => Array.from({ length: MAX_PHOTOS }, () => null));
     const [dragActive, setDragActive] = useState(false);
     const fileInputRef = useRef(null);
@@ -135,15 +159,116 @@ export default function NewVolunteerHelpForm({
         photoSlotsRef.current = photoSlots;
     }, [photoSlots]);
 
+    // Cleanup object URLs on unmount
     useEffect(() => {
-        // Cleanup all object URLs on unmount
         return () => {
             const current = photoSlotsRef.current || [];
             current.forEach((p) => {
-                if (p?.url) URL.revokeObjectURL(p.url);
+                if (!p) return;
+                if (p.existing) return;
+                if (p.url) URL.revokeObjectURL(p.url);
             });
         };
     }, []);
+
+    // Edit-mode prefill
+    useEffect(() => {
+        if (!editMode) return;
+        if (!initialData) return;
+
+        // Base
+        if (typeof initialData.title === 'string') base.setTitle(initialData.title);
+        if (typeof initialData.description === 'string') base.setDescription(initialData.description);
+        if (typeof initialData.city === 'string') base.setCity(initialData.city);
+        if (typeof initialData.county === 'string') base.setCounty(normalizeCounty(initialData.county));
+
+        // Volunteer/Help fields if present
+        const ht = String(initialData.help_type || '').trim();
+        if (ht) setHelpType(ht);
+
+        const rk = String(initialData.request_kind || '').trim().toLowerCase();
+        // NOTE: requestKind is determined by defaultRequestKind, but we still display fields based on requestKind.
+        // We do not switch requestKind here to avoid confusing routing; the backend uses request_kind anyway.
+
+        const nd = String(initialData.needed_date || '').trim();
+        if (nd) setNeededDate(nd.slice(0, 10));
+
+        const ct = String(initialData.contact || '').trim();
+        if (ct) setContact(ct);
+
+        const cm = String(initialData.contact_method || '').trim().toLowerCase();
+        if (cm && CONTACT_METHOD_OPTIONS.some((o) => o.value === cm)) setContactMethod(cm);
+
+        // Optional advanced fields (if they exist in your DB/initialData)
+        const hto = String(initialData.help_type_other || '').trim();
+        if (hto) setHelpTypeOther(hto);
+
+        const nt = String(initialData.needed_time || '').trim();
+        if (nt) setNeededTime(nt);
+
+        const hn = String(initialData.helpers_needed || '').trim();
+        if (hn) setHelpersNeeded(hn);
+
+        const urg = String(initialData.urgency || '').trim().toLowerCase();
+        if (urg && URGENCY_OPTIONS.some((o) => o.value === urg)) setUrgency(urg);
+
+        const av = String(initialData.availability || '').trim();
+        if (av) setAvailability(av);
+
+        const tr = String(initialData.travel_radius || '').trim().toLowerCase();
+        if (tr && TRAVEL_RADIUS_OPTIONS.some((o) => o.value === tr)) setTravelRadius(tr);
+
+        // Photos
+        setPhotoSlots(toExistingPhotoSlots(initialData.photos));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editMode, initialData]);
+
+    // In create-mode, we also try to autofill city/county from profile once (do not override explicit defaults)
+    const didAutofillLocationRef = useRef(false);
+    useEffect(() => {
+        if (editMode) return;
+        if (didAutofillLocationRef.current) return;
+        didAutofillLocationRef.current = true;
+
+        const ac = new AbortController();
+        let alive = true;
+
+        (async () => {
+            try {
+                const res = await fetch('/users/profile', {
+                    credentials: 'include',
+                    signal: ac.signal,
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const u = data?.user || null;
+                if (!u || !alive) return;
+
+                const profileCity = String(u.city || '').trim();
+                const profileCounty = normalizeCounty(u.county || '');
+
+                if (!base.city && profileCity) base.setCity(profileCity);
+                if (!base.county && profileCounty) base.setCounty(profileCounty);
+            } catch (err) {
+                if (err?.name !== 'AbortError') {
+                    // no-op
+                }
+            }
+        })();
+
+        return () => {
+            alive = false;
+            ac.abort();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editMode]);
+
+    useEffect(() => {
+        if (helpType !== 'other' && helpTypeOther) setHelpTypeOther('');
+    }, [helpType, helpTypeOther]);
+
+    const isVolunteer = requestKind === 'volunteer';
+    const dateLabel = isVolunteer ? 'Available starting' : 'Needed by';
 
     const openFilePicker = useCallback(() => {
         fileInputRef.current?.click?.();
@@ -161,10 +286,9 @@ export default function NewVolunteerHelpForm({
                 if (!file || !String(file.type || '').startsWith('image/')) continue;
 
                 const url = URL.createObjectURL(file);
-                next[idx] = { file, url };
+                next[idx] = { id: makeId(), file, url, existing: false };
                 idx = next.findIndex((s) => !s);
             }
-
             return next;
         });
     }, []);
@@ -173,7 +297,7 @@ export default function NewVolunteerHelpForm({
         setPhotoSlots((prev) => {
             const next = [...prev];
             const removed = next[idx];
-            if (removed?.url) URL.revokeObjectURL(removed.url);
+            if (removed?.url && !removed?.existing) URL.revokeObjectURL(removed.url);
             next[idx] = null;
             return next;
         });
@@ -187,7 +311,7 @@ export default function NewVolunteerHelpForm({
             const next = [...prev];
             next.splice(idx, 1);
             next.unshift(selected);
-            // Ensure fixed-length, keeping empties at the end
+            // keep length
             return next.slice(0, MAX_PHOTOS);
         });
     }, []);
@@ -196,7 +320,6 @@ export default function NewVolunteerHelpForm({
         (e) => {
             const files = e?.target?.files;
             addFiles(files);
-            // Reset so the same file can be picked again if needed
             if (e?.target) e.target.value = '';
         },
         [addFiles],
@@ -225,69 +348,23 @@ export default function NewVolunteerHelpForm({
         setDragActive(false);
     }, []);
 
-    // Auto-prefill city/county from user profile when the dialog opens.
-    // We only fill missing values so we don't override explicit defaults.
-    const didAutofillLocationRef = useRef(false);
-    useEffect(() => {
-        if (didAutofillLocationRef.current) return;
-        didAutofillLocationRef.current = true;
+    // Validation (no useMemo — keep simple & safe)
+    const requiredMissing = [];
+    if (!String(base.title || '').trim()) requiredMissing.push('Title');
+    if (!String(helpType || '').trim()) requiredMissing.push('Category');
+    if (helpType === 'other' && !String(helpTypeOther || '').trim()) requiredMissing.push('Other category');
+    if (!String(contact || '').trim()) requiredMissing.push('Contact info');
+    if (countyRequired && !String(base.county || '').trim()) requiredMissing.push('County');
 
-        const ac = new AbortController();
-        let alive = true;
-
-        (async () => {
-            try {
-                const res = await fetch('/users/profile', {
-                    credentials: 'include',
-                    signal: ac.signal,
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                const u = data?.user || null;
-                if (!u || !alive) return;
-
-                const profileCity = String(u.city || '').trim();
-                const profileCounty = normalizeCounty(u.county || '');
-
-                if (!base.city && profileCity) base.setCity(profileCity);
-                if (!base.county && profileCounty) base.setCounty(profileCounty);
-            } catch (err) {
-                if (err?.name !== 'AbortError') {
-                    // no-op; location is optional
-                }
-            }
-        })();
-
-        return () => {
-            alive = false;
-            ac.abort();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [base.city, base.county, base.setCity, base.setCounty]);
-
-    const dateLabel = requestKind === 'volunteer' ? 'Available starting' : 'Needed by';
-
-    const isVolunteer = requestKind === 'volunteer';
-
-    const requiredMissing = useMemo(() => {
-        const missing = [];
-        if (!String(base.title || '').trim()) missing.push('Title');
-        if (!String(helpType || '').trim()) missing.push('Category');
-        if (helpType === 'other' && !String(helpTypeOther || '').trim()) missing.push('Other category');
-        if (!String(contact || '').trim()) missing.push('Contact info');
-        if (countyRequired && !String(base.county || '').trim()) missing.push('County');
-        return missing;
-    }, [base.title, helpType, helpTypeOther, contact, base.county, countyRequired]);
-
-    const customTooltip = useMemo(() => {
-        if (base.tooltipMsg) return base.tooltipMsg;
-        if (!requiredMissing.length) return '';
-        return `Please fill: ${requiredMissing.join(', ')}`;
-    }, [base.tooltipMsg, requiredMissing]);
+    const customTooltip = base.tooltipMsg
+        ? base.tooltipMsg
+        : requiredMissing.length
+            ? `Please fill: ${requiredMissing.join(', ')}`
+            : '';
 
     const canSubmit = !base.isDisabled && requiredMissing.length === 0;
 
-    const handlePost = async () => {
+    const handleSaveOrPost = async () => {
         base.setAttemptedSubmit(true);
         base.setError('');
         if (!canSubmit) return;
@@ -295,6 +372,42 @@ export default function NewVolunteerHelpForm({
         base.setSubmitting(true);
         try {
             const [lat, lng] = base.resolveCoordinates();
+
+            if (editMode) {
+                const payload = {
+                    category: 'volunteer-help-requests',
+                    title: base.title,
+                    description: base.description,
+                    request_kind: requestKind,
+                    help_type: helpType,
+                    help_type_other: helpType === 'other' ? String(helpTypeOther || '').trim() : '',
+                    needed_date: String(neededDate || '').trim(),
+                    needed_time: String(neededTime || '').trim(),
+                    helpers_needed: String(helpersNeeded || '').trim(),
+                    urgency: String(urgency || '').trim(),
+                    availability: String(availability || '').trim(),
+                    travel_radius: String(travelRadius || '').trim(),
+                    contact: contact,
+                    contact_method: contactMethod,
+                    city: base.city,
+                    county: base.county,
+                    latitude: lat ?? '',
+                    longitude: lng ?? '',
+                    photos: (photoSlots || [])
+                        .filter((p) => p && p.existing && p.url)
+                        .map((p) => String(p.url).trim())
+                        .filter(Boolean),
+                };
+
+                if (typeof onSubmit !== 'function') {
+                    throw new Error('Edit submit handler is missing.');
+                }
+
+                await onSubmit(payload);
+                if (typeof onRefresh === 'function') await onRefresh();
+                onClose();
+                return;
+            }
 
             const form = new FormData();
             form.append('title', base.title);
@@ -322,7 +435,7 @@ export default function NewVolunteerHelpForm({
             form.append('latitude', lat ?? '');
             form.append('longitude', lng ?? '');
 
-            photoSlots
+            (photoSlots || [])
                 .filter(Boolean)
                 .forEach((p) => {
                     if (p?.file) form.append('photos', p.file);
@@ -334,11 +447,14 @@ export default function NewVolunteerHelpForm({
         } catch (err) {
             // eslint-disable-next-line no-console
             console.error(err);
-            base.setError(err?.message || 'Submission failed.');
+            base.setError(err?.message || (editMode ? 'Save failed.' : 'Submission failed.'));
         } finally {
             base.setSubmitting(false);
         }
     };
+
+    const titleText = editMode ? (isVolunteer ? 'Edit Volunteer Offer' : 'Edit Help Request') : (isVolunteer ? 'Offer to Volunteer' : 'Ask for Help');
+    const primaryBtnText = editMode ? 'Save' : 'Post';
 
     return (
         <>
@@ -353,7 +469,7 @@ export default function NewVolunteerHelpForm({
             >
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                     <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-                        {isVolunteer ? 'Offer to Volunteer' : 'Ask for Help'}
+                        {titleText}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                         {isVolunteer
@@ -361,7 +477,6 @@ export default function NewVolunteerHelpForm({
                             : 'Request neighbor-to-neighbor support (not a paid service listing).'}
                     </Typography>
                 </Box>
-
             </DialogTitle>
 
             <DialogContent
@@ -381,7 +496,6 @@ export default function NewVolunteerHelpForm({
                     </Typography>
                 </Alert>
 
-                {/* Title */}
                 <TextField
                     label="Title"
                     required
@@ -399,7 +513,6 @@ export default function NewVolunteerHelpForm({
                     {base.title.length} / {MAX_TITLE}
                 </Typography>
 
-                {/* Help type */}
                 <FormControl component="fieldset" required>
                     <FormLabel sx={{ fontWeight: 800 }}>
                         {isVolunteer ? 'I can help with' : 'Help needed'}
@@ -446,7 +559,6 @@ export default function NewVolunteerHelpForm({
                     />
                 )}
 
-                {/* Date */}
                 <TextField
                     label={dateLabel}
                     type="date"
@@ -457,7 +569,6 @@ export default function NewVolunteerHelpForm({
                     helperText="Optional"
                 />
 
-                {/* Help-request specific fields */}
                 {!isVolunteer && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <TextField
@@ -475,7 +586,6 @@ export default function NewVolunteerHelpForm({
                             value={helpersNeeded}
                             onChange={(e) => {
                                 const next = e.target.value;
-                                // keep it numeric-ish without being overly strict
                                 if (next === '' || /^\d{0,3}$/.test(next)) setHelpersNeeded(next);
                             }}
                             placeholder="Example: 2"
@@ -498,7 +608,6 @@ export default function NewVolunteerHelpForm({
                     </Box>
                 )}
 
-                {/* Volunteer-offer specific fields */}
                 {isVolunteer && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <TextField
@@ -526,7 +635,6 @@ export default function NewVolunteerHelpForm({
                     </Box>
                 )}
 
-                {/* Contact */}
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <TextField
                         label="Best contact info (email or phone)"
@@ -575,7 +683,6 @@ export default function NewVolunteerHelpForm({
                     </Typography>
                 </Box>
 
-                {/* City & County */}
                 <CityCountySelect
                     city={base.city}
                     setCity={base.setCity}
@@ -585,7 +692,6 @@ export default function NewVolunteerHelpForm({
                     countyLabelOverride={countyRequired ? 'County *' : 'County'}
                 />
 
-                {/* Description */}
                 <TextField
                     label={isVolunteer ? 'Details (what you can help with)' : 'Details (what you need)'}
                     multiline
@@ -674,7 +780,7 @@ export default function NewVolunteerHelpForm({
 
                                 return (
                                     <Box
-                                        key={idx}
+                                        key={p?.id || `slot-${idx}`}
                                         sx={{
                                             position: 'relative',
                                             width: '100%',
@@ -793,10 +899,15 @@ export default function NewVolunteerHelpForm({
                             })}
                         </Box>
 
-                        {photoSlots.filter(Boolean).length > 0 && (
-                            <Typography variant="caption" sx={{ mt: 1, color: 'text.secondary' }}>
-                                Cover photo is set (first image).
-                            </Typography>
+                        {editMode && (photoSlots || []).some((p) => p && p.existing === false) && (
+                            <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                                    Note: New photo uploads on edit will work once your PATCH endpoint accepts multipart uploads.
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    Right now, edits will only persist existing photo URLs.
+                                </Typography>
+                            </Box>
                         )}
                     </Box>
                 </Box>
@@ -808,13 +919,25 @@ export default function NewVolunteerHelpForm({
                         <Button
                             variant="contained"
                             disabled={!canSubmit || base.submitting}
-                            onClick={handlePost}
+                            onClick={handleSaveOrPost}
                             sx={{ fontWeight: 800, borderRadius: 999, px: 3 }}
                         >
-                            {base.submitting ? <CircularProgress size={20} /> : 'Post'}
+                            {base.submitting ? <CircularProgress size={20} /> : primaryBtnText}
                         </Button>
                     </span>
                 </Tooltip>
+
+                {editMode && typeof onDelete === 'function' && (
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={onDelete}
+                        disabled={base.submitting}
+                        sx={{ fontWeight: 900, borderRadius: 999, px: 3 }}
+                    >
+                        Delete Post
+                    </Button>
+                )}
 
                 <Button
                     variant="outlined"

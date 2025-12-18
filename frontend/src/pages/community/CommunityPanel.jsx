@@ -3,6 +3,9 @@
 // UPDATED:
 //  • Adds "Show Filters" / "Hide Filters" toggle in the header row so it's always accessible.
 //  • Accepts `selectable` prop to control whether left-list cards show selection styling.
+//  • Filters Collapse uses unmountOnExit so hidden filters don't affect layout.
+//  • Root panel uses height: 100% to avoid phantom vertical space.
+//  • Passes `view` into CommunityList so trending empty state message can show.
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -10,6 +13,7 @@ import {
     Button,
     Typography,
     Collapse,
+    CircularProgress,
 } from '@mui/material';
 import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -62,6 +66,7 @@ export default function CommunityPanel(props) {
 
     const navigate = useNavigate();
     const listScrollRef = useRef(null);
+    const [displayStats, setDisplayStats] = useState({ displaying: 0, total: 0, loadingMore: false });
 
     useEffect(() => {
         const saved = Number(sessionStorage.getItem('ll:community:scrollTop') || 0);
@@ -110,12 +115,13 @@ export default function CommunityPanel(props) {
     };
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '97%', overflow: 'hidden' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
             {/* Filters --------------------------------------------------- */}
-            <Collapse in={showFilters}>
+            <Collapse in={showFilters} unmountOnExit>
                 <Box sx={{ p: 2 }}>
                     <CommunityFilter
                         view={selectedView}
+                        selectedView={selectedView}
                         onViewChange={onViewChange}
                         searchTerm={searchTerm}
                         onSearchTermChange={onSearchTermChange}
@@ -155,15 +161,16 @@ export default function CommunityPanel(props) {
                     overflow: 'hidden',
                 }}
             >
-                {/* fixed header row */}
+                {/* Header row */}
                 <Box
                     sx={{
                         px: 2,
-                        py: 1,
+                        py: 1.25,
                         borderBottom: '1px solid',
                         borderColor: 'divider',
                         bgcolor: 'background.paper',
-                        position: 'relative',
+                        position: 'sticky',
+                        top: 0,
                         zIndex: 2,
                         display: 'flex',
                         alignItems: 'center',
@@ -194,52 +201,65 @@ export default function CommunityPanel(props) {
                             gap: 1,
                             order: { xs: 3, md: 2 },
                             width: { xs: '100%', md: 'auto' },
-                            justifyContent: { xs: 'flex-start', md: 'center' },
+                            justifyContent: { xs: 'space-between', md: 'flex-end' },
                         }}
                     >
                         <Button
+                            size="small"
                             variant="outlined"
                             onClick={handleToggleFiltersClick}
                             startIcon={showFilters ? <ExpandLess /> : <ExpandMore />}
                             sx={{
-                                borderRadius: 999,
-                                px: 1.75,
-                                fontWeight: 800,
                                 textTransform: 'none',
+                                fontWeight: 700,
+                                borderRadius: 999,
+                                px: 1.5,
                                 whiteSpace: 'nowrap',
                             }}
-                            aria-label={showFilters ? 'Hide filters' : 'Show filters'}
                         >
                             {showFilters ? 'Hide Filters' : 'Show Filters'}
                         </Button>
-                    </Box>
 
-                    {/* Right: new post */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, order: { xs: 2, md: 3 } }}>
                         <Button
+                            size="small"
                             variant="contained"
-                            color="success"
                             onClick={handleNewPostClick}
-                            sx={{ borderRadius: 999, px: 2, fontWeight: 700 }}
+                            sx={{
+                                textTransform: 'none',
+                                fontWeight: 800,
+                                borderRadius: 999,
+                                px: 2,
+                                whiteSpace: 'nowrap',
+                            }}
                         >
                             New Post
                         </Button>
                     </Box>
                 </Box>
 
-                {/* scrollable cards area */}
+                {/* cards area (scroll) + fixed footer */}
                 <Box
-                    ref={listScrollRef}
-                    data-community-scroll
                     sx={{
                         flex: 1,
                         minHeight: 0,
-                        overflowY: 'auto',
+                        overflow: 'hidden',
                         position: 'relative',
-                        pt: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
                     }}
                 >
-                    <Box sx={{ p: 2 }}>
+                    <Box
+                        ref={listScrollRef}
+                        data-community-scroll
+                        sx={{
+                            flex: 1,
+                            minHeight: 0,
+                            overflowY: 'auto',
+                            position: 'relative',
+                            pt: 1,
+                            pb: 1,
+                        }}
+                    >
                         <CommunityList
                             user={user}
                             posts={posts}
@@ -249,10 +269,57 @@ export default function CommunityPanel(props) {
                             onCardClick={onCardClick || defaultNavigateOnClick}
                             selectedId={selectedPostId}
                             selectable={selectable}
+                            view={selectedView} // ✅ NEW: enables trending empty-state message
+
+                            totalCount={Array.isArray(posts) ? posts.length : 0}
+                            onDisplayStatsChange={(stats) => {
+                                if (!stats || typeof stats !== 'object') return;
+                                setDisplayStats({
+                                    displaying: Number.isFinite(Number(stats.displaying)) ? Number(stats.displaying) : 0,
+                                    total: Number.isFinite(Number(stats.total)) ? Number(stats.total) : (Array.isArray(posts) ? posts.length : 0),
+                                    loadingMore: Boolean(stats.loadingMore),
+                                });
+                            }}
                         />
+                    </Box>
+
+                    <Box
+                        sx={{
+                            flexShrink: 0,
+                            borderTop: '1px solid rgba(0,0,0,0.08)',
+                            px: { xs: 1.25, md: 1.5 },
+                            py: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: '#fff',
+                        }}
+                    >
+                        <Typography
+                            sx={{
+                                fontSize: { xs: '0.82rem', md: '0.9rem' },
+                                color: 'rgba(0,0,0,0.72)',
+                                fontWeight: 600,
+                            }}
+                        >
+                            {
+                                (() => {
+                                    const displaying = Number.isFinite(Number(displayStats?.displaying))
+                                        ? Number(displayStats.displaying)
+                                        : 0;
+                                    const total = Number.isFinite(Number(displayStats?.total)) ? Number(displayStats.total) : 0;
+                                    const safeTotal = total || displaying;
+                                    const d = Math.min(displaying, safeTotal).toLocaleString();
+                                    const t = safeTotal.toLocaleString();
+                                    return `Displaying ${d} out of ${t} posts`;
+                                })()
+                            }
+                        </Typography>
+
+                        {displayStats?.loadingMore ? <CircularProgress size={16} /> : null}
                     </Box>
                 </Box>
             </Box>
         </Box>
-    );
+);
 }

@@ -200,8 +200,24 @@ export default function RightRail({
             setLikedPosts((prev) => patchList(prev));
         };
 
+        const onDeleted = (e) => {
+            const idNum = Number(e?.detail?.postId);
+            if (!Number.isFinite(idNum)) return;
+
+            const dropFrom = (prev) =>
+                Array.isArray(prev) ? prev.filter((p) => Number(p?.id) !== idNum) : prev;
+
+            setRawPosts((prev) => dropFrom(prev));
+            setRepostPosts((prev) => dropFrom(prev));
+            setLikedPosts((prev) => dropFrom(prev));
+        };
+
         window.addEventListener('ll:communityPost:updated', onUpdated);
-        return () => window.removeEventListener('ll:communityPost:updated', onUpdated);
+        window.addEventListener('ll:communityPost:deleted', onDeleted);
+        return () => {
+            window.removeEventListener('ll:communityPost:updated', onUpdated);
+            window.removeEventListener('ll:communityPost:deleted', onDeleted);
+        };
     }, []);
 
     // Fetch profile posts (includes photos). We refetch on profileKey change unless caller preloaded them.
@@ -254,7 +270,8 @@ export default function RightRail({
         if (sort === 'newest') {
             list.sort(
                 (a, b) =>
-                    new Date(b?.posted_at || b?.date_created || 0) - new Date(a?.posted_at || a?.date_created || 0)
+                    new Date(b?.posted_at || b?.date_created || 0) -
+                    new Date(a?.posted_at || a?.date_created || 0)
             );
         } else if (sort === 'popular') {
             list.sort((a, b) => Number(b?.likesCount || 0) - Number(a?.likesCount || 0));
@@ -383,7 +400,12 @@ export default function RightRail({
                 <Divider />
 
                 {/* IMPORTANT: add marker for save/restore logic */}
-                <Box ref={postsScrollRef} sx={scrollerSx} data-profile-posts-scroll className="profile-posts-scroller">
+                <Box
+                    ref={postsScrollRef}
+                    sx={scrollerSx}
+                    data-profile-posts-scroll
+                    className="profile-posts-scroller"
+                >
                     <ProfilePostsList user={me} posts={visiblePosts} loading={loadingPosts} onCardClick={onOpenPost} />
                 </Box>
             </Box>

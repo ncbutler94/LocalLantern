@@ -66,6 +66,8 @@ import RightRail from '../userProfile/RightRail';
 import { ProfilePostCard } from '../../profile/userProfile/ProfilePostsList';
 import UserCardPopover from '../../../components/UserCardPopover';
 import SharePostDialog from '../../../components/SharePostDialog';
+import EditCommunityPostDialog from '../../../components/community/EditCommunityPostDialog';
+import DeletePostConfirmDialog from '../../../components/community/DeletePostConfirmDialog';
 
 const api = process.env.REACT_APP_API_URL;
 
@@ -258,14 +260,13 @@ export default function UserProfilePage({ me }) {
     // Scroll ref for the expanded posts area
     const postsScrollRef = useRef(null);
 
-    // Community post edit / history / mark-found dialogs (profile page)
+    // Community post dialogs (profile page)
     const [editOpen, setEditOpen] = useState(false);
     const [editPostId, setEditPostId] = useState(null);
-    const [editPost, setEditPost] = useState(null);
-    const [editDraft, setEditDraft] = useState(null);
-    const [editLoading, setEditLoading] = useState(false);
-    const [editSaving, setEditSaving] = useState(false);
-    const [editError, setEditError] = useState('');
+
+    // Shared delete confirm (used by Delete buttons on post cards)
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [deletePostId, setDeletePostId] = useState(null);
 
     const [historyOpen, setHistoryOpen] = useState(false);
     const [historyPostId, setHistoryPostId] = useState(null);
@@ -280,12 +281,6 @@ export default function UserProfilePage({ me }) {
     const [markFoundSaving, setMarkFoundSaving] = useState(false);
     const [markFoundError, setMarkFoundError] = useState('');
 
-
-    // Delete post (profile page)
-    const [deletePostOpen, setDeletePostOpen] = useState(false);
-    const [deletePostId, setDeletePostId] = useState(null);
-    const [deletePostBusy, setDeletePostBusy] = useState(false);
-    const [deletePostError, setDeletePostError] = useState('');
     const isMine = me && profile && me.id === profile.id;
 
     // Username (handle) editing
@@ -305,11 +300,7 @@ export default function UserProfilePage({ me }) {
         const onReqEdit = (e) => {
             const pid = Number(e?.detail?.postId || e?.detail?.post?.id || 0);
             if (!pid) return;
-            setEditError('');
             setEditPostId(pid);
-            // We may have a partial post from a list; we'll fetch the authoritative copy below
-            setEditPost(e?.detail?.post || null);
-            setEditDraft(null);
             setEditOpen(true);
         };
 
@@ -332,87 +323,18 @@ export default function UserProfilePage({ me }) {
             setMarkFoundOpen(true);
         };
 
-
-        const onReqDelete = (e) => {
-            const pid = Number(e?.detail?.postId || e?.detail?.post?.id || 0);
-            if (!pid) return;
-            setDeletePostError('');
-            setDeletePostId(pid);
-            setDeletePostOpen(true);
-        };
-
         window.addEventListener('ll:communityPost:requestEdit', onReqEdit);
         window.addEventListener('ll:communityPost:requestHistory', onReqHistory);
         window.addEventListener('ll:communityPost:requestMarkFound', onReqMarkFound);
-        window.addEventListener('ll:communityPost:requestDelete', onReqDelete);
 
         return () => {
             window.removeEventListener('ll:communityPost:requestEdit', onReqEdit);
             window.removeEventListener('ll:communityPost:requestHistory', onReqHistory);
             window.removeEventListener('ll:communityPost:requestMarkFound', onReqMarkFound);
-            window.removeEventListener('ll:communityPost:requestDelete', onReqDelete);
-        };
-    }, []);
-
-    const buildEditDraftFromPost = useCallback((p) => {
-        const toDateInput = (v) => {
-            if (!v) return '';
-            const s = String(v);
-            return s.length >= 10 ? s.slice(0, 10) : s;
-        };
-
-        return {
-            title: p?.title || '',
-            description: p?.description || '',
-            city: p?.city || '',
-            county: p?.county || '',
-            street_address: p?.street_address || '',
-            // Category-specific
-            lost_or_found: p?.lost_or_found || '',
-            reward: p?.reward || '',
-            rec_type: p?.rec_type || '',
-            help_type: p?.help_type || '',
-            request_kind: p?.request_kind || '',
-            needed_date: toDateInput(p?.needed_date),
-            contact: p?.contact || '',
         };
     }, []);
 
     // Fetch authoritative post data when editing
-    useEffect(() => {
-        if (!editOpen || !editPostId) return;
-        let alive = true;
-        const controller = new AbortController();
-
-        (async () => {
-            setEditLoading(true);
-            setEditError('');
-            try {
-                const res = await axios.get(`${api}/api/community/${editPostId}`, {
-                    withCredentials: true,
-                    signal: controller.signal,
-                });
-                if (!alive) return;
-                const p = res.data;
-                setEditPost(p);
-                setEditDraft(buildEditDraftFromPost(p));
-            } catch (err) {
-                if (!alive) return;
-                const msg =
-                    err?.response?.data?.message ||
-                    err?.message ||
-                    'Could not load the post for editing.';
-                setEditError(msg);
-            } finally {
-                if (alive) setEditLoading(false);
-            }
-        })();
-
-        return () => {
-            alive = false;
-            controller.abort();
-        };
-    }, [editOpen, editPostId, buildEditDraftFromPost]);
 
     // Fetch edit history when requested
     useEffect(() => {
@@ -820,10 +742,10 @@ export default function UserProfilePage({ me }) {
         });
     }, []);
 
-    // Remove a deleted post across the profile UI (right rail + expanded grid + lists)
-    const removeDeletedCommunityPost = useCallback((deletedId) => {
-        const idNum = Number(deletedId);
-        if (!Number.isFinite(idNum)) return;
+
+    const applyDeletedCommunityPost = useCallback((postId) => {
+        const idNum = Number(postId);
+        if (!Number.isFinite(idNum) || !idNum) return;
 
         try {
             window.dispatchEvent(
@@ -833,29 +755,23 @@ export default function UserProfilePage({ me }) {
             /* ignore */
         }
 
-        const dropFromList = (prev) =>
+        const removeFromList = (prev) =>
             Array.isArray(prev) ? prev.filter((p) => Number(p?.id) !== idNum) : prev;
 
-        setFeedPosts((prev) => dropFromList(prev));
+        setFeedPosts((prev) => removeFromList(prev));
         setActivity((prev) => {
             if (!prev) return prev;
             const next = { ...prev };
-            if (Array.isArray(prev.posts)) next.posts = dropFromList(prev.posts);
-            if (Array.isArray(prev.reposts)) next.reposts = dropFromList(prev.reposts);
-            if (Array.isArray(prev.likes)) next.likes = dropFromList(prev.likes);
+            if (Array.isArray(prev.posts)) next.posts = removeFromList(prev.posts);
+            if (Array.isArray(prev.reposts)) next.reposts = removeFromList(prev.reposts);
+            if (Array.isArray(prev.likes)) next.likes = removeFromList(prev.likes);
             return next;
         });
     }, []);
 
-
     const closeEditDialog = useCallback(() => {
         setEditOpen(false);
         setEditPostId(null);
-        setEditPost(null);
-        setEditDraft(null);
-        setEditError('');
-        setEditLoading(false);
-        setEditSaving(false);
     }, []);
 
     const closeHistoryDialog = useCallback(() => {
@@ -874,52 +790,6 @@ export default function UserProfilePage({ me }) {
         setMarkFoundError('');
         setMarkFoundSaving(false);
     }, []);
-
-    const closeDeletePostDialog = useCallback(() => {
-        setDeletePostOpen(false);
-        setDeletePostId(null);
-        setDeletePostBusy(false);
-        setDeletePostError('');
-    }, []);
-
-
-    const submitEditPost = useCallback(async () => {
-        if (!editPostId || !editDraft) return;
-        setEditSaving(true);
-        setEditError('');
-        try {
-            // Only send known fields; backend will enforce ownership & rate limit
-            const payload = {
-                title: editDraft.title,
-                description: editDraft.description,
-                city: editDraft.city,
-                county: editDraft.county,
-                street_address: editDraft.street_address,
-                lost_or_found: editDraft.lost_or_found,
-                reward: editDraft.reward,
-                rec_type: editDraft.rec_type,
-                help_type: editDraft.help_type,
-                request_kind: editDraft.request_kind,
-                needed_date: editDraft.needed_date,
-                contact: editDraft.contact,
-            };
-
-            const res = await axios.patch(`${api}/api/community/${editPostId}`, payload, {
-                withCredentials: true,
-            });
-            const updated = res.data;
-            applyUpdatedCommunityPost(updated);
-            closeEditDialog();
-        } catch (err) {
-            const msg =
-                err?.response?.data?.message ||
-                err?.message ||
-                'Could not save your changes.';
-            setEditError(msg);
-        } finally {
-            setEditSaving(false);
-        }
-    }, [editPostId, editDraft, applyUpdatedCommunityPost, closeEditDialog]);
 
     const submitMarkFound = useCallback(async () => {
         if (!markFoundPostId) return;
@@ -943,49 +813,6 @@ export default function UserProfilePage({ me }) {
             setMarkFoundSaving(false);
         }
     }, [markFoundPostId, markFoundMessage, applyUpdatedCommunityPost, closeMarkFoundDialog]);
-
-    const openDeleteFromEdit = useCallback(() => {
-        if (!editPostId) return;
-        setDeletePostError('');
-        setDeletePostId(editPostId);
-        setDeletePostOpen(true);
-    }, [editPostId]);
-
-    const submitDeletePost = useCallback(async () => {
-        if (!deletePostId) return;
-        setDeletePostBusy(true);
-        setDeletePostError('');
-        try {
-            await axios.delete(`${api}/api/community/${deletePostId}`, { withCredentials: true });
-
-            removeDeletedCommunityPost(deletePostId);
-
-            // If the user was editing/marking this post, close those dialogs too
-            if (Number(editPostId) === Number(deletePostId)) {
-                closeEditDialog();
-            }
-            if (Number(markFoundPostId) === Number(deletePostId)) {
-                closeMarkFoundDialog();
-            }
-            closeDeletePostDialog();
-        } catch (err) {
-            const msg =
-                err?.response?.data?.message ||
-                err?.message ||
-                'Could not delete this post.';
-            setDeletePostError(msg);
-            setDeletePostBusy(false);
-        }
-    }, [
-        deletePostId,
-        removeDeletedCommunityPost,
-        editPostId,
-        closeEditDialog,
-        markFoundPostId,
-        closeMarkFoundDialog,
-        closeDeletePostDialog,
-    ]);
-
 
     // Avoid object-URL churn and memory leaks for staged images
     const avatarObjectUrl = useMemo(
@@ -1862,6 +1689,18 @@ export default function UserProfilePage({ me }) {
                                         setHoveredId={setHoveredId}
                                         // Location clicks are intentionally disabled by the ProfilePostCard wrapper
                                         onCardClick={openPostFromExpanded}
+                                        onEditPost={(post) => {
+                                            const pid = Number(post?.id || 0);
+                                            if (!pid) return;
+                                            setEditPostId(pid);
+                                            setEditOpen(true);
+                                        }}
+                                        onDeletePost={(post) => {
+                                            const pid = Number(post?.id || 0);
+                                            if (!pid) return;
+                                            setDeletePostId(pid);
+                                            setDeleteConfirmOpen(true);
+                                        }}
                                         onOpenUserCard={(el, post) => {
                                             setUserAnchor(el);
                                             setUserForCard({
@@ -2026,245 +1865,27 @@ export default function UserProfilePage({ me }) {
                 </Box>
             </Popover>
 
-            {/* Edit community post dialog */}
-            <Dialog
+            {/* Edit community post dialog (shared component) */}
+            <EditCommunityPostDialog
                 open={editOpen}
-                fullWidth
-                maxWidth="sm"
-                onClose={(_, reason) => {
-                    if (reason === 'backdropClick') return;
-                    closeEditDialog();
+                postId={editPostId}
+                onClose={closeEditDialog}
+            />
+
+            {/* Shared delete confirmation (for delete buttons in post lists) */}
+            <DeletePostConfirmDialog
+                open={deleteConfirmOpen}
+                postId={deletePostId}
+                onClose={() => {
+                    setDeleteConfirmOpen(false);
+                    setDeletePostId(null);
                 }}
-            >
-                <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    Edit Post
-                    <IconButton onClick={closeEditDialog} size="small" aria-label="Close">
-                        <CloseIcon />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent dividers>
-                    {editError ? (
-                        <Alert severity="error" sx={{ mb: 1 }}>
-                            {editError}
-                        </Alert>
-                    ) : null}
-
-                    {editLoading ? (
-                        <Typography variant="body2" color="text.secondary">
-                            Loading post...
-                        </Typography>
-                    ) : null}
-
-                    {editDraft ? (
-                        <Stack spacing={2} sx={{ mt: editLoading ? 1 : 0 }}>
-                            <TextField
-                                label="Category"
-                                value={editPost?.categoryLabel || editPost?.category || ''}
-                                fullWidth
-                                disabled
-                            />
-                            <TextField
-                                label="Title"
-                                value={editDraft.title}
-                                onChange={(e) =>
-                                    setEditDraft((prev) => ({ ...prev, title: e.target.value }))
-                                }
-                                fullWidth
-                            />
-                            <TextField
-                                label="Description"
-                                value={editDraft.description}
-                                onChange={(e) =>
-                                    setEditDraft((prev) => ({ ...prev, description: e.target.value }))
-                                }
-                                fullWidth
-                                multiline
-                                minRows={4}
-                            />
-
-                            <Divider />
-                            <Typography variant="subtitle2">Location</Typography>
-                            <TextField
-                                label="Street Address"
-                                value={editDraft.street_address}
-                                onChange={(e) =>
-                                    setEditDraft((prev) => ({ ...prev, street_address: e.target.value }))
-                                }
-                                fullWidth
-                            />
-                            <TextField
-                                label="City"
-                                value={editDraft.city}
-                                onChange={(e) => setEditDraft((prev) => ({ ...prev, city: e.target.value }))}
-                                fullWidth
-                            />
-                            <TextField
-                                label="County"
-                                value={editDraft.county}
-                                onChange={(e) =>
-                                    setEditDraft((prev) => ({ ...prev, county: e.target.value }))
-                                }
-                                fullWidth
-                            />
-
-                            {/* Category-specific fields */}
-                            {String(editPost?.category || '').toLowerCase() === 'lost-and-found' ? (
-                                <>
-                                    <Divider />
-                                    <Typography variant="subtitle2">Lost &amp; Found</Typography>
-                                    <TextField
-                                        select
-                                        label="Lost or Found"
-                                        value={editDraft.lost_or_found}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, lost_or_found: e.target.value }))
-                                        }
-                                        fullWidth
-                                    >
-                                        <MenuItem value="">—</MenuItem>
-                                        <MenuItem value="lost">Lost</MenuItem>
-                                        <MenuItem value="found">Found</MenuItem>
-                                    </TextField>
-                                    <TextField
-                                        label="Reward"
-                                        value={editDraft.reward}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, reward: e.target.value }))
-                                        }
-                                        fullWidth
-                                    />
-                                </>
-                            ) : null}
-
-                            {String(editPost?.category || '').toLowerCase() === 'recommendations-and-tips' ? (
-                                <>
-                                    <Divider />
-                                    <Typography variant="subtitle2">Recommendation / Tip</Typography>
-                                    <TextField
-                                        label="Type"
-                                        value={editDraft.rec_type}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, rec_type: e.target.value }))
-                                        }
-                                        fullWidth
-                                    />
-                                </>
-                            ) : null}
-
-                            {String(editPost?.category || '').toLowerCase() === 'volunteer-help' ? (
-                                <>
-                                    <Divider />
-                                    <Typography variant="subtitle2">Volunteer Help</Typography>
-                                    <TextField
-                                        label="Help Type"
-                                        value={editDraft.help_type}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, help_type: e.target.value }))
-                                        }
-                                        fullWidth
-                                    />
-                                    <TextField
-                                        label="Request Kind"
-                                        value={editDraft.request_kind}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, request_kind: e.target.value }))
-                                        }
-                                        fullWidth
-                                    />
-                                    <TextField
-                                        label="Needed Date"
-                                        type="date"
-                                        value={editDraft.needed_date}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, needed_date: e.target.value }))
-                                        }
-                                        InputLabelProps={{ shrink: true }}
-                                        fullWidth
-                                    />
-                                    <TextField
-                                        label="Contact"
-                                        value={editDraft.contact}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, contact: e.target.value }))
-                                        }
-                                        fullWidth
-                                    />
-                                </>
-                            ) : null}
-
-                            <Alert severity="info">
-                                You can edit a post up to 5 times within a 24-hour window.
-                            </Alert>
-                        </Stack>
-                    ) : null}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={closeEditDialog} disabled={editSaving}>
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={submitEditPost}
-                        disabled={!editDraft || editLoading || editSaving}
-                    >
-                        {editSaving ? 'Saving…' : 'Save'}
-                    </Button>
-                    {isMine ? (
-                        <Button
-                            color="error"
-                            variant="outlined"
-                            onClick={openDeleteFromEdit}
-                            disabled={editLoading || editSaving || deletePostBusy}
-                        >
-                            Delete Post
-                        </Button>
-                    ) : null}
-                </DialogActions>
-            </Dialog>
-
-
-
-            {/* Delete post confirmation dialog */}
-            <Dialog
-                open={deletePostOpen}
-                fullWidth
-                maxWidth="xs"
-                onClose={(_, reason) => {
-                    if (reason === 'backdropClick') return;
-                    closeDeletePostDialog();
+                onDeleted={() => {
+                    applyDeletedCommunityPost(deletePostId);
+                    setDeleteConfirmOpen(false);
+                    setDeletePostId(null);
                 }}
-            >
-                <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    Delete Post
-                    <IconButton onClick={closeDeletePostDialog} size="small" aria-label="Close">
-                        <CloseIcon />
-                    </IconButton>
-                </DialogTitle>
-                <DialogContent dividers>
-                    {deletePostError ? (
-                        <Alert severity="error" sx={{ mb: 1 }}>
-                            {deletePostError}
-                        </Alert>
-                    ) : null}
-                    <Typography variant="body2">
-                        Are you sure you want to delete this post? This can&apos;t be undone.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={closeDeletePostDialog} disabled={deletePostBusy}>
-                        Cancel
-                    </Button>
-                    <Button
-                        color="error"
-                        variant="contained"
-                        onClick={submitDeletePost}
-                        disabled={deletePostBusy}
-                    >
-                        {deletePostBusy ? 'Deleting…' : 'Delete'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
+            />
             {/* Post edit history dialog */}
             <Dialog
                 open={historyOpen}

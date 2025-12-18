@@ -21,7 +21,7 @@ import UserProfilePage from './pages/profile/userProfile/UserProfilePage';
 
 // Register + 404 pages
 import Register from './pages/Register';
-import ResetPasswordPage  from './pages/ResetPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import NotFound from './pages/NotFound';
 
 const BusinessPage = lazy(() => import('./pages/business/BusinessPage'));
@@ -30,6 +30,7 @@ const EventDetails = lazy(() => import('./pages/events/EventDetails'));
 const EventCreate = lazy(() => import('./pages/events/EventCreate'));
 const JobsPage = lazy(() => import('./pages/jobs/JobsPage'));
 const PostPage = lazy(() => import('./pages/community/PostPage'));
+const CommunityPage = lazy(() => import('./pages/community/CommunityPage'));
 const MessagesPage = lazy(() => import('./pages/messages/MessagesPage'));
 
 /** Redirect old /u/:handleOrId links to /:handleOrId */
@@ -107,10 +108,6 @@ function AppShell() {
 
     return (
         <Routes>
-            {/* ⛔ Removed OAuth callback/setup routes */}
-            {/* <Route path="/social-login-success" element={<SocialLoginSuccess onLogin={handleLogin} />} /> */}
-            {/* <Route path="/social-signup" element={<SocialSignup onLogin={handleLogin} />} /> */}
-
             {/* Businesses */}
             <Route
                 path="/business/*"
@@ -147,7 +144,6 @@ function AppShell() {
                             <Route
                                 path="login"
                                 element={
-                                    // Add top padding to clear the fixed header and show the page title
                                     <Box
                                         sx={{
                                             width: '100%',
@@ -156,13 +152,13 @@ function AppShell() {
                                             pb: { xs: 8, sm: 10 },
                                         }}
                                     >
-                                        {/* Show the title inside the form only on /login */}
                                         <Login onLogin={handleLogin} showTitle title="Log In" />
                                     </Box>
                                 }
                             />
                             <Route path="register" element={<Register />} />
-                            <Route path="/reset-password" element={<ResetPasswordPage />} />
+                            <Route path="reset-password" element={<ResetPasswordPage />} />
+
                             {/* Social (site section; not OAuth) */}
                             <Route path="social" element={<SocialHome user={user} />} />
 
@@ -180,14 +176,16 @@ function AppShell() {
                             {/* Community post */}
                             <Route path="posts/:postId" element={<PostPage user={user} />} />
 
+                            {/* Community page */}
+                            <Route path="community" element={<CommunityPage user={user} />} />
+
                             {/* Explicit tab routes */}
-                            <Route path="community" element={<Home user={user} activeTab="Community" />} />
                             <Route path="music" element={<Home user={user} activeTab="Music" />} />
                             <Route path="services" element={<Home user={user} activeTab="Services" />} />
                             <Route path="marketplace" element={<Home user={user} activeTab="Marketplace" />} />
                             <Route path="deals" element={<Home user={user} activeTab="Deals" />} />
                             <Route path="real-estate" element={<Home user={user} activeTab="Real Estate" />} />
-                            <Route path="/reset-password" element={<ResetPasswordPage />} />
+
                             {/* Profiles */}
                             <Route path="u/:handleOrId" element={<LegacyUserRedirect />} />
                             <Route path=":handleOrId" element={<ProfileRoute me={user} />} />

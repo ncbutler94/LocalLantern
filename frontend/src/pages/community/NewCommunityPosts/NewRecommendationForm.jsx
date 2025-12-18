@@ -21,10 +21,7 @@ import PhotoLibraryOutlinedIcon from '@mui/icons-material/PhotoLibraryOutlined';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 
-import useBasePostForm, {
-    MAX_TITLE,
-    MAX_DESCRIPTION,
-} from './useBasePostForm';
+import useBasePostForm, { MAX_TITLE, MAX_DESCRIPTION } from './useBasePostForm';
 import CityCountySelect from '../../../components/CityCountySelect';
 
 const MAX_PHOTOS = 4;
@@ -41,28 +38,40 @@ function makeId() {
  * - Defaults location from the **database user** (passed in via props by NewPostDialogs)
  * - County is required; City is optional
  * - Uses a safe local submitter to avoid "onSubmit is not a function"
+ *
+ * Edit-mode:
+ * - Same UI as new form
+ * - Save uses JSON payload via shared EditCommunityPostDialog
+ * - Delete button visible when editMode + onDelete provided
  */
 export default function NewRecommendationForm({
                                                   onClose,
-                                                  onSubmit,         // optional; safe fallback below
-                                                  onRefresh,        // optional
+                                                  onSubmit, // optional; safe fallback below
+                                                  onRefresh, // optional
                                                   defaultCity = '',
                                                   defaultCounty = '',
                                                   countyRequired = true,
+
+                                                  // Edit-mode support
+                                                  editMode = false,
+                                                  initialData = null, // { id, title, description, city, county, rec_type, photos:[url...] }
+                                                  onDelete, // optional () => void
                                               }) {
     const base = useBasePostForm({ defaultCity, defaultCounty, countyRequired });
 
     const { city, county, setCity, setCounty } = base;
 
-    // Apply passed defaults (if base isn't already populated)
+    // Apply passed defaults (create-mode only)
     React.useEffect(() => {
+        if (editMode) return;
         if (!city && defaultCity) setCity(defaultCity);
         if (!county && defaultCounty) setCounty(defaultCounty);
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
-    // Fallback: if no defaults were provided, auto-fill from profile (matches announcements)
+    // Fallback: if no defaults were provided, auto-fill from profile (create-mode only)
     const fetchedProfileRef = React.useRef(false);
     React.useEffect(() => {
+        if (editMode) return;
         if (fetchedProfileRef.current) return;
         if (defaultCity || defaultCounty) return;
         if (city || county) return;
@@ -87,12 +96,12 @@ export default function NewRecommendationForm({
             });
 
         return () => ac.abort();
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
     const [recType, setRecType] = useState('business'); // 'business' | 'tip'
 
-    /* ───────── photos (drag/drop + reorder, like announcements) ───────── */
     // Photos (ordered): index 0 = cover
+    // Each item: { id, url, file?: File, existing?: boolean }
     const [photos, setPhotos] = useState([]);
     const photosRef = React.useRef([]);
     const fileInputRef = React.useRef(null);
@@ -105,23 +114,48 @@ export default function NewRecommendationForm({
 
     const remainingCount = MAX_PHOTOS - photos.length;
 
-    // Keep ref for cleanup
     React.useEffect(() => {
         photosRef.current = photos;
     }, [photos]);
 
-    // Cleanup object URLs on unmount
     React.useEffect(() => {
         return () => {
             photosRef.current.forEach((p) => {
+                if (p?.existing) return;
                 try {
-                    URL.revokeObjectURL(p.url);
+                    if (p?.url) URL.revokeObjectURL(p.url);
                 } catch (e) {
                     // ignore
                 }
             });
         };
     }, []);
+
+    // Prefill in edit mode
+    React.useEffect(() => {
+        if (!editMode) return;
+        if (!initialData) return;
+
+        if (typeof initialData.title === 'string') base.setTitle(initialData.title);
+        if (typeof initialData.description === 'string') base.setDescription(initialData.description);
+        if (typeof initialData.city === 'string') base.setCity(initialData.city);
+        if (typeof initialData.county === 'string') base.setCounty(initialData.county);
+
+        const rt = String(initialData.rec_type || '').trim().toLowerCase();
+        if (rt === 'tip' || rt === 'business' || rt === 'recommendation') {
+            setRecType(rt === 'recommendation' ? 'business' : rt);
+        }
+
+        const existing = Array.isArray(initialData.photos) ? initialData.photos : [];
+        const cleaned = existing
+            .map((u) => String(u || '').trim())
+            .filter(Boolean)
+            .slice(0, MAX_PHOTOS)
+            .map((url) => ({ id: makeId(), url, existing: true }));
+
+        setPhotos(cleaned);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editMode, initialData]);
 
     const addFiles = React.useCallback((fileList) => {
         const incoming = Array.from(fileList || []).filter((f) =>
@@ -138,7 +172,7 @@ export default function NewRecommendationForm({
 
             slice.forEach((file) => {
                 const url = URL.createObjectURL(file);
-                next.push({ id: makeId(), file, url });
+                next.push({ id: makeId(), file, url, existing: false });
             });
 
             return next;
@@ -155,7 +189,6 @@ export default function NewRecommendationForm({
         (e) => {
             if (base.submitting) return;
             addFiles(e.target.files);
-            // allow selecting the same file again
             e.target.value = '';
         },
         [addFiles, base.submitting]
@@ -165,7 +198,7 @@ export default function NewRecommendationForm({
         setPhotos((prev) => {
             if (idx < 0 || idx >= prev.length) return prev;
             const toRemove = prev[idx];
-            if (toRemove?.url) {
+            if (toRemove?.url && !toRemove?.existing) {
                 try {
                     URL.revokeObjectURL(toRemove.url);
                 } catch (e) {
@@ -189,12 +222,14 @@ export default function NewRecommendationForm({
         });
     }, []);
 
-    const onThumbDragStart = React.useCallback((idx) => {
-        // Only allow dragging real photos (no empty slots)
-        if (idx < 0 || idx >= photos.length) return;
-        dragIndexRef.current = idx;
-        isReorderingRef.current = true;
-    }, [photos.length]);
+    const onThumbDragStart = React.useCallback(
+        (idx) => {
+            if (idx < 0 || idx >= photos.length) return;
+            dragIndexRef.current = idx;
+            isReorderingRef.current = true;
+        },
+        [photos.length]
+    );
 
     const onThumbDragEnd = React.useCallback(() => {
         dragIndexRef.current = null;
@@ -205,9 +240,8 @@ export default function NewRecommendationForm({
     const onThumbDrop = React.useCallback(
         (e, idx) => {
             e.preventDefault();
-            e.stopPropagation(); // prevent bubbling to drop-zone
+            e.stopPropagation();
 
-            // Only allow dropping onto slots that already have photos
             if (idx < 0 || idx >= photos.length) {
                 dragIndexRef.current = null;
                 isReorderingRef.current = false;
@@ -229,10 +263,7 @@ export default function NewRecommendationForm({
     const onDropZoneDragOver = React.useCallback(
         (e) => {
             e.preventDefault();
-
-            // If we're reordering an existing photo, don't treat the zone as an "upload drop"
             if (isReorderingRef.current) return;
-
             if (base.submitting || remainingCount <= 0) return;
             if (!isDropActive) setIsDropActive(true);
         },
@@ -240,7 +271,6 @@ export default function NewRecommendationForm({
     );
 
     const onDropZoneDragLeave = React.useCallback(() => {
-        // Only clear if not actively reordering
         if (isReorderingRef.current) return;
         setIsDropActive(false);
     }, []);
@@ -249,7 +279,6 @@ export default function NewRecommendationForm({
         (e) => {
             e.preventDefault();
 
-            // If we're reordering, ignore the zone drop completely
             if (isReorderingRef.current) {
                 dragIndexRef.current = null;
                 isReorderingRef.current = false;
@@ -265,13 +294,13 @@ export default function NewRecommendationForm({
         [addFiles, base.submitting]
     );
 
-    const doSubmit = async (formData) => {
+    const doSubmit = async (payloadOrFormData) => {
         if (typeof onSubmit === 'function') {
-            return onSubmit(formData);
+            return onSubmit(payloadOrFormData);
         }
         const res = await fetch('/api/recommendations', {
             method: 'POST',
-            body: formData,
+            body: payloadOrFormData,
             credentials: 'include',
         });
         if (!res.ok) {
@@ -281,7 +310,7 @@ export default function NewRecommendationForm({
         return res.json();
     };
 
-    const handlePost = async () => {
+    const handleSaveOrPost = async () => {
         base.setAttemptedSubmit(true);
         base.setError('');
         if (base.isDisabled) return;
@@ -290,6 +319,28 @@ export default function NewRecommendationForm({
         try {
             const coords = base.coordsFromLocalData(base.city, base.county) || [];
             const [lat, lng] = coords.length === 2 ? coords : ['', ''];
+
+            if (editMode) {
+                const payload = {
+                    category: 'recommendations-tips',
+                    title: base.title,
+                    description: base.description,
+                    rec_type: recType,
+                    city: base.city,
+                    county: base.county,
+                    latitude: lat,
+                    longitude: lng,
+                    photos: photos
+                        .filter((p) => p?.existing && p?.url)
+                        .map((p) => String(p.url).trim())
+                        .filter(Boolean),
+                };
+
+                await doSubmit(payload);
+                if (typeof onRefresh === 'function') await onRefresh();
+                onClose();
+                return;
+            }
 
             const form = new FormData();
             form.append('title', base.title);
@@ -300,23 +351,28 @@ export default function NewRecommendationForm({
             form.append('latitude', lat);
             form.append('longitude', lng);
 
-            // Order matters: first = cover photo
-            photos.forEach((p) => form.append('photos', p.file));
+            photos.forEach((p) => {
+                if (p?.file) form.append('photos', p.file);
+            });
 
             await doSubmit(form);
             if (typeof onRefresh === 'function') await onRefresh();
             onClose();
         } catch (err) {
+            // eslint-disable-next-line no-console
             console.error(err);
-            base.setError(err.message || 'Submission failed.');
+            base.setError(err?.message || (editMode ? 'Save failed.' : 'Submission failed.'));
         } finally {
             base.setSubmitting(false);
         }
     };
 
+    const titleText = editMode ? 'Edit Recommendation / Tip' : 'New Recommendation / Tip';
+    const primaryBtnText = editMode ? 'Save' : 'Post';
+
     return (
         <>
-            <DialogTitle>New Recommendation / Tip</DialogTitle>
+            <DialogTitle>{titleText}</DialogTitle>
 
             <DialogContent
                 dividers
@@ -340,21 +396,13 @@ export default function NewRecommendationForm({
 
                 <FormControl component="fieldset" required>
                     <FormLabel>Post Type</FormLabel>
-                    <RadioGroup
-                        row
-                        value={recType}
-                        onChange={(e) => setRecType(e.target.value)}
-                    >
+                    <RadioGroup row value={recType} onChange={(e) => setRecType(e.target.value)}>
                         <FormControlLabel
                             value="business"
                             control={<Radio />}
                             label="Business / Service"
                         />
-                        <FormControlLabel
-                            value="tip"
-                            control={<Radio />}
-                            label="General Tip / Idea"
-                        />
+                        <FormControlLabel value="tip" control={<Radio />} label="General Tip / Idea" />
                     </RadioGroup>
                 </FormControl>
 
@@ -365,9 +413,7 @@ export default function NewRecommendationForm({
                     setCounty={base.setCounty}
                     countyRequired={countyRequired}
                     countyLabelOverride={countyRequired ? 'County *' : 'County'}
-                    countyError={
-                        base.attemptedSubmit && !base.county ? 'County is required.' : ''
-                    }
+                    countyError={base.attemptedSubmit && !base.county ? 'County is required.' : ''}
                 />
 
                 <TextField
@@ -383,7 +429,7 @@ export default function NewRecommendationForm({
                     {base.description.length} / {MAX_DESCRIPTION}
                 </Typography>
 
-                {/* Photos section (drag & drop + reorder — matches announcements) */}
+                {/* Photos section */}
                 <Box
                     sx={{
                         mt: 1,
@@ -509,9 +555,7 @@ export default function NewRecommendationForm({
                                                 variant="caption"
                                                 sx={{
                                                     fontWeight: 700,
-                                                    color: isCoverSlot
-                                                        ? 'primary.main'
-                                                        : 'text.secondary',
+                                                    color: isCoverSlot ? 'primary.main' : 'text.secondary',
                                                 }}
                                             >
                                                 {isCoverSlot ? 'Cover Photo' : 'Photo'}
@@ -523,7 +567,6 @@ export default function NewRecommendationForm({
                                     );
                                 }
 
-                                // Only allow dropping onto slots that already have photos (slotIdx < photos.length)
                                 const canDropHere = slotIdx < photos.length;
 
                                 return (
@@ -554,16 +597,8 @@ export default function NewRecommendationForm({
                                     >
                                         <img
                                             src={p.url}
-                                            alt={
-                                                slotIdx === 0
-                                                    ? 'Cover photo preview'
-                                                    : `Photo ${slotIdx + 1} preview`
-                                            }
-                                            style={{
-                                                width: '100%',
-                                                height: '100%',
-                                                objectFit: 'cover',
-                                            }}
+                                            alt={slotIdx === 0 ? 'Cover photo preview' : `Photo ${slotIdx + 1} preview`}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                             draggable={false}
                                         />
 
@@ -610,9 +645,7 @@ export default function NewRecommendationForm({
                                                     sx={{
                                                         bgcolor: 'rgba(0,0,0,0.45)',
                                                         color: 'white',
-                                                        '&:hover': {
-                                                            bgcolor: 'rgba(0,0,0,0.55)',
-                                                        },
+                                                        '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
                                                     }}
                                                     aria-label="Move photo left"
                                                 >
@@ -625,15 +658,11 @@ export default function NewRecommendationForm({
                                                         e.stopPropagation();
                                                         movePhoto(slotIdx, slotIdx + 1);
                                                     }}
-                                                    disabled={
-                                                        base.submitting || slotIdx === photos.length - 1
-                                                    }
+                                                    disabled={base.submitting || slotIdx === photos.length - 1}
                                                     sx={{
                                                         bgcolor: 'rgba(0,0,0,0.45)',
                                                         color: 'white',
-                                                        '&:hover': {
-                                                            bgcolor: 'rgba(0,0,0,0.55)',
-                                                        },
+                                                        '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
                                                     }}
                                                     aria-label="Move photo right"
                                                 >
@@ -651,9 +680,7 @@ export default function NewRecommendationForm({
                                                 sx={{
                                                     bgcolor: 'rgba(0,0,0,0.45)',
                                                     color: 'white',
-                                                    '&:hover': {
-                                                        bgcolor: 'rgba(0,0,0,0.55)',
-                                                    },
+                                                    '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
                                                 }}
                                                 aria-label={`Remove photo ${slotIdx + 1}`}
                                             >
@@ -664,6 +691,17 @@ export default function NewRecommendationForm({
                                 );
                             })}
                         </Box>
+
+                        {editMode && photos.some((p) => p?.existing === false) && (
+                            <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                                    Note: New photo uploads on edit will work once your PATCH endpoint accepts multipart uploads.
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    Right now, edits will only persist existing photo URLs.
+                                </Typography>
+                            </Box>
+                        )}
                     </Box>
                 </Box>
             </DialogContent>
@@ -671,15 +709,24 @@ export default function NewRecommendationForm({
             <DialogActions sx={{ justifyContent: 'flex-end', gap: 1, p: 2 }}>
                 <Tooltip title={base.tooltipMsg} disableHoverListener={!base.tooltipMsg}>
                     <span>
-                        <Button
-                            variant="contained"
-                            disabled={base.isDisabled}
-                            onClick={handlePost}
-                        >
-                            {base.submitting ? <CircularProgress size={20} /> : 'Post'}
+                        <Button variant="contained" disabled={base.isDisabled} onClick={handleSaveOrPost}>
+                            {base.submitting ? <CircularProgress size={20} /> : primaryBtnText}
                         </Button>
                     </span>
                 </Tooltip>
+
+                {editMode && typeof onDelete === 'function' && (
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={onDelete}
+                        disabled={base.submitting}
+                        sx={{ fontWeight: 900 }}
+                    >
+                        Delete Post
+                    </Button>
+                )}
+
                 <Button variant="outlined" onClick={onClose} disabled={base.submitting}>
                     Cancel
                 </Button>

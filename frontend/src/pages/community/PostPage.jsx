@@ -889,15 +889,28 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
         location?.state?.backToProfileUrl ||
         (backProfileHandle ? `/${backProfileHandle}` : backProfileId ? `/${backProfileId}` : '');
 
+    const fromCommunity = useMemo(() => {
+        if (location?.state?.from === 'community' || location?.state?.fromCommunity === true) return true;
+        try {
+            return Boolean(sessionStorage.getItem('ll:community:url'));
+        } catch {
+            return false;
+        }
+    }, [location?.state]);
     const backToList = useCallback(() => {
+        try {
+            sessionStorage.setItem('ll:community:restore', '1');
+        } catch {}
+
         try {
             const url = sessionStorage.getItem('ll:community:url');
             if (url) {
-                navigate(url);
+                navigate(url, { state: { restoreCommunity: true } });
                 return;
             }
         } catch {}
-        navigate(-1);
+
+        navigate('/community');
     }, [navigate]);
 
     const handleReturnClick = useCallback(() => {
@@ -1193,11 +1206,25 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
     if (!post) {
         return (
             <Box sx={{ ...outerSx, py: 4, px: embedded ? 0 : 2 }}>
-                <Typography color="text.secondary">Post not found.</Typography>
-                {/* Only show a return button if we came from somewhere controlled */}
-                {fromProfile ? (
+                <Typography color="text.secondary">
+                    The post you are trying to find does not exist or has been deleted.
+                </Typography>
+
+                {!embedded && (fromProfile || fromCommunity) ? (
                     <Button onClick={handleReturnClick} sx={{ mt: 2 }} startIcon={<ArrowBackIcon />}>
-                        {backProfileName ? `Return to ${backProfileName}'s profile` : 'Return to Profile'}
+                        {fromProfile
+                            ? backProfileName
+                                ? `Return to ${backProfileName}'s profile`
+                                : 'Return to Profile'
+                            : 'Return to Community Posts'}
+                    </Button>
+                ) : !embedded ? (
+                    <Button
+                        onClick={() => navigate('/community')}
+                        sx={{ mt: 2 }}
+                        startIcon={<ArrowBackIcon />}
+                    >
+                        Go to Community Posts
                     </Button>
                 ) : null}
             </Box>
@@ -1230,15 +1257,19 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
     return (
         <Box sx={outerSx}>
             <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 2 }}>
-                {/* Only render the top “Return to …’s profile” bar when we came from a profile */}
-                {!embedded && fromProfile && (
+                {/* Top return bar (Profile or Community) */}
+                {!embedded && (fromProfile || fromCommunity) && (
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Button
                             onClick={handleReturnClick}
                             startIcon={<ArrowBackIcon />}
                             sx={{ px: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
                         >
-                            {backProfileName ? `Return to ${backProfileName}'s profile` : 'Return to Profile'}
+                            {fromProfile
+                                ? backProfileName
+                                    ? `Return to ${backProfileName}'s profile`
+                                    : 'Return to Profile'
+                                : 'Return to Community Posts'}
                         </Button>
                     </Box>
                 )}

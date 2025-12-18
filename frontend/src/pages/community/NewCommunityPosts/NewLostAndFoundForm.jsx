@@ -1,24 +1,36 @@
 import React, { useState } from 'react';
 import {
-    DialogTitle, DialogContent, DialogActions,
-    Box, Typography, TextField, Button, Tooltip,
-    FormControl, FormLabel, RadioGroup, FormControlLabel,
-    Radio, InputLabel, Select, MenuItem, InputAdornment,
-    CircularProgress, Alert, IconButton
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Box,
+    Typography,
+    TextField,
+    Button,
+    Tooltip,
+    FormControl,
+    FormLabel,
+    RadioGroup,
+    FormControlLabel,
+    Radio,
+    InputLabel,
+    Select,
+    MenuItem,
+    InputAdornment,
+    CircularProgress,
+    Alert,
+    IconButton,
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PhotoLibraryOutlinedIcon from '@mui/icons-material/PhotoLibraryOutlined';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
-import PublicIcon      from '@mui/icons-material/Public';
-import GroupIcon       from '@mui/icons-material/Group';
+import PublicIcon from '@mui/icons-material/Public';
+import GroupIcon from '@mui/icons-material/Group';
 
-import useBasePostForm, {
-    MAX_TITLE,
-    MAX_DESCRIPTION
-} from './useBasePostForm';
+import useBasePostForm, { MAX_TITLE, MAX_DESCRIPTION } from './useBasePostForm';
 import useAddressHelpers from '../../../components/useAddressHelpers';
-import CityCountySelect  from '../../../components/CityCountySelect';
+import CityCountySelect from '../../../components/CityCountySelect';
 
 const MAX_REWARD_LENGTH = 11;
 const MAX_PHOTOS = 8;
@@ -38,21 +50,28 @@ export default function NewLostAndFoundForm({
                                                 defaultCity = '',
                                                 defaultCounty = '',
                                                 countyRequired = true,
+
+                                                // Edit-mode support
+                                                editMode = false,
+                                                initialData = null, // { id, title, description, city, county, street_address, visibility, lost_or_found, reward, photos:[url...] }
+                                                onDelete, // optional () => void
                                             }) {
     /* 1. shared fields (title, desc, photos, city, county) */
     const base = useBasePostForm({ defaultCity, defaultCounty, countyRequired });
 
     const { city, county, setCity, setCounty } = base;
 
-    // Apply passed defaults (if base isn't already populated)
+    // Apply passed defaults (create-mode only)
     React.useEffect(() => {
+        if (editMode) return;
         if (!city && defaultCity) setCity(defaultCity);
         if (!county && defaultCounty) setCounty(defaultCounty);
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
-    // Fallback: if no defaults were provided, auto-fill from profile
+    // Fallback: if no defaults were provided, auto-fill from profile (create-mode only)
     const fetchedProfileRef = React.useRef(false);
     React.useEffect(() => {
+        if (editMode) return;
         if (fetchedProfileRef.current) return;
         if (defaultCity || defaultCounty) return;
         if (city || county) return;
@@ -77,21 +96,22 @@ export default function NewLostAndFoundForm({
             });
 
         return () => ac.abort();
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
     /* 2a. optional street-address helpers */
     const addr = useAddressHelpers({ city: base.city, county: base.county });
 
     /* 2b. other category-specific state */
     const [visibility, setVisibility] = useState('public');
-    const [lostFound,  setLostFound]  = useState('');
-    const [reward,     setReward]     = useState('');
+    const [lostFound, setLostFound] = useState('');
+    const [reward, setReward] = useState('');
 
     /* touched flags for inline validation */
-    const [cityTouched,   setCityTouched]   = useState(false);
+    const [cityTouched, setCityTouched] = useState(false);
 
     /* ───────── photos (drag/drop + reorder, like announcements) ───────── */
     // Photos (ordered): index 0 = cover
+    // Each item: { id, url, file?: File, existing?: boolean }
     const [photos, setPhotos] = useState([]);
     const photosRef = React.useRef([]);
     const fileInputRef = React.useRef(null);
@@ -113,14 +133,51 @@ export default function NewLostAndFoundForm({
     React.useEffect(() => {
         return () => {
             photosRef.current.forEach((p) => {
+                if (p?.existing) return;
                 try {
-                    URL.revokeObjectURL(p.url);
+                    if (p?.url) URL.revokeObjectURL(p.url);
                 } catch (e) {
                     // ignore
                 }
             });
         };
     }, []);
+
+    // Prefill for edit mode
+    React.useEffect(() => {
+        if (!editMode) return;
+        if (!initialData) return;
+
+        if (typeof initialData.title === 'string') base.setTitle(initialData.title);
+        if (typeof initialData.description === 'string') base.setDescription(initialData.description);
+        if (typeof initialData.city === 'string') base.setCity(initialData.city);
+        if (typeof initialData.county === 'string') base.setCounty(initialData.county);
+
+        const vis = String(initialData.visibility || '').trim().toLowerCase();
+        if (vis === 'followers' || vis === 'public') setVisibility(vis || 'public');
+
+        const lf = String(initialData.lost_or_found || '').trim().toLowerCase();
+        if (lf === 'lost' || lf === 'found') setLostFound(lf);
+
+        const rw = initialData.reward;
+        if (rw === 0 || rw) {
+            const n = Number(rw);
+            if (Number.isFinite(n) && n > 0) setReward(String(n));
+        }
+
+        const street = String(initialData.street_address || '').trim();
+        if (street) addr.setStreetAddress(street);
+
+        const existing = Array.isArray(initialData.photos) ? initialData.photos : [];
+        const cleaned = existing
+            .map((u) => String(u || '').trim())
+            .filter(Boolean)
+            .slice(0, MAX_PHOTOS)
+            .map((url) => ({ id: makeId(), url, existing: true }));
+
+        setPhotos(cleaned);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editMode, initialData]);
 
     const addFiles = React.useCallback((fileList) => {
         const incoming = Array.from(fileList || []).filter((f) =>
@@ -137,7 +194,7 @@ export default function NewLostAndFoundForm({
 
             slice.forEach((file) => {
                 const url = URL.createObjectURL(file);
-                next.push({ id: makeId(), file, url });
+                next.push({ id: makeId(), file, url, existing: false });
             });
 
             return next;
@@ -154,7 +211,6 @@ export default function NewLostAndFoundForm({
         (e) => {
             if (base.submitting) return;
             addFiles(e.target.files);
-            // allow selecting the same file again
             e.target.value = '';
         },
         [addFiles, base.submitting]
@@ -164,7 +220,7 @@ export default function NewLostAndFoundForm({
         setPhotos((prev) => {
             if (idx < 0 || idx >= prev.length) return prev;
             const toRemove = prev[idx];
-            if (toRemove?.url) {
+            if (toRemove?.url && !toRemove?.existing) {
                 try {
                     URL.revokeObjectURL(toRemove.url);
                 } catch (e) {
@@ -188,12 +244,14 @@ export default function NewLostAndFoundForm({
         });
     }, []);
 
-    const onThumbDragStart = React.useCallback((idx) => {
-        // Only allow dragging real photos (no empty slots)
-        if (idx < 0 || idx >= photos.length) return;
-        dragIndexRef.current = idx;
-        isReorderingRef.current = true;
-    }, [photos.length]);
+    const onThumbDragStart = React.useCallback(
+        (idx) => {
+            if (idx < 0 || idx >= photos.length) return;
+            dragIndexRef.current = idx;
+            isReorderingRef.current = true;
+        },
+        [photos.length]
+    );
 
     const onThumbDragEnd = React.useCallback(() => {
         dragIndexRef.current = null;
@@ -204,9 +262,8 @@ export default function NewLostAndFoundForm({
     const onThumbDrop = React.useCallback(
         (e, idx) => {
             e.preventDefault();
-            e.stopPropagation(); // prevent bubbling to drop-zone
+            e.stopPropagation();
 
-            // Only allow dropping onto slots that already have photos
             if (idx < 0 || idx >= photos.length) {
                 dragIndexRef.current = null;
                 isReorderingRef.current = false;
@@ -228,10 +285,7 @@ export default function NewLostAndFoundForm({
     const onDropZoneDragOver = React.useCallback(
         (e) => {
             e.preventDefault();
-
-            // If we're reordering an existing photo, don't treat the zone as an "upload drop"
             if (isReorderingRef.current) return;
-
             if (base.submitting || remainingCount <= 0) return;
             if (!isDropActive) setIsDropActive(true);
         },
@@ -239,7 +293,6 @@ export default function NewLostAndFoundForm({
     );
 
     const onDropZoneDragLeave = React.useCallback(() => {
-        // Only clear if not actively reordering
         if (isReorderingRef.current) return;
         setIsDropActive(false);
     }, []);
@@ -248,7 +301,6 @@ export default function NewLostAndFoundForm({
         (e) => {
             e.preventDefault();
 
-            // If we're reordering, ignore the zone drop completely
             if (isReorderingRef.current) {
                 dragIndexRef.current = null;
                 isReorderingRef.current = false;
@@ -258,7 +310,6 @@ export default function NewLostAndFoundForm({
 
             setIsDropActive(false);
             if (base.submitting) return;
-
             addFiles(e.dataTransfer.files);
         },
         [addFiles, base.submitting]
@@ -269,8 +320,8 @@ export default function NewLostAndFoundForm({
        helper requires a city to disambiguate.
     */
     const missingRequired =
-        !base.title.trim()        ||
-        !lostFound                ||
+        !base.title.trim() ||
+        !lostFound ||
         (addr.cityRequired && !base.city.trim());
 
     const isDisabled = missingRequired || base.submitting;
@@ -283,9 +334,9 @@ export default function NewLostAndFoundForm({
                 : base.tooltipMsg;
 
     /* ───────── reward helpers ───────── */
-    const handleRewardChange = e => {
+    const handleRewardChange = (e) => {
         const v = e.target.value;
-        if (/^[0-9]{0,9}(?:\\.\\d{0,2})?$/.test(v)) {
+        if (/^[0-9]{0,9}(?:\.\d{0,2})?$/.test(v)) {
             setReward(v.slice(0, MAX_REWARD_LENGTH));
         }
     };
@@ -299,8 +350,26 @@ export default function NewLostAndFoundForm({
         setReward(v);
     };
 
+    /* Safe submitter */
+    const doSubmit = async (payloadOrFormData) => {
+        if (typeof onSubmit === 'function') {
+            return onSubmit(payloadOrFormData);
+        }
+        // Create-mode fallback only
+        const res = await fetch('/api/lost-and-found', {
+            method: 'POST',
+            body: payloadOrFormData,
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const msg = (await res.text()) || 'Failed to submit lost & found.';
+            throw new Error(msg);
+        }
+        return res.json();
+    };
+
     /* ───────── submit ───────── */
-    async function handlePost() {
+    async function handleSaveOrPost() {
         base.setAttemptedSubmit(true);
         base.setError('');
         if (isDisabled) return;
@@ -313,36 +382,67 @@ export default function NewLostAndFoundForm({
                 [lat, lng] = base.resolveCoordinates();
             }
 
+            if (editMode) {
+                const payload = {
+                    category: 'lost-and-found',
+                    title: base.title || '',
+                    visibility: visibility || 'public',
+                    lost_or_found: lostFound || '',
+                    reward: reward ? Number(reward) : null,
+                    description: base.description || '',
+                    street_address: addr.streetAddress || '',
+                    city: base.city || '',
+                    county: base.county || '',
+                    latitude: lat ?? '',
+                    longitude: lng ?? '',
+                    photos: photos
+                        .filter((p) => p?.existing && p?.url)
+                        .map((p) => String(p.url).trim())
+                        .filter(Boolean),
+                };
+
+                await doSubmit(payload);
+                if (typeof onRefresh === 'function') await onRefresh();
+                onClose();
+                return;
+            }
+
             const form = new FormData();
             // ALWAYS send strings (never null/undefined) so backend stores ''
-            form.append('title',          base.title || '');
-            form.append('visibility',     visibility || 'public');
-            form.append('lost_or_found',  lostFound || '');
+            form.append('title', base.title || '');
+            form.append('visibility', visibility || 'public');
+            form.append('lost_or_found', lostFound || '');
             if (reward) form.append('reward', parseFloat(reward).toString());
-            form.append('description',    base.description || '');
+            form.append('description', base.description || '');
             form.append('street_address', addr.streetAddress || '');
-            form.append('city',           base.city || '');
-            form.append('county',         base.county || '');
-            form.append('latitude',       lat ?? '');
-            form.append('longitude',      lng ?? '');
-            // Order matters: first = cover photo
-            photos.forEach((p) => form.append('photos', p.file));
+            form.append('city', base.city || '');
+            form.append('county', base.county || '');
+            form.append('latitude', lat ?? '');
+            form.append('longitude', lng ?? '');
 
-            await onSubmit(form);
+            photos.forEach((p) => {
+                if (p?.file) form.append('photos', p.file);
+            });
+
+            await doSubmit(form);
             if (typeof onRefresh === 'function') await onRefresh();
             onClose();
         } catch (err) {
+            // eslint-disable-next-line no-console
             console.error(err);
-            base.setError(err.message || 'Submission failed.');
+            base.setError(err?.message || (editMode ? 'Save failed.' : 'Submission failed.'));
         } finally {
             base.setSubmitting(false);
         }
     }
 
+    const titleText = editMode ? 'Edit Lost & Found Post' : 'New Lost & Found Post';
+    const primaryBtnText = editMode ? 'Save' : 'Post';
+
     /* ───────── render ───────── */
     return (
         <>
-            <DialogTitle>New Lost &amp; Found Post</DialogTitle>
+            <DialogTitle>{titleText}</DialogTitle>
 
             <DialogContent
                 component="form"
@@ -354,9 +454,11 @@ export default function NewLostAndFoundForm({
 
                 {/* Title */}
                 <TextField
-                    label="Title" required fullWidth
+                    label="Title"
+                    required
+                    fullWidth
                     value={base.title}
-                    onChange={e => base.setTitle(e.target.value)}
+                    onChange={(e) => base.setTitle(e.target.value)}
                     inputProps={{ maxLength: MAX_TITLE }}
                 />
                 <Typography variant="caption">
@@ -370,7 +472,7 @@ export default function NewLostAndFoundForm({
                         value={visibility}
                         label="Visibility"
                         size="small"
-                        onChange={e => setVisibility(e.target.value)}
+                        onChange={(e) => setVisibility(e.target.value)}
                     >
                         <MenuItem value="public">
                             <PublicIcon fontSize="small" sx={{ mr: 1 }} /> Public
@@ -382,19 +484,19 @@ export default function NewLostAndFoundForm({
                 </FormControl>
 
                 {/* Lost / Found + Reward */}
-                <Box display="flex" alignItems="center" gap={2}>
+                <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
                     <FormControl component="fieldset" required>
                         <FormLabel>Type</FormLabel>
                         <RadioGroup
                             row
                             value={lostFound}
-                            onChange={e => {
+                            onChange={(e) => {
                                 const v = e.target.value;
                                 setLostFound(v);
-                                if (v === 'found') setReward(''); // clear reward when switching to Found
+                                if (v === 'found') setReward('');
                             }}
                         >
-                            <FormControlLabel value="lost"  control={<Radio />} label="Lost"  />
+                            <FormControlLabel value="lost" control={<Radio />} label="Lost" />
                             <FormControlLabel value="found" control={<Radio />} label="Found" />
                         </RadioGroup>
                     </FormControl>
@@ -408,10 +510,14 @@ export default function NewLostAndFoundForm({
                             inputProps={{
                                 inputMode: 'decimal',
                                 pattern: '^\\d*(\\.\\d{0,2})?$',
-                                maxLength: MAX_REWARD_LENGTH
+                                maxLength: MAX_REWARD_LENGTH,
                             }}
-                            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
-                            sx={{ width: 160 }}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">$</InputAdornment>
+                                ),
+                            }}
+                            sx={{ width: 180 }}
                         />
                     )}
                 </Box>
@@ -419,34 +525,48 @@ export default function NewLostAndFoundForm({
                 {/* City / County (optional unless address forces city) */}
                 <CityCountySelect
                     city={base.city}
-                    setCity={val => { base.setCity(val); setCityTouched(true); }}
+                    setCity={(val) => {
+                        base.setCity(val);
+                        setCityTouched(true);
+                    }}
                     county={base.county}
-                    setCounty={val => { base.setCounty(val); }}
-                    cityError={addr.cityRequired && (cityTouched || base.attemptedSubmit) && !base.city ?
-                        'Required when address entered.' : ''}
+                    setCounty={(val) => {
+                        base.setCounty(val);
+                    }}
+                    cityError={
+                        addr.cityRequired &&
+                        (cityTouched || base.attemptedSubmit) &&
+                        !base.city
+                            ? 'Required when address entered.'
+                            : ''
+                    }
                 />
 
                 {/* Street Address */}
                 <TextField
-                    label="Street Address (Optional)" fullWidth
+                    label="Street Address (Optional)"
+                    fullWidth
                     name="lf-street-address"
                     autoComplete="nope"
                     value={addr.streetAddress}
-                    onChange={e => addr.setStreetAddress(e.target.value)}
+                    onChange={(e) => addr.setStreetAddress(e.target.value)}
                 />
 
                 {/* Description */}
                 <TextField
-                    label="Description" multiline rows={4} fullWidth
+                    label="Description"
+                    multiline
+                    rows={4}
+                    fullWidth
                     value={base.description}
-                    onChange={e => base.setDescription(e.target.value)}
+                    onChange={(e) => base.setDescription(e.target.value)}
                     inputProps={{ maxLength: MAX_DESCRIPTION }}
                 />
                 <Typography variant="caption">
                     {base.description.length} / {MAX_DESCRIPTION}
                 </Typography>
 
-                {/* Photos section (drag & drop + reorder — matches announcements) */}
+                {/* Photos */}
                 <Box
                     sx={{
                         mt: 1,
@@ -509,12 +629,14 @@ export default function NewLostAndFoundForm({
                             borderColor: isDropActive ? 'primary.main' : 'divider',
                             borderRadius: 2,
                             p: 1.25,
-                            cursor: base.submitting || remainingCount <= 0 ? 'default' : 'pointer',
+                            cursor:
+                                base.submitting || remainingCount <= 0 ? 'default' : 'pointer',
                             bgcolor: isDropActive ? 'action.hover' : 'transparent',
                             transition: 'background-color 120ms ease, border-color 120ms ease',
                             outline: 'none',
                             '&:focus-visible': {
-                                boxShadow: (theme) => `0 0 0 3px ${theme.palette.action.focus}`,
+                                boxShadow: (theme) =>
+                                    `0 0 0 3px ${theme.palette.action.focus}`,
                             },
                         }}
                     >
@@ -580,13 +702,14 @@ export default function NewLostAndFoundForm({
                                                 {isCoverSlot ? 'Cover Photo' : 'Photo'}
                                             </Typography>
                                             <Typography variant="caption" color="text.secondary">
-                                                {remainingCount <= 0 ? 'Limit reached' : 'Drop or click'}
+                                                {remainingCount <= 0
+                                                    ? 'Limit reached'
+                                                    : 'Drop or click'}
                                             </Typography>
                                         </Box>
                                     );
                                 }
 
-                                // Only allow dropping onto existing photos (slotIdx < photos.length)
                                 const canDropHere = slotIdx < photos.length;
 
                                 return (
@@ -609,7 +732,8 @@ export default function NewLostAndFoundForm({
                                             borderRadius: 2,
                                             overflow: 'hidden',
                                             border: '1px solid',
-                                            borderColor: slotIdx === 0 ? 'primary.main' : 'divider',
+                                            borderColor:
+                                                slotIdx === 0 ? 'primary.main' : 'divider',
                                             bgcolor: 'background.paper',
                                             userSelect: 'none',
                                         }}
@@ -728,18 +852,54 @@ export default function NewLostAndFoundForm({
                                 );
                             })}
                         </Box>
+
+                        {editMode && photos.some((p) => p?.existing === false) && (
+                            <Box sx={{ mt: 1 }}>
+                                <Typography
+                                    variant="caption"
+                                    color="warning.main"
+                                    sx={{ fontWeight: 700 }}
+                                >
+                                    Note: New photo uploads on edit will work once your PATCH endpoint accepts multipart uploads.
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    Right now, edits will only persist existing photo URLs.
+                                </Typography>
+                            </Box>
+                        )}
                     </Box>
                 </Box>
             </DialogContent>
 
             <DialogActions sx={{ justifyContent: 'flex-end', gap: 1, p: 2 }}>
                 <Tooltip title={tooltipMsg} disableHoverListener={!tooltipMsg}>
-          <span>
-            <Button variant="contained" onClick={handlePost} disabled={isDisabled}>
-              {base.submitting ? <CircularProgress size={20} /> : 'Post'}
-            </Button>
-          </span>
+                    <span>
+                        <Button
+                            variant="contained"
+                            onClick={handleSaveOrPost}
+                            disabled={isDisabled}
+                        >
+                            {base.submitting ? (
+                                <CircularProgress size={20} />
+                            ) : (
+                                primaryBtnText
+                            )}
+                        </Button>
+                    </span>
                 </Tooltip>
+
+                {editMode && typeof onDelete === 'function' && (
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={onDelete}
+                        disabled={base.submitting}
+                        sx={{ fontWeight: 900 }}
+                    >
+                        Delete Post
+                    </Button>
+                )}
+
                 <Button variant="outlined" onClick={onClose} disabled={base.submitting}>
                     Cancel
                 </Button>

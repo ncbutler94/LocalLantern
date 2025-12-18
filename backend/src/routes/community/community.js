@@ -1,10 +1,10 @@
 // backend/src/routes/community/community.js
 /* ---------------------------------------------------------------------------
  * Community feed + details + comments
- * Added 2025-11-19: GET /trending  (windowed, time-decayed score)
- * 2025-11-19 UPDATE: /trending now prefers SQL views (ll_trending_scores)
- * 2025-11-19 UPDATE: /trending/summary — returns category counts by location
- * 2025-11-19 UPDATE: GET / (feed) now supports sort=trending
+ * Added 2025‑11‑19: GET /trending  (windowed, time‑decayed score)
+ * 2025‑11‑19 UPDATE: /trending now prefers SQL views (ll_trending_scores)
+ * 2025‑11‑19 UPDATE: /trending/summary — returns category counts by location
+ * 2025‑11‑19 UPDATE: GET / (feed) now supports sort=trending
  * ------------------------------------------------------------------------- */
 
 import express           from 'express';
@@ -218,6 +218,505 @@ function applySubtypeFilter(qb, rawSubtype) {
     // Default: exact match
     qb.where('cp.category', sub);
 }
+
+
+/* =========================================================================
+ * EDIT / DELETE community posts
+ *  - PATCH /api/community/:id       (edit post fields + optional photo URLs)
+ *  - GET   /api/community/:id/edits (edit history)
+ *  - POST  /api/community/:id/mark-found (lost & found resolve)
+ *  - DELETE /api/community/:id      (delete post + related rows)
+ * ========================================================================= */
+
+const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const EDIT_MAX_PER_WINDOW = 5;
+
+async function canEditPostNow(postId) {
+    const enabled = await hasPostEditsTable();
+    if (!enabled) return { ok: true, remaining: EDIT_MAX_PER_WINDOW, resetAt: null };
+
+    const since = new Date(Date.now() - EDIT_WINDOW_MS);
+    const row = await db('community_post_edits')
+        .where({ post_id: postId })
+        .andWhere('edited_at', '>=', since)
+        .count({ n: '*' })
+        .first();
+
+    const used = Number(row?.n || 0);
+    const remaining = Math.max(0, EDIT_MAX_PER_WINDOW - used);
+
+    if (remaining > 0) return { ok: true, remaining, resetAt: null };
+
+    // next allowed is at the window boundary of the oldest edit in the window
+    const oldest = await db('community_post_edits')
+        .select('edited_at')
+        .where({ post_id: postId })
+        .andWhere('edited_at', '>=', since)
+        .orderBy('edited_at', 'asc')
+        .first();
+
+    const resetAt = oldest?.edited_at ? new Date(new Date(oldest.edited_at).getTime() + EDIT_WINDOW_MS) : null;
+    return { ok: false, remaining: 0, resetAt };
+}
+
+async function safeInsertEditSnapshot(trx, payload) {
+    const enabled = await hasPostEditsTable();
+    if (!enabled) return;
+
+    // community_post_edits schema differs across environments:
+    // Most use `edited_at`; some older installs use `created_at`.
+    let tsCol = null;
+    try {
+        if (await trx.schema.hasColumn('community_post_edits', 'edited_at')) tsCol = 'edited_at';
+        else if (await trx.schema.hasColumn('community_post_edits', 'created_at')) tsCol = 'created_at';
+    } catch {
+        // ignore schema detection errors; we'll attempt inserts without a timestamp
+    }
+
+    const base = {
+        post_id: payload.post_id,
+        user_id: payload.user_id,
+        ...(tsCol ? { [tsCol]: trx.fn.now() } : {}),
+    };
+
+    const snapshotJson = payload.snapshot_json || null;
+
+    const attempts = [
+        { ...base, snapshot_json: snapshotJson },
+        { ...base, snapshot: snapshotJson },
+        { ...base, data_json: snapshotJson },
+        { ...base, data: snapshotJson },
+        { ...base }, // minimal schema
+    ];
+
+    for (let i = 0; i < attempts.length; i += 1) {
+        try {
+            // eslint-disable-next-line no-await-in-loop
+            await trx('community_post_edits').insert(attempts[i]);
+            return;
+        } catch {
+            // try next shape
+        }
+    }
+}
+
+async function fetchCommunityPostById(postId, viewerId) {
+    let q = db('community_posts as cp')
+        .join('users as u', 'cp.user_id', 'u.id')
+        .leftJoin('community_categories as cc', 'cp.category', 'cc.slug')
+        .leftJoin('lost_and_found as lf', 'cp.id', 'lf.id')
+        .leftJoin('announcements as a', 'cp.id', 'a.id')
+        .leftJoin('public_safety_alerts as psa', 'cp.id', 'psa.id')
+        .leftJoin('community_photos as p', 'cp.id', 'p.post_id')
+        .leftJoin('recommendations_and_tips as rt', 'cp.id', 'rt.id')
+        .leftJoin('volunteer_help_requests as vh', 'cp.id', 'vh.id')
+        .leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id')
+        .where('cp.id', postId);
+
+    const select = [
+        'cp.id',
+        'cp.user_id',
+        'cp.category',
+        'cp.posted_at as posted_at',
+        'cp.posted_at as date_created',
+        'cp.latitude',
+        'cp.longitude',
+        db.raw('COALESCE(cp.title, "")        AS title'),
+        db.raw('COALESCE(cp.description, "")  AS description'),
+        db.raw('COALESCE(cp.city, "")         AS city'),
+        db.raw('COALESCE(cp.county, "")       AS county'),
+        db.raw('COALESCE(cp.street_address, "") AS street_address'),
+
+        'u.first_name',
+        'u.last_name',
+        db.raw('COALESCE(u.handle, "") AS handle'),
+        db.raw('COALESCE(u.avatar_url, "") AS avatar_url'),
+        db.raw('COALESCE(u.profile_picture, "") AS profile_picture'),
+
+        db.raw('cc.label AS categoryLabel'),
+
+        'lf.lost_or_found',
+        'lf.reward',
+        // optional resolve fields (will be null if column does not exist)
+        db.raw('COALESCE(lf.resolved_at, NULL) AS resolved_at'),
+        db.raw('COALESCE(lf.resolved_message, "") AS resolved_message'),
+        db.raw('COALESCE(lf.resolved_by_user_id, NULL) AS resolved_by_user_id'),
+
+        'vh.help_type',
+        'vh.request_kind',
+        'vh.needed_date',
+        'vh.contact',
+        db.raw('MAX(rt.rec_type) AS rec_type'),
+
+        db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
+
+        db('post_likes')
+            .count('*')
+            .whereRaw('category = ? AND post_id = cp.id', ['community_post'])
+            .as('likesCount'),
+
+        db('post_comments')
+            .count('*')
+            .whereRaw('post_id = cp.id')
+            .as('commentsCount'),
+
+        db('post_reposts')
+            .count('*')
+            .whereRaw('post_id = cp.id')
+            .as('repostsCount'),
+
+        db.raw(
+            'EXISTS (SELECT 1 FROM post_likes WHERE category = ? AND post_id = cp.id AND user_id = ?) AS viewerLiked',
+            ['community_post', viewerId],
+        ),
+        db.raw(
+            'EXISTS (SELECT 1 FROM post_reposts WHERE post_id = cp.id AND user_id = ?) AS viewerReposted',
+            [viewerId],
+        ),
+
+        db.raw('COALESCE(MAX(ts.trending_score), 0) AS score'),
+    ];
+
+    q.groupBy('cp.id');
+    return q.first(select);
+}
+
+/* GET /api/community/:id/edits -------------------------------------------- */
+router.get('/:id/edits', authenticateToken, async (req, res, next) => {
+    try {
+        const postId = Number(req.params.id);
+        if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+
+        const post = await db('community_posts').select('id', 'user_id').where({ id: postId }).first();
+        if (!post) return res.status(404).json({ message: 'Not found' });
+        if (Number(post.user_id) !== Number(req.user.id)) {
+            return res.status(403).json({ message: 'Not allowed' });
+        }
+
+        const enabled = await hasPostEditsTable();
+        if (!enabled) return res.json([]);
+
+        const tsCol = (await db.schema.hasColumn('community_post_edits', 'edited_at'))
+            ? 'edited_at'
+            : (await db.schema.hasColumn('community_post_edits', 'created_at'))
+                ? 'created_at'
+                : null;
+
+        let q = db('community_post_edits').where({ post_id: postId });
+        if (tsCol) q = q.orderBy(tsCol, 'desc');
+        const rows = await q.limit(50);
+
+        return res.json(rows);
+    } catch (err) {
+        return next(err);
+    }
+});
+
+/* POST /api/community/:id/mark-found -------------------------------------- */
+router.post('/:id/mark-found', authenticateToken, express.json({ limit: '1mb' }), async (req, res, next) => {
+    try {
+        const postId = Number(req.params.id);
+        if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+
+        const post = await db('community_posts').select('id', 'user_id', 'category').where({ id: postId }).first();
+        if (!post) return res.status(404).json({ message: 'Not found' });
+        if (Number(post.user_id) !== Number(req.user.id)) {
+            return res.status(403).json({ message: 'Not allowed' });
+        }
+
+        const lfCols = await detectLostAndFoundResolveCols();
+        if (!lfCols.resolved_at && !lfCols.resolved_message && !lfCols.resolved_by_user_id) {
+            return res.status(501).json({ message: 'Mark Found is not configured.' });
+        }
+
+        const msg = String(req.body?.message || '').slice(0, 2000);
+
+        await db('lost_and_found')
+            .where({ id: postId })
+            .update({
+                ...(lfCols.resolved_at ? { resolved_at: db.fn.now() } : {}),
+                ...(lfCols.resolved_message ? { resolved_message: msg } : {}),
+                ...(lfCols.resolved_by_user_id ? { resolved_by_user_id: req.user.id } : {}),
+            });
+
+        const updated = await fetchCommunityPostById(postId, req.user.id);
+        return res.json(updated || { ok: true });
+    } catch (err) {
+        return next(err);
+    }
+});
+
+/* PATCH /api/community/:id ----------------------------------------------- */
+/* PATCH /api/community/:id ----------------------------------------------- */
+router.patch('/:id', authenticateToken, express.json({ limit: '2mb' }), async (req, res, next) => {
+    try {
+        const postId = Number(req.params.id);
+        if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+
+        const post = await db('community_posts')
+            .select('id', 'user_id', 'category', 'title', 'description', 'city', 'county', 'street_address')
+            .where({ id: postId })
+            .first();
+
+        if (!post) return res.status(404).json({ message: 'Not found' });
+        if (Number(post.user_id) !== Number(req.user.id)) {
+            return res.status(403).json({ message: 'Not allowed' });
+        }
+
+        const limitCheck = await canEditPostNow(postId);
+        if (!limitCheck.ok) {
+            return res.status(429).json({
+                message: 'You can edit a post up to 5 times within a 24-hour window.',
+                remaining: 0,
+                resetAt: limitCheck.resetAt ? limitCheck.resetAt.toISOString() : null,
+            });
+        }
+
+        const body = req.body || {};
+        const updates = {};
+
+        const setIfString = async (col, maxLen) => {
+            if (!Object.prototype.hasOwnProperty.call(body, col)) return;
+            const hasCol = await db.schema.hasColumn('community_posts', col);
+            if (!hasCol) return;
+            updates[col] = String(body[col] ?? '').slice(0, maxLen);
+        };
+
+        await setIfString('title', 120);
+        await setIfString('description', 5000);
+        await setIfString('city', 120);
+        await setIfString('county', 120);
+        await setIfString('street_address', 255);
+        await setIfString('visibility', 20);
+
+        const hasEditedAt = await hasCommunityPostsEditedAt();
+        if (hasEditedAt) updates.edited_at = db.fn.now();
+
+        // Optional photos as URL array: replace all existing in that order.
+        const wantsPhotos =
+            Object.prototype.hasOwnProperty.call(body, 'photos') && Array.isArray(body.photos);
+
+        await db.transaction(async (trx) => {
+            // log snapshot (best effort)
+            const snapshot = {
+                before: {
+                    title: post.title || '',
+                    description: post.description || '',
+                    city: post.city || '',
+                    county: post.county || '',
+                    street_address: post.street_address || '',
+                },
+                after: {
+                    ...(Object.prototype.hasOwnProperty.call(updates, 'title')
+                        ? { title: updates.title }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(updates, 'description')
+                        ? { description: updates.description }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(updates, 'city') ? { city: updates.city } : {}),
+                    ...(Object.prototype.hasOwnProperty.call(updates, 'county') ? { county: updates.county } : {}),
+                    ...(Object.prototype.hasOwnProperty.call(updates, 'street_address')
+                        ? { street_address: updates.street_address }
+                        : {}),
+                },
+            };
+
+            await safeInsertEditSnapshot(trx, {
+                post_id: postId,
+                user_id: req.user.id,
+                snapshot_json: JSON.stringify(snapshot),
+            });
+
+            if (Object.keys(updates).length) {
+                await trx('community_posts').where({ id: postId }).update(updates);
+            }
+
+            // Lost & Found
+            if (await trx.schema.hasTable('lost_and_found')) {
+                const lfUp = {};
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'lost_or_found') &&
+                    (await trx.schema.hasColumn('lost_and_found', 'lost_or_found'))
+                ) {
+                    lfUp.lost_or_found = String(body.lost_or_found || '').slice(0, 30);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'reward') &&
+                    (await trx.schema.hasColumn('lost_and_found', 'reward'))
+                ) {
+                    const n = Number(body.reward);
+                    lfUp.reward = Number.isFinite(n) ? n : null;
+                }
+                if (Object.keys(lfUp).length) {
+                    await trx('lost_and_found').where({ id: postId }).update(lfUp);
+                }
+            }
+
+            // Recommendations / Tips
+            if (await trx.schema.hasTable('recommendations_and_tips')) {
+                const rtUp = {};
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'rec_type') &&
+                    (await trx.schema.hasColumn('recommendations_and_tips', 'rec_type'))
+                ) {
+                    rtUp.rec_type = String(body.rec_type || '').slice(0, 40);
+                }
+                if (Object.keys(rtUp).length) {
+                    await trx('recommendations_and_tips').where({ id: postId }).update(rtUp);
+                }
+            }
+
+            // Volunteer / Help
+            if (await trx.schema.hasTable('volunteer_help_requests')) {
+                const vhUp = {};
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'help_type') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'help_type'))
+                ) {
+                    vhUp.help_type = String(body.help_type || '').slice(0, 60);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'request_kind') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'request_kind'))
+                ) {
+                    vhUp.request_kind = String(body.request_kind || '').slice(0, 40);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'needed_date') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'needed_date'))
+                ) {
+                    const d = String(body.needed_date || '').slice(0, 10);
+                    vhUp.needed_date = d || null;
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'contact') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'contact'))
+                ) {
+                    vhUp.contact = String(body.contact || '').slice(0, 255);
+                }
+                // Optional fields (best effort)
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'help_type_other') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'help_type_other'))
+                ) {
+                    vhUp.help_type_other = String(body.help_type_other || '').slice(0, 120);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'contact_method') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'contact_method'))
+                ) {
+                    vhUp.contact_method = String(body.contact_method || '').slice(0, 40);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'urgency') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'urgency'))
+                ) {
+                    vhUp.urgency = String(body.urgency || '').slice(0, 40);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'needed_time') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'needed_time'))
+                ) {
+                    vhUp.needed_time = String(body.needed_time || '').slice(0, 80);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'helpers_needed') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'helpers_needed'))
+                ) {
+                    vhUp.helpers_needed = String(body.helpers_needed || '').slice(0, 20);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'availability') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'availability'))
+                ) {
+                    vhUp.availability = String(body.availability || '').slice(0, 160);
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(body, 'travel_radius') &&
+                    (await trx.schema.hasColumn('volunteer_help_requests', 'travel_radius'))
+                ) {
+                    vhUp.travel_radius = String(body.travel_radius || '').slice(0, 60);
+                }
+
+                if (Object.keys(vhUp).length) {
+                    await trx('volunteer_help_requests').where({ id: postId }).update(vhUp);
+                }
+            }
+
+            // Photos: replace list of URLs
+            if (wantsPhotos && (await trx.schema.hasTable('community_photos'))) {
+                const hasUrl = await trx.schema.hasColumn('community_photos', 'url');
+                const hasPostId = await trx.schema.hasColumn('community_photos', 'post_id');
+                if (hasUrl && hasPostId) {
+                    await trx('community_photos').where({ post_id: postId }).del();
+
+                    const urls = body.photos
+                        .map((u) => String(u || '').trim())
+                        .filter(Boolean)
+                        .slice(0, 12);
+
+                    if (urls.length) {
+                        await trx('community_photos').insert(
+                            urls.map((url) => ({ post_id: postId, url }))
+                        );
+                    }
+                }
+            }
+        });
+
+        const updated = await fetchCommunityPostById(postId, req.user.id);
+        return res.json(updated || { ok: true });
+    } catch (err) {
+        return next(err);
+    }
+});
+
+/* DELETE /api/community/:id ------------------------------------------------ */
+router.delete('/:id', authenticateToken, async (req, res, next) => {
+    try {
+        const postId = Number(req.params.id);
+        if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+
+        const post = await db('community_posts').select('id', 'user_id').where({ id: postId }).first();
+        if (!post) return res.status(404).json({ message: 'Not found' });
+        if (Number(post.user_id) !== Number(req.user.id)) {
+            return res.status(403).json({ message: 'Not allowed' });
+        }
+
+        await db.transaction(async (trx) => {
+            const safeDel = async (table, where) => {
+                try {
+                    const exists = await trx.schema.hasTable(table);
+                    if (!exists) return;
+                    await trx(table).where(where).del();
+                } catch {
+                    // ignore
+                }
+            };
+
+            await safeDel('community_photos', { post_id: postId });
+            await safeDel('post_likes', { post_id: postId, category: 'community_post' });
+            await safeDel('post_reposts', { post_id: postId });
+            await safeDel('post_comments', { post_id: postId });
+            await safeDel('post_flags', { post_id: postId });
+
+            await safeDel('lost_and_found', { id: postId });
+            await safeDel('announcements', { id: postId });
+            await safeDel('public_safety_alerts', { id: postId });
+            await safeDel('recommendations_and_tips', { id: postId });
+            await safeDel('volunteer_help_requests', { id: postId });
+
+            await safeDel('community_post_edits', { post_id: postId });
+
+            await trx('community_posts').where({ id: postId }).del();
+        });
+
+        return res.json({ ok: true, deletedId: postId });
+    } catch (err) {
+        return next(err);
+    }
+});
+
 
 /* ---------------------------------------------------------------------------
  * GET /api/community/trending
@@ -696,6 +1195,10 @@ router.get('/', optionalAuth, async (req, res, next) => {
 
         const viewParam = String(req.query.view || req.query.selectedView || '').trim().toLowerCase();
 
+        const isTrendingView = viewParam === 'trending';
+        const includeTotal = String(req.query.includeTotal || req.query.withTotal || '').trim() === '1';
+        const wantTrendingScore = isTrendingView || sort === 'trending';
+
         const limit  = Math.max(1, Math.min(Number(limitQ)  || DEFAULT_LIMIT, MAX_LIMIT));
         const offset = Math.max(0, Number(offsetQ) || 0);
 
@@ -715,9 +1218,15 @@ router.get('/', optionalAuth, async (req, res, next) => {
             .leftJoin('recommendations_and_tips as rt',  'cp.id', 'rt.id')
             .leftJoin('volunteer_help_requests as vh',   'cp.id', 'vh.id');
 
-        // When sorting by trending and the scored view exists, bring it in
-        if (sort === 'trending' && hasTsView) {
-            q = q.leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id');
+        // When trending is involved (sort=trending OR view=trending) and the scored view exists, bring it in
+        if (wantTrendingScore && hasTsView) {
+            q = q
+                .leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id')
+                .where('ts.trending_score', '>', 0)
+                .whereRaw('cp.posted_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)', [hoursWindow]);
+        } else if (wantTrendingScore && !hasTsView) {
+            // fallback trending mode without the scored view: keep work bounded to the window
+            q = q.whereRaw('cp.posted_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)', [hoursWindow]);
         }
 
         if (subtype) applySubtypeFilter(q, subtype);
@@ -792,6 +1301,20 @@ router.get('/', optionalAuth, async (req, res, next) => {
         if (city.trim())   q.whereRaw('LOWER(cp.city)   = ?', city.trim().toLowerCase());
         if (county.trim()) q.whereRaw('LOWER(cp.county) = ?', county.trim().toLowerCase());
 
+        // Optional total count for pagination / footer display
+        if (includeTotal) {
+            try {
+                const countQ = q.clone().clearSelect().clearOrder().clearGroup();
+                const row = await countQ.countDistinct({ total: 'cp.id' }).first();
+                const totalCount = Number(row?.total || 0);
+                res.set('X-Total-Count', String(totalCount));
+                res.set('Access-Control-Expose-Headers', 'X-Total-Count');
+            } catch {
+                res.set('X-Total-Count', '0');
+                res.set('Access-Control-Expose-Headers', 'X-Total-Count');
+            }
+        }
+
         const select = [
             'cp.id',
             'cp.category',
@@ -805,19 +1328,19 @@ router.get('/', optionalAuth, async (req, res, next) => {
             db.raw('COALESCE(cp.county, "")       AS county'),
             db.raw('COALESCE(cp.street_address, "") AS street_address'),
 
-            'u.first_name',
-            'u.last_name',
-            db.raw('COALESCE(u.handle, "") AS handle'),
-            db.raw('COALESCE(u.avatar_url, "") AS avatar_url'),
-            db.raw('COALESCE(u.profile_picture, "") AS profile_picture'),
+            db.raw('ANY_VALUE(u.first_name) AS first_name'),
+            db.raw('ANY_VALUE(u.last_name) AS last_name'),
+            db.raw('COALESCE(ANY_VALUE(u.handle), "") AS handle'),
+            db.raw('COALESCE(ANY_VALUE(u.avatar_url), "") AS avatar_url'),
+            db.raw('COALESCE(ANY_VALUE(u.profile_picture), "") AS profile_picture'),
 
-            db.raw('cc.label AS categoryLabel'),
-            'lf.lost_or_found',
-            'lf.reward',
-            'vh.help_type',
-            'vh.request_kind',
-            'vh.needed_date',
-            'vh.contact',
+            db.raw('ANY_VALUE(cc.label) AS categoryLabel'),
+            'ANY_VALUE(lf.lost_or_found)',
+            'ANY_VALUE(lf.reward)',
+            'ANY_VALUE(vh.help_type)',
+            'ANY_VALUE(vh.request_kind)',
+            'ANY_VALUE(vh.needed_date)',
+            'ANY_VALUE(vh.contact)',
             db.raw('MAX(rt.rec_type) AS rec_type'),
 
             db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
@@ -850,7 +1373,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
         // Add a trending score when needed (view table or fallback)
         if (sort === 'trending' && hasTsView) {
             select.push(db.raw('COALESCE(MAX(ts.trending_score), 0) AS score'));
-        } else if (sort === 'trending' && !hasTsView) {
+        } else if (wantTrendingScore && !hasTsView) {
             const windowSql = 'DATE_SUB(NOW(), INTERVAL ? HOUR)';
             select.push(
                 db.raw(
@@ -869,6 +1392,10 @@ router.get('/', optionalAuth, async (req, res, next) => {
 
         q.groupBy('cp.id');
 
+        if (wantTrendingScore && !hasTsView) {
+            q.havingRaw('score > 0');
+        }
+
         if (sort === 'popular') {
             q.orderBy('likesCount', 'desc').orderBy('cp.posted_at', 'desc');
         } else if (sort === 'trending') {
@@ -884,18 +1411,28 @@ router.get('/', optionalAuth, async (req, res, next) => {
     }
 });
 
-/* POST /api/community -------------------------------------------------------- */
+/* Create post --------------------------------------------------------------- */
 router.post('/', authenticateToken, async (req, res, next) => {
     try {
-        // (unchanged: your existing create logic is in your local file)
-        return res.status(501).json({ message: 'Not implemented in this snippet.' });
+        const { category, latitude, longitude } = req.body;
+
+        const [id] = await db('community_posts').insert({
+            category,
+            user_id:      req.user.id,
+            date_created: db.fn.now(),
+            posted_at:    db.fn.now(),
+            latitude:     latitude  ? parseFloat(latitude)  : null,
+            longitude:    longitude ? parseFloat(longitude) : null,
+        });
+
+        return res.status(201).json({ id });
     } catch (err) {
         return next(err);
     }
 });
 
-/* GET /api/community/categories -------------------------------------------- */
-router.get('/categories', async (req, res, next) => {
+/* Categories ---------------------------------------------------------------- */
+router.get('/categories', async (_req, res, next) => {
     try {
         const rows = await db('community_categories')
             .select('slug as id', 'label')
@@ -916,17 +1453,18 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
 
         let q = db('community_posts as cp')
             .join('users as u', 'cp.user_id', 'u.id')
-            .leftJoin('community_categories as cc', 'cp.category', 'cc.slug')
-            .leftJoin('lost_and_found as lf', 'cp.id', 'lf.id')
-            .leftJoin('announcements as a', 'cp.id', 'a.id')
+            .leftJoin('community_categories as cc',  'cp.category', 'cc.slug')
+            .leftJoin('lost_and_found as lf',        'cp.id', 'lf.id')
+            .leftJoin('announcements as a',          'cp.id', 'a.id')
             .leftJoin('public_safety_alerts as psa', 'cp.id', 'psa.id')
-            .leftJoin('community_photos as p', 'cp.id', 'p.post_id')
-            .leftJoin('recommendations_and_tips as rt', 'cp.id', 'rt.id')
-            .leftJoin('volunteer_help_requests as vh', 'cp.id', 'vh.id')
+            .leftJoin('community_photos as p',       'cp.id', 'p.post_id')
+            .leftJoin('recommendations_and_tips as rt',  'cp.id', 'rt.id')
+            .leftJoin('volunteer_help_requests as vh',   'cp.id', 'vh.id')
             .where('cp.id', postId);
 
         const select = [
             'cp.id',
+            'cp.user_id',
             'cp.category',
             'cp.posted_at as posted_at',
             'cp.posted_at as date_created',
@@ -972,11 +1510,10 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
         ];
 
         q = q.leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id');
-
         q.groupBy('cp.id');
 
         const row = await q.first(select);
-        if (!row) return res.status(404).json({ message: 'Post not found' });
+        if (!row) return res.status(404).json({ message: 'Not found' });
 
         return res.json(row);
     } catch (err) {
@@ -984,114 +1521,292 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
     }
 });
 
-/* DELETE /api/community/:id -------------------------------------------------- */
-router.delete('/:id', authenticateToken, async (req, res, next) => {
+/* ---------------------------------------------------------------------------
+ * Comments (threaded)
+ * Endpoints:
+ *  - GET  /api/community/:id/comments
+ *  - POST /api/community/:id/comments
+ *  - Alias: /api/community/posts/:id/comments (for older clients)
+ *  - POST /api/community/comments (legacy body-based endpoint)
+ *  - POST /api/community/comments/:commentId/like
+ *  - POST /api/community/comments/:commentId/flag
+ * ------------------------------------------------------------------------- */
+
+const COMMENT_MAX_CHARS = 15000;
+
+let HAS_COMMENT_FLAGS_TABLE = undefined; // boolean
+async function hasCommentFlagsTable() {
+    if (HAS_COMMENT_FLAGS_TABLE !== undefined) return HAS_COMMENT_FLAGS_TABLE;
+    const hasTable = await db.schema.hasTable('comment_flags');
+    if (!hasTable) {
+        HAS_COMMENT_FLAGS_TABLE = false;
+        return HAS_COMMENT_FLAGS_TABLE;
+    }
+    const [hasCommentId, hasUserId] = await Promise.all([
+        db.schema.hasColumn('comment_flags', 'comment_id'),
+        db.schema.hasColumn('comment_flags', 'user_id'),
+    ]);
+    HAS_COMMENT_FLAGS_TABLE = !!hasCommentId && !!hasUserId;
+    return HAS_COMMENT_FLAGS_TABLE;
+}
+
+function parseOptionalId(v) {
+    if (v === null || typeof v === 'undefined') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+function extractCommentContent(body) {
+    const raw =
+        body?.content ??
+        body?.text ??
+        body?.body ??
+        body?.comment ??
+        '';
+    return String(raw).trim().slice(0, COMMENT_MAX_CHARS);
+}
+
+async function createPostComment({ postId, userId, content, parentId }) {
+    return db.transaction(async (trx) => {
+        let rootId = null;
+        let parentRow = null;
+
+        if (Number.isFinite(parentId) && parentId) {
+            parentRow = await trx('post_comments')
+                .select('id', 'post_id', 'root_id')
+                .where({ id: parentId })
+                .first();
+
+            if (!parentRow) {
+                const e = new Error('Parent comment not found');
+                e.status = 404;
+                throw e;
+            }
+            if (Number(parentRow.post_id) !== Number(postId)) {
+                const e = new Error('Parent comment does not belong to this post');
+                e.status = 400;
+                throw e;
+            }
+            rootId = parentRow.root_id || parentRow.id;
+        }
+
+        const insert = {
+            post_id: postId,
+            user_id: userId,
+            content,
+            parent_id: Number.isFinite(parentId) && parentId ? parentId : null,
+            root_id: rootId,
+            created_at: trx.fn.now(),
+        };
+
+        const [cid] = await trx('post_comments').insert(insert);
+
+        // If top-level comment, set root_id = id
+        if (!insert.parent_id) {
+            await trx('post_comments').where({ id: cid }).update({ root_id: cid });
+            rootId = cid;
+        } else {
+            // Track reply counts (best-effort)
+            await trx('post_comments')
+                .where({ id: insert.parent_id })
+                .update({ reply_count: trx.raw('reply_count + 1') });
+
+            if (rootId && rootId !== insert.parent_id) {
+                await trx('post_comments')
+                    .where({ id: rootId })
+                    .update({ reply_count: trx.raw('reply_count + 1') });
+            }
+        }
+
+        const u = await trx('users')
+            .select('first_name', 'last_name', 'handle', 'avatar_url', 'profile_picture', 'public_id')
+            .where({ id: userId })
+            .first();
+
+        return {
+            id: cid,
+            post_id: postId,
+            user_id: userId,
+            parent_id: insert.parent_id,
+            root_id: rootId,
+            reply_count: 0,
+            created_at: new Date().toISOString(),
+            content,
+            text: content,
+
+            first_name: u?.first_name || '',
+            last_name: u?.last_name || '',
+            handle: u?.handle || '',
+            avatar_url: u?.avatar_url || '',
+            profile_picture: u?.profile_picture || '',
+            public_id: u?.public_id ?? null,
+
+            likes: 0,
+            viewer_liked: false,
+            viewer_flagged: false,
+        };
+    });
+}
+
+async function handleCreateComment(req, res, next) {
     try {
         const postId = Number(req.params.id);
         if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
 
-        const row = await db('community_posts').select('id', 'user_id').where({ id: postId }).first();
-        if (!row) return res.status(404).json({ message: 'Post not found' });
+        const content = extractCommentContent(req.body);
+        if (!content) return res.status(400).json({ message: 'Comment text required' });
 
-        if (Number(row.user_id) !== Number(req.user.id)) {
-            return res.status(403).json({ message: 'You do not have permission to delete this post.' });
-        }
+        const parentId = parseOptionalId(req.body?.parent_id ?? req.body?.parentId);
 
-        await db.transaction(async (trx) => {
-            const safeDel = async (table, where) => {
-                try {
-                    await trx(table).where(where).del();
-                } catch {
-                    // ignore missing tables/columns across older schemas
-                }
-            };
-
-            // Child rows (best-effort). Many installs have FK cascades, but this ensures deletion works everywhere.
-            await safeDel('community_photos', { post_id: postId });
-            await safeDel('post_likes', { post_id: postId, category: 'community_post' });
-            await safeDel('post_reposts', { post_id: postId });
-            await safeDel('post_comments', { post_id: postId });
-            await safeDel('post_flags', { post_id: postId });
-
-            // Category-specific sub tables (1:1 keyed by post id)
-            await safeDel('lost_and_found', { id: postId });
-            await safeDel('announcements', { id: postId });
-            await safeDel('public_safety_alerts', { id: postId });
-            await safeDel('recommendations_and_tips', { id: postId });
-            await safeDel('volunteer_help_requests', { id: postId });
-
-            // Edit history (if present)
-            await safeDel('community_post_edits', { post_id: postId });
-
-            // Finally: the post itself
-            await trx('community_posts').where({ id: postId }).del();
+        const created = await createPostComment({
+            postId,
+            userId: req.user.id,
+            content,
+            parentId,
         });
 
-        return res.json({ ok: true, deletedId: postId });
+        return res.status(201).json(created);
     } catch (err) {
         return next(err);
     }
-});
+}
 
-/* GET /api/community/:id/comments ------------------------------------------- */
-router.get('/:id/comments', optionalAuth, async (req, res, next) => {
+async function handleGetComments(req, res, next) {
     try {
-        // (unchanged: your existing comments logic is in your local file)
-        return res.json([]);
+        const postId = Number(req.params.id);
+        if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+
+        const viewerId = req.user?.id || 0;
+        const flagsEnabled = await hasCommentFlagsTable();
+
+        const select = [
+            'pc.id',
+            'pc.post_id',
+            'pc.user_id',
+            'pc.parent_id',
+            'pc.root_id',
+            'pc.reply_count',
+            'pc.created_at',
+            db.raw('pc.content AS content'),
+            db.raw('pc.content AS text'),
+
+            'u.first_name',
+            'u.last_name',
+            db.raw('COALESCE(u.handle, "") AS handle'),
+            db.raw('COALESCE(u.avatar_url, "") AS avatar_url'),
+            db.raw('COALESCE(u.profile_picture, "") AS profile_picture'),
+            db.raw('COALESCE(u.public_id, NULL) AS public_id'),
+
+            db('comment_likes')
+                .count('*')
+                .whereRaw('comment_id = pc.id')
+                .as('likes'),
+
+            db.raw(
+                'EXISTS (SELECT 1 FROM comment_likes cl WHERE cl.comment_id = pc.id AND cl.user_id = ?) AS viewer_liked',
+                [viewerId]
+            ),
+        ];
+
+        if (flagsEnabled) {
+            select.push(
+                db.raw(
+                    'EXISTS (SELECT 1 FROM comment_flags cf WHERE cf.comment_id = pc.id AND cf.user_id = ?) AS viewer_flagged',
+                    [viewerId]
+                )
+            );
+        } else {
+            select.push(db.raw('FALSE AS viewer_flagged'));
+        }
+
+        const rows = await db('post_comments as pc')
+            .join('users as u', 'pc.user_id', 'u.id')
+            .select(select)
+            .where('pc.post_id', postId)
+            .orderBy('pc.created_at', 'asc');
+
+        return res.json(rows);
     } catch (err) {
         return next(err);
     }
-});
+}
 
-router.get('/posts/:id/comments', optionalAuth, async (req, res, next) => {
-    try {
-        // (unchanged)
-        return res.json([]);
-    } catch (err) {
-        return next(err);
-    }
-});
+/* GET /api/community/:id/comments ------------------------------------------ */
+router.get('/:id/comments', optionalAuth, handleGetComments);
 
-router.post('/:id/comments', authenticateToken, async (req, res, next) => {
-    try {
-        // (unchanged)
-        return res.status(201).json({ ok: true });
-    } catch (err) {
-        return next(err);
-    }
-});
+/* GET /api/community/posts/:id/comments (alias) ---------------------------- */
+router.get('/posts/:id/comments', optionalAuth, handleGetComments);
 
-router.post('/posts/:id/comments', authenticateToken, async (req, res, next) => {
-    try {
-        // (unchanged)
-        return res.status(201).json({ ok: true });
-    } catch (err) {
-        return next(err);
-    }
-});
+/* POST /api/community/:id/comments ----------------------------------------- */
+router.post('/:id/comments', authenticateToken, handleCreateComment);
 
+/* POST /api/community/posts/:id/comments (alias) --------------------------- */
+router.post('/posts/:id/comments', authenticateToken, handleCreateComment);
+
+/* POST /api/community/comments (legacy) ------------------------------------ */
 router.post('/comments', authenticateToken, async (req, res, next) => {
     try {
-        // (unchanged)
-        return res.status(201).json({ ok: true });
+        const postId = Number(req.body?.postId ?? req.body?.post_id);
+        if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+
+        const content = extractCommentContent(req.body);
+        if (!content) return res.status(400).json({ message: 'Comment text required' });
+
+        const parentId = parseOptionalId(req.body?.parent_id ?? req.body?.parentId);
+
+        const created = await createPostComment({
+            postId,
+            userId: req.user.id,
+            content,
+            parentId,
+        });
+
+        return res.status(201).json(created);
     } catch (err) {
         return next(err);
     }
 });
 
+/* POST /api/community/comments/:commentId/like ------------------------------ */
 router.post('/comments/:commentId/like', authenticateToken, async (req, res, next) => {
     try {
-        // (unchanged)
-        return res.json({ ok: true });
+        const cid = Number(req.params.commentId);
+        if (!Number.isFinite(cid)) return res.status(400).json({ message: 'Invalid comment id' });
+
+        const existing = await db('comment_likes').where({ comment_id: cid, user_id: req.user.id }).first();
+        if (existing) {
+            await db('comment_likes').where({ comment_id: cid, user_id: req.user.id }).del();
+        } else {
+            await db('comment_likes').insert({ comment_id: cid, user_id: req.user.id });
+        }
+        const c = await db('comment_likes').where({ comment_id: cid }).count({ n: '*' }).first();
+        return res.json({ liked: !existing, likes: Number(c?.n || 0) });
     } catch (err) {
         return next(err);
     }
 });
 
+/* POST /api/community/comments/:commentId/flag ------------------------------ */
 router.post('/comments/:commentId/flag', authenticateToken, async (req, res, next) => {
     try {
-        // (unchanged)
-        return res.json({ ok: true });
+        const cid = Number(req.params.commentId);
+        if (!Number.isFinite(cid)) return res.status(400).json({ message: 'Invalid comment id' });
+
+        const enabled = await hasCommentFlagsTable();
+        if (!enabled) return res.status(501).json({ message: 'Comment reporting is not configured' });
+
+        const ALLOWED = new Set(['spam','harassment','hate','nudity','misinformation','illegal','other']);
+        const reason = String(req.body?.reason || 'other').toLowerCase().slice(0, 50);
+        if (!ALLOWED.has(reason)) return res.status(400).json({ message: 'Invalid reason' });
+        const details = String(req.body?.details || '').slice(0, 2000);
+
+        await db.raw(
+            'INSERT INTO comment_flags (comment_id,user_id,reason,details) VALUES (?,?,?,?) ' +
+            'ON DUPLICATE KEY UPDATE reason=VALUES(reason), details=VALUES(details), created_at=NOW()',
+            [cid, req.user.id, reason, details]
+        );
+
+        return res.json({ flagged: true, reason });
     } catch (err) {
         return next(err);
     }

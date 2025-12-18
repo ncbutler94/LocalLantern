@@ -10,6 +10,11 @@
 //   triggers a fetch via onSearchClick('manual').
 // • "All Counties" / "All Cities" are present and keep the field readable.
 // • Avoided useMemo pitfalls; no unused variables; mobile-friendly spacing.
+//
+// UPDATE (Trending move):
+// • "Trending" was moved from Sort-by into the View dropdown (under All Posts).
+//   View options now include: All Posts, Trending, My Posts, Following.
+//   (Auth-gated: My Posts / Following hidden when not authenticated.)
 // -----------------------------------------------------------------------------
 // NOTE: The Show/Hide Filters toggle now lives in CommunityPanel's header row,
 // so it is always accessible even when filters are collapsed.
@@ -42,8 +47,14 @@ const DEFAULT_CATEGORIES = [
     { id: 'volunteers', label: 'Volunteers' },
 ];
 
+/**
+ * View options:
+ * - "Trending" is now a View mode (under All Posts).
+ * - My Posts / Following remain auth-gated.
+ */
 const VIEW_OPTIONS = [
     { value: 'all', label: 'All Posts' },
+    { value: 'trending', label: 'Trending' },
     { value: 'mine', label: 'My Posts' },
     { value: 'following', label: 'Following' },
 ];
@@ -193,10 +204,11 @@ export default function CommunityFilter({
     }, [safeCities, countyName]);
 
     /* View options: hide restricted ones when unauthenticated */
-    const viewOptions = useMemo(
-        () => (isAuthenticated ? VIEW_OPTIONS : VIEW_OPTIONS.filter((o) => o.value === 'all')),
-        [isAuthenticated]
-    );
+    const viewOptions = useMemo(() => {
+        if (isAuthenticated) return VIEW_OPTIONS;
+        // Unauthenticated: keep All Posts + Trending only
+        return VIEW_OPTIONS.filter((o) => o.value === 'all' || o.value === 'trending');
+    }, [isAuthenticated]);
 
     // If unauthenticated while 'mine'/'following' is selected, reset to 'all' AND search.
     useEffect(() => {
@@ -234,10 +246,10 @@ export default function CommunityFilter({
                     sx={{
                         flexGrow: { xs: 1, sm: 0 },
                         flexShrink: { xs: 1, sm: 0 },
-                        flexBasis: { xs: '100%', sm: '120px' },
+                        flexBasis: { xs: '100%', sm: '140px' },
                     }}
                 >
-                    <FormControl size="small" fullWidth sx={{ minWidth: 110 }}>
+                    <FormControl size="small" fullWidth sx={{ minWidth: 130 }}>
                         <InputLabel>View</InputLabel>
                         <Select
                             label="View"

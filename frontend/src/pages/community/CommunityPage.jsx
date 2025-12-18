@@ -4,10 +4,11 @@
 //   • Right panel now shows category-level trending summaries (counts) based ONLY on the
 //     selected location (county/city). Changing location updates Trending; other filters
 //     don't affect it.
-//   • Clicking a summary clears all filters, applies that category, sets Sort→Trending,
+//   • Clicking a summary clears all filters, applies that category, sets View→Trending,
 //     runs the search, and switches to the Posts tab.
 // UPDATED (Sorting):
-//   • "Sort by" includes a new "Trending" option; backend honors sort=trending.
+//   • Trending is now a View mode (View → Trending). Feed fetch uses view=trending.
+//   • When sort=trending yields no scored posts, the list should be empty (backend enforces score > 0).
 
 import React, {
     useState,
@@ -114,6 +115,87 @@ const deriveSplitCategory = (post) => {
     return cat || 'announcement';
 };
 
+/* ---------- community page state/cache (return from PostPage without losing place) ---------- */
+const COMMUNITY_STATE_KEY = 'll:community:state';
+const COMMUNITY_DATA_KEY = 'll:community:data';
+
+function safeParseJson(str) {
+    if (!str || typeof str !== 'string') return null;
+    try {
+        return JSON.parse(str);
+    } catch {
+        return null;
+    }
+}
+
+function readCommunityState() {
+    try {
+        const raw = sessionStorage.getItem(COMMUNITY_STATE_KEY);
+        const data = safeParseJson(raw);
+        if (!data || typeof data !== 'object') return null;
+
+        const filters = data.filters && typeof data.filters === 'object' ? data.filters : null;
+        const sanitizedFilters = filters
+            ? {
+                search: String(filters.search ?? ''),
+                appliedSearch: String(filters.appliedSearch ?? ''),
+                view: String(filters.view ?? 'all'),
+                subtype: String(filters.subtype ?? ''),
+                sort: String(filters.sort ?? 'newest'),
+                dateRange: String(filters.dateRange ?? 'all'),
+                city: String(filters.city ?? ''),
+                county: String(filters.county ?? ''),
+            }
+            : null;
+
+        const center = Array.isArray(data.center) && data.center.length === 2 ? data.center : null;
+        const zoomLevel = Number.isFinite(Number(data.zoomLevel)) ? Number(data.zoomLevel) : null;
+
+        return {
+            filters: sanitizedFilters,
+            activeTab: typeof data.activeTab === 'string' ? data.activeTab : null,
+            detailExpanded: Boolean(data.detailExpanded),
+            showFilters: data.showFilters == null ? null : Boolean(data.showFilters),
+            selectedPost: data.selectedPost && typeof data.selectedPost === 'object' ? data.selectedPost : null,
+            openedPopupId: data.openedPopupId ?? null,
+            center,
+            zoomLevel,
+        };
+    } catch {
+        return null;
+    }
+}
+
+function writeCommunityState(payload) {
+    try {
+        sessionStorage.setItem(COMMUNITY_STATE_KEY, JSON.stringify(payload));
+    } catch {
+        // ignore
+    }
+}
+
+function readCommunityData() {
+    try {
+        const raw = sessionStorage.getItem(COMMUNITY_DATA_KEY);
+        const data = safeParseJson(raw);
+        if (!data || typeof data !== 'object') return null;
+        const posts = Array.isArray(data.posts) ? data.posts : null;
+        const points = data.points && typeof data.points === 'object' ? data.points : null;
+        const key = typeof data.key === 'string' ? data.key : null;
+        return posts || points ? { posts: posts || [], points: points || null, key } : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeCommunityData(payload) {
+    try {
+        sessionStorage.setItem(COMMUNITY_DATA_KEY, JSON.stringify(payload));
+    } catch {
+        // ignore
+    }
+}
+
 export default function CommunityPage() {
     /* ---------- window/body scroll lock + header measurement ---------- */
     const [chromeTop, setChromeTop] = useState(0);
@@ -195,32 +277,47 @@ export default function CommunityPage() {
     }, []);
 
     /* ---------- UI: active tab + selection ---------- */
-    const [activeTab, setActiveTab] = useState('trending'); // 'trending' | 'map' | 'posts'
-    const activeTabRef = useRef('trending');
+    const initialCommunityState = useMemo(() => readCommunityState(), []);
+    const initialCommunityData = useMemo(() => readCommunityData(), []);
+
+    useEffect(() => {
+        try {
+            if (sessionStorage.getItem('ll:community:restore')) {
+                sessionStorage.removeItem('ll:community:restore');
+            }
+        } catch {
+            // ignore
+        }
+    }, []);
+
+    const [activeTab, setActiveTab] = useState(initialCommunityState?.activeTab || 'trending'); // 'trending' | 'map' | 'posts'
+    const activeTabRef = useRef(initialCommunityState?.activeTab || 'trending');
     const setActiveTabSafe = useCallback((nextTab) => {
         activeTabRef.current = nextTab;
         setActiveTab(nextTab);
     }, []);
 
-    const [selectedPost, setSelectedPost] = useState(null);
+    const [selectedPost, setSelectedPost] = useState(initialCommunityState?.selectedPost || null);
     const selectedPostId = selectedPost?.id ?? null;
 
     // Keeping this state so we don't disrupt your existing sizing logic.
     // (The button is repurposed to "View Post Page".)
-    const [detailExpanded, setDetailExpanded] = useState(false);
+    const [detailExpanded, setDetailExpanded] = useState(Boolean(initialCommunityState?.detailExpanded));
 
     const clearSelection = useCallback(() => {
         setSelectedPost(null);
     }, []);
 
     /* ✅ Show/Hide filters state (so header button works) */
-    const [showFilters, setShowFilters] = useState(true);
+    const [showFilters, setShowFilters] = useState(
+        initialCommunityState?.showFilters == null ? true : Boolean(initialCommunityState.showFilters)
+    );
     const handleToggleFilters = useCallback(() => {
         setShowFilters((v) => !v);
     }, []);
 
     /* ---------- filters ---------- */
-    const [filters, dispatch] = useReducer(filterReducer, initialFilters);
+    const [filters, dispatch] = useReducer(filterReducer, initialCommunityState?.filters || initialFilters);
     const {
         search,
         appliedSearch,
@@ -232,13 +329,29 @@ export default function CommunityPage() {
         county: selectedCounty,
     } = filters;
 
-    const [center, setCenter] = useState(DEFAULT_CENTER);
-    const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
-    const [openedPopupId, setOpenedPopupId] = useState(null);
+    const [center, setCenter] = useState(initialCommunityState?.center || DEFAULT_CENTER);
+    const [zoomLevel, setZoomLevel] = useState(initialCommunityState?.zoomLevel || DEFAULT_ZOOM);
+    const [openedPopupId, setOpenedPopupId] = useState(initialCommunityState?.openedPopupId ?? null);
     const [hoveredId, setHoveredId] = useState(null);
 
     const [popupPostCache, setPopupPostCache] = useState(() => ({}));
+
+    const [cachedData, setCachedData] = useState(() => initialCommunityData || { posts: [], points: null, key: null });
     const popupFetchInFlightRef = useRef(new Set());
+
+    // Persist CommunityPage UI state so returning from PostPage restores the screen
+    useEffect(() => {
+        writeCommunityState({
+            filters,
+            activeTab,
+            detailExpanded,
+            showFilters,
+            selectedPost,
+            openedPopupId,
+            center,
+            zoomLevel,
+        });
+    }, [filters, activeTab, detailExpanded, showFilters, selectedPost, openedPopupId, center, zoomLevel]);
 
     /* ---------- city⇄county helpers ---------- */
     const cityToCounty = useMemo(() => {
@@ -279,6 +392,22 @@ export default function CommunityPage() {
     }, [selectedCity, selectedCounty]);
 
     /* ---------- fetch posts & marker geojson ---------- */
+    // We pass View + Sort straight through to the API.
+    // View=trending is a true filter on the backend (only scored posts). Sort can still be newest/popular/trending.
+    const queryKey = useMemo(
+        () =>
+            JSON.stringify({
+                search: appliedSearch || '',
+                view: view || 'all',
+                subtype: normalizeSubtype(subtype || ''),
+                sort: sort || 'newest',
+                dateRange: dateRange || 'all',
+                city: selectedCity || '',
+                county: selectedCounty || '',
+            }),
+        [appliedSearch, view, subtype, sort, dateRange, selectedCity, selectedCounty]
+    );
+
     const { posts: communityPosts, points, isLoading, refetch } = useCommunityData({
         search: appliedSearch,
         view,
@@ -289,12 +418,52 @@ export default function CommunityPage() {
         county: selectedCounty,
     });
 
+    // Cache the latest results so returning from PostPage can render instantly (no empty list flash)
+    useEffect(() => {
+        const nextPosts = Array.isArray(communityPosts) ? communityPosts : null;
+        const nextPoints = points && typeof points === 'object' ? points : null;
+        if ((nextPosts && nextPosts.length) || (nextPoints && (nextPoints.features || nextPoints.type))) {
+            const payload = { posts: nextPosts || [], points: nextPoints || null, key: queryKey, ts: Date.now() };
+            writeCommunityData(payload);
+            setCachedData({ posts: payload.posts, points: payload.points, key: payload.key || null });
+        }
+    }, [communityPosts, points, queryKey]);
+
+    const postsSource = useMemo(() => {
+        const live = Array.isArray(communityPosts) ? communityPosts : [];
+        if (live.length) return live;
+
+        // Never show cached results for Trending view (must reflect actual trending filter).
+        if (view === 'trending') return [];
+
+        // Only use cached results if they match the current queryKey (prevents "wrong" posts showing after filter/view changes).
+        if (cachedData?.key && cachedData.key === queryKey) {
+            const cached = Array.isArray(cachedData?.posts) ? cachedData.posts : [];
+            return cached;
+        }
+
+        return [];
+    }, [communityPosts, cachedData, view, queryKey]);
+
+    const pointsSource = useMemo(() => {
+        const liveHas = points && (Array.isArray(points.features) ? points.features.length > 0 : true);
+        if (liveHas) return points;
+
+        if (view === 'trending') return points;
+
+        if (cachedData?.key && cachedData.key === queryKey) {
+            return cachedData?.points || points;
+        }
+
+        return points;
+    }, [points, cachedData, view, queryKey]);
+
     latestRefetchRef.current = refetch;
 
     /* ---------- list filter ---------- */
     const filteredPosts = useMemo(() => {
         const term = (appliedSearch || '').trim().toLowerCase();
-        return (communityPosts || []).filter((post) => {
+        return (postsSource || []).filter((post) => {
             if (selectedCounty && post.county !== selectedCounty) return false;
             if (selectedCity) {
                 if (post.city && post.city !== selectedCity) return false;
@@ -318,14 +487,14 @@ export default function CommunityPage() {
             }
             return true;
         });
-    }, [communityPosts, selectedCity, selectedCounty, dateRange, appliedSearch]);
+    }, [postsSource, selectedCity, selectedCounty, dateRange, appliedSearch]);
 
     /* ---------- selection + map helpers ---------- */
     const getPointLatLngById = useCallback(
         (id) => {
             const idStr = id != null ? String(id) : '';
             if (!idStr) return null;
-            const feat = points?.features?.find((f) => String(f?.properties?.id) === idStr);
+            const feat = pointsSource?.features?.find((f) => String(f?.properties?.id) === idStr);
             const coords = feat?.geometry?.coordinates;
             if (!Array.isArray(coords) || coords.length < 2) return null;
             const lng = Number(coords[0]);
@@ -333,7 +502,7 @@ export default function CommunityPage() {
             if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
             return [lat, lng];
         },
-        [points]
+        [pointsSource]
     );
 
     const ensurePopupPostLoaded = useCallback(
@@ -378,26 +547,35 @@ export default function CommunityPage() {
             const p = post || {};
             const idStr = p?.id != null ? String(p.id) : null;
 
-            if (latLngOverride && Number.isFinite(latLngOverride.lat) && Number.isFinite(latLngOverride.lng)) {
-                const POPUP_LAT_OFFSET = 0.01;
+            // ✅ Use a smaller offset when zooming tighter to an address
+            const POPUP_LAT_OFFSET = p.street_address ? 0.004 : 0.01;
+
+            // Marker-click path already hits this branch
+            if (
+                latLngOverride &&
+                Number.isFinite(latLngOverride.lat) &&
+                Number.isFinite(latLngOverride.lng)
+            ) {
                 setCenter([latLngOverride.lat + POPUP_LAT_OFFSET, latLngOverride.lng]);
-                setZoomLevel(ZOOM_BY_LEVEL.city);
+                setZoomLevel(p.street_address ? ZOOM_BY_LEVEL.address : ZOOM_BY_LEVEL.city);
                 return;
             }
 
+            // ✅ Address-click path often hits THIS branch (GeoJSON point), so apply offset here too
             if (idStr) {
-                const pt = getPointLatLngById(idStr);
+                const pt = getPointLatLngById(idStr); // [lat, lng]
                 if (pt) {
-                    setCenter(pt);
-                    setZoomLevel(ZOOM_BY_LEVEL.city);
+                    setCenter([pt[0] + POPUP_LAT_OFFSET, pt[1]]);
+                    setZoomLevel(p.street_address ? ZOOM_BY_LEVEL.address : ZOOM_BY_LEVEL.city);
                     return;
                 }
             }
 
+            // ✅ Also apply offset when using post lat/lng
             const lat = Number(p.latitude ?? p.lat);
             const lng = Number(p.longitude ?? p.lng);
             if (Number.isFinite(lat) && Number.isFinite(lng)) {
-                setCenter([lat, lng]);
+                setCenter([lat + POPUP_LAT_OFFSET, lng]);
                 setZoomLevel(p.street_address ? ZOOM_BY_LEVEL.address : ZOOM_BY_LEVEL.city);
                 return;
             }
@@ -565,24 +743,29 @@ export default function CommunityPage() {
 
     useEffect(() => {
         if (!deepPostId) return;
-        const found = (communityPosts || []).find((p) => String(p.id) === deepPostId);
+        const found = (postsSource || []).find((p) => String(p.id) === deepPostId);
         if (found) {
             setSelectedPost(found);
             setActiveTabSafe('posts');
             setDetailExpanded(false);
         }
-    }, [deepPostId, communityPosts, setActiveTabSafe]);
+    }, [deepPostId, postsSource, setActiveTabSafe]);
 
     /* ---------- search handler (manual vs auto) ---------- */
     const handleSearchClick = useCallback(
         (mode) => {
             clearSelection();
+            // Any new search that resets the Posts detail should bounce the right panel back to Trending.
+            if (activeTabRef.current === 'posts') {
+                setActiveTabSafe('trending');
+                setDetailExpanded(false);
+            }
             if (mode === 'manual') {
                 dispatch({ type: 'appliedSearch', value: search });
             }
             scheduleRefetch();
         },
-        [search, clearSelection, scheduleRefetch]
+        [search, clearSelection, scheduleRefetch, setActiveTabSafe]
     );
 
     /* ---------- Trending SUMMARY (server-side) ---------- */
@@ -617,10 +800,9 @@ export default function CommunityPage() {
 
             dispatch({ type: 'search', value: '' });
             dispatch({ type: 'appliedSearch', value: '' });
-            dispatch({ type: 'view', value: 'all' });
+            dispatch({ type: 'view', value: 'trending' });
             dispatch({ type: 'dateRange', value: 'all' });
             dispatch({ type: 'subtype', value: categoryId });
-            dispatch({ type: 'sort', value: 'trending' });
 
             scheduleRefetch();
             setActiveTabSafe('posts');
@@ -684,6 +866,11 @@ export default function CommunityPage() {
                     onSearchClick={handleSearchClick}
                     onClearClick={() => {
                         clearSelection();
+                        // If we're resetting the Posts detail state, return the right panel to Trending.
+                        if (activeTabRef.current === 'posts') {
+                            setActiveTabSafe('trending');
+                            setDetailExpanded(false);
+                        }
                         dispatch({ type: 'search', value: '' });
                         dispatch({ type: 'appliedSearch', value: '' });
                         dispatch({ type: 'view', value: 'all' });
@@ -722,7 +909,6 @@ export default function CommunityPage() {
                     sortOptions={[
                         { value: 'newest', label: 'Newest' },
                         { value: 'popular', label: 'Most Popular' },
-                        { value: 'trending', label: 'Trending' },
                     ]}
                     onSortChange={(val) => {
                         dispatch({ type: 'sort', value: val });
@@ -990,7 +1176,7 @@ export default function CommunityPage() {
                         }}
                     >
                         <CommunityMap
-                            data={points}
+                            data={pointsSource}
                             mapRef={mapRef}
                             center={center}
                             zoomLevel={zoomLevel}

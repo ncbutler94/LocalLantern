@@ -8,6 +8,8 @@
 // FIX (this patch):
 // - Action bar no longer prompts "log in" while logged in.
 //   We now pass the logged-in viewer object through to CommunityPostCard (viewer/me/currentUser/etc).
+// - Adds a Delete Post button (red) next to Edit Post for the owner.
+//   It triggers a global event so the shared DeletePostConfirmDialog can be reused elsewhere.
 
 import React, {
     memo,
@@ -31,6 +33,7 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 import { MapContainer, TileLayer, Marker, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -424,7 +427,7 @@ function moveCategoryChipToHost(rootEl, hostEl) {
 export const ProfilePostCard = memo(function ProfilePostCard(props) {
     const {
         post,
-        user, // <-- this is the logged-in viewer (me)
+        user,
         onCardClick,
         onOpenUserCard,
         onOpenShare,
@@ -521,6 +524,8 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 0.75,
+                        flexWrap: 'wrap',
+                        justifyContent: 'flex-end',
                     }}
                     onClick={(e) => {
                         e.preventDefault();
@@ -549,6 +554,30 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                             }}
                         >
                             Edit Post
+                        </Button>
+                    </Tooltip>
+
+                    <Tooltip title="Delete post">
+                        <Button
+                            size="small"
+                            variant="contained"
+                            color="error"
+                            startIcon={<DeleteOutlineIcon fontSize="small" />}
+                            onClick={() => {
+                                fire('ll:communityPost:requestDelete', { postId: post?.id, post });
+                            }}
+                            sx={{
+                                textTransform: 'none',
+                                lineHeight: 1.1,
+                                px: 1,
+                                py: 0.4,
+                                minWidth: 0,
+                                borderRadius: 999,
+                                boxShadow: '0 4px 14px rgba(0,0,0,0.10)',
+                                '&:hover': { opacity: 0.95 },
+                            }}
+                        >
+                            Delete
                         </Button>
                     </Tooltip>
                 </Box>
@@ -622,7 +651,6 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
             <CommunityPostCard
                 {...rest}
                 post={displayPost || post}
-                // ✅ FIX: provide the viewer so the action bar knows you're logged in
                 viewer={user}
                 me={user}
                 currentUser={user}
@@ -834,12 +862,7 @@ export default function ProfilePostsList({
                 onViewProfile={(u) => window.location.assign(`/${u?.handle || u?.id}`)}
             />
 
-            <SharePostDialog
-                open={shareOpen}
-                onClose={() => setShareOpen(false)}
-                viewer={user}
-                post={sharePost}
-            />
+            <SharePostDialog open={shareOpen} onClose={() => setShareOpen(false)} viewer={user} post={sharePost} />
 
             <LocationMapDialog open={locOpen} post={locPost} onClose={closeLoc} />
         </Box>

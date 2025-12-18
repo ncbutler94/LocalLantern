@@ -4,11 +4,11 @@
 // in the top-right of each card header. Selected card shows a light gray highlight.
 //
 // Follow fixes in this version:
-// • Follow/Message on the user card are auth‑gated (same as Profile page).
+// • Follow/Message on the user card are auth-gated (same as Profile page).
 // • POST uses the same URL strategy as Profile page: `${api}/users/follow` ➜ '/api/users/follow' ➜ '/users/follow'.
 // • We resolve the target via `/users/public/:handleOrId` (same as Profile page) so we always have the correct numeric `id`.
 // • The button flips to disabled gray “Following” immediately (optimistic), and stays that way.
-// • Already‑followed users render “Following” immediately because we derive state from the **target’s** followers list,
+// • Already-followed users render “Following” immediately because we derive state from the **target’s** followers list,
 //   just like the Profile page does (not from the viewer cache).
 //
 // UPDATED (infinite scroll):
@@ -17,10 +17,24 @@
 // • Continues loading with no page cap while the server returns full pages
 //
 // Based on your original file with no truncation.
+//
+// NEW (performance bar support + controlled chunking, without removing existing features):
+// • In controlled mode (posts prop provided): render only 100 at a time (renderCount).
+// • When user scrolls near the bottom of the current chunk:
+//     - show 4 flashing skeleton cards,
+//     - then reveal the next 100.
+// • If we’ve revealed everything we currently have but the parent says there are more:
+//     - call onLoadMore() (optional),
+//     - keep skeletons visible until parent appends posts.
+// • Exposes display stats via onDisplayStatsChange (optional) so we can render a truly fixed bar in CommunityPanel.
+//
+// NOTE: The “fixed bar” should be rendered by CommunityPanel (overlay in the scroll container) so it is ALWAYS visible.
+// This file now reports the values needed for that bar.
 
 import React, { memo, useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import axios from 'axios';
+
 import {
     Box,
     Card,
@@ -31,7 +45,9 @@ import {
     Link,
     CardActionArea,
     Chip,
+    Skeleton,
 } from '@mui/material';
+
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
@@ -39,6 +55,7 @@ import ReportIcon from '@mui/icons-material/Report';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import PanToolIcon from '@mui/icons-material/PanTool';
 import SearchIcon from '@mui/icons-material/Search';
+import PersonIcon from '@mui/icons-material/Person';
 
 import ActionBar from '../../components/ActionBar';
 import UserCardPopover from '../../components/UserCardPopover';
@@ -258,7 +275,7 @@ export const PostCard = memo(function PostCard({
     const finalRepostsCount = Number(repostsCount ?? reposts_count ?? repost_count ?? reposts ?? 0);
     const finalViewerReposted = Boolean(viewerReposted ?? viewer_reposted ?? reposted ?? is_reposted ?? false);
 
-    const avatarSrc = avatar_url || profile_picture || '';
+    const avatarSrc = (avatar_url || profile_picture || '').trim();
     const postDate = date_created || posted_at;
 
     const [imgError, setImgError] = useState(false);
@@ -296,6 +313,12 @@ export const PostCard = memo(function PostCard({
             />
         );
     })();
+
+    const [avatarErrored, setAvatarErrored] = useState(false);
+    useEffect(() => {
+        setAvatarErrored(false);
+    }, [avatarSrc, id]);
+    const avatarImgSrc = !avatarErrored ? avatarSrc : '';
 
     const openUserCard = (e) => {
         e.stopPropagation();
@@ -354,8 +377,13 @@ export const PostCard = memo(function PostCard({
             <CardHeader
                 action={actionChip}
                 avatar={
-                    <Avatar src={avatarSrc} sx={{ cursor: 'pointer' }} onClick={openUserCard}>
-                        {first_name?.[0]}
+                    <Avatar
+                        src={avatarImgSrc || undefined}
+                        sx={{ cursor: 'pointer' }}
+                        onClick={openUserCard}
+                        onError={() => setAvatarErrored(true)}
+                    >
+                        {!avatarImgSrc && <PersonIcon />}
                     </Avatar>
                 }
                 title={
@@ -520,12 +548,48 @@ const LoadingDots = () => (
     </Box>
 );
 
+/* NEW: skeleton post cards (4) while revealing/loading next chunk */
+const SkeletonPostCard = () => (
+    <Card
+        sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            height: 360,
+            borderRadius: 2,
+            border: 1,
+            borderColor: 'divider',
+            overflow: 'hidden',
+            boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+        }}
+    >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, pb: 1 }}>
+            <Skeleton variant="circular" width={40} height={40} animation="wave" />
+            <Box sx={{ flex: 1 }}>
+                <Skeleton variant="text" width="55%" animation="wave" />
+                <Skeleton variant="text" width="35%" animation="wave" />
+            </Box>
+            <Skeleton variant="rounded" width={84} height={26} animation="wave" />
+        </Box>
+
+        <Box sx={{ px: 2, pb: 1.5 }}>
+            <Skeleton variant="text" width="65%" animation="wave" />
+            <Skeleton variant="text" width="85%" animation="wave" />
+            <Skeleton variant="text" width="70%" animation="wave" />
+        </Box>
+
+        <Box sx={{ mt: 'auto', p: 2, pt: 0 }}>
+            <Skeleton variant="rounded" height={36} animation="wave" />
+        </Box>
+    </Card>
+);
+
 /* --------------------------------------------------------------------------
  * Pagination + virtualized render
  * ------------------------------------------------------------------------ */
 const PAGE_SIZE = 100;       // ← load 100 at a time from the API
 const PREFETCH_AT = 90;      // ← when scrolled past item #90, prefetch next 100
-const LOCAL_CHUNK = 100;     // ← for the controlled (client‑only) list window
+const LOCAL_CHUNK = 100;     // ← for the controlled (client-only) list window
 const MIN_BOTTOM_LOADER_MS = 250;
 
 export default function CommunityList({
@@ -537,12 +601,23 @@ export default function CommunityList({
                                           onLocationClick,
                                           onCardClick,
                                           query = '',
+                                          view = '',
                                           selectedId = null,
                                           selectable = false,
+
+                                          // NEW (optional): lets parent provide true totals + paging
+                                          totalCount = null,
+                                          hasMoreExternal = null,
+                                          onLoadMore = null,
+
+                                          // NEW (optional): report display stats to parent for the fixed bar
+                                          onDisplayStatsChange = null,
                                       }) {
     const auth = useAuth();
 
     const controlled = typeof posts !== 'undefined';
+
+    const isTrendingView = String(view || '').trim().toLowerCase() === 'trending';
 
     const [rows, setRows] = useState([]);
     const [page, setPage] = useState(0);
@@ -561,13 +636,19 @@ export default function CommunityList({
     // Virtualized rendering for the controlled case
     const [renderCount, setRenderCount] = useState(LOCAL_CHUNK);
 
+    // NEW: controlled mode chunk loading UI
+    const [controlledChunkLoading, setControlledChunkLoading] = useState(false);
+    const controlledSentinelRef = useRef(null);
+    const awaitingServerAppendRef = useRef(false);
+    const requestedMoreRef = useRef(false);
+
     // Bottom loader timing (≥ 250ms)
     const [showBottomLoader, setShowBottomLoader] = useState(false);
     const bottomStartRef = useRef(0);
     const bottomTimerRef = useRef(null);
     const prevULoadingRef = useRef(uLoading);
 
-    // Server‑verified following set keyed by user id (author id)
+    // Server-verified following set keyed by user id (author id)
     const [serverFollowingSet, setServerFollowingSet] = useState(() => new Set());
     // Local optimistic follow flips (within this component lifetime)
     const [locallyFollowed, setLocallyFollowed] = useState(() => new Set());
@@ -802,9 +883,35 @@ export default function CommunityList({
         })();
     }, [query, controlled]);
 
-    // Reset render window when the controlled list changes
+    // Controlled: don’t reset renderCount when posts append; only reset when list shrinks (new search)
+    const prevControlledLenRef = useRef(0);
     useEffect(() => {
-        if (controlled) setRenderCount(LOCAL_CHUNK);
+        if (!controlled) return;
+
+        const nextLen = Array.isArray(posts) ? posts.length : 0;
+        const prevLen = prevControlledLenRef.current;
+
+        if (nextLen < prevLen) {
+            // new search / filters replaced the list
+            setRenderCount(LOCAL_CHUNK);
+            setControlledChunkLoading(false);
+            awaitingServerAppendRef.current = false;
+            requestedMoreRef.current = false;
+        } else if (nextLen > prevLen) {
+            // append from parent (server load more)
+            if (awaitingServerAppendRef.current) {
+                awaitingServerAppendRef.current = false;
+                requestedMoreRef.current = false;
+
+                // reveal next chunk after a short shimmer beat
+                setTimeout(() => {
+                    setRenderCount((c) => Math.min(c + PAGE_SIZE, nextLen));
+                    setControlledChunkLoading(false);
+                }, 150);
+            }
+        }
+
+        prevControlledLenRef.current = nextLen;
     }, [controlled, posts]);
 
     // ---- Intersection observer: bottom sentinel (safety net) ----
@@ -845,6 +952,65 @@ export default function CommunityList({
 
     const list = controlled ? (Array.isArray(posts) ? posts : []) : rows;
     const visible = controlled ? list.slice(0, renderCount) : list;
+
+    // ✅ Report stats upward (for the fixed bar in CommunityPanel)
+    const effectiveTotal =
+        Number.isFinite(Number(totalCount)) ? Number(totalCount)
+            : (controlled ? list.length : list.length);
+
+    useEffect(() => {
+        if (typeof onDisplayStatsChange !== 'function') return;
+        onDisplayStatsChange({
+            displaying: controlled ? Math.min(renderCount, list.length) : list.length,
+            total: effectiveTotal,
+            loadingMore: Boolean(controlled ? controlledChunkLoading : (showBottomLoader || uLoading)),
+        });
+    }, [onDisplayStatsChange, controlled, renderCount, list.length, effectiveTotal]);
+
+    // Controlled: sentinel to reveal next chunk / request next page from parent
+    useEffect(() => {
+        if (!controlled) return undefined;
+
+        const el = controlledSentinelRef.current;
+        if (!el) return undefined;
+
+        const rootEl = document.querySelector('[data-community-scroll]') || null;
+
+        const io = new IntersectionObserver(
+            (entries) => {
+                const entry = entries[0];
+                if (!entry?.isIntersecting) return;
+
+                const loadedLen = list.length;
+                const canRevealMore = renderCount < loadedLen;
+
+                // If we have more already loaded, reveal next 100 with shimmer
+                if (canRevealMore && !controlledChunkLoading) {
+                    setControlledChunkLoading(true);
+                    setTimeout(() => {
+                        setRenderCount((c) => Math.min(c + PAGE_SIZE, loadedLen));
+                        setControlledChunkLoading(false);
+                    }, 350);
+                    return;
+                }
+
+                // If we’ve revealed everything we currently have, but parent says more exist: request more
+                const externalHasMore = (hasMoreExternal == null) ? false : Boolean(hasMoreExternal);
+                if (!canRevealMore && externalHasMore && typeof onLoadMore === 'function') {
+                    if (requestedMoreRef.current) return;
+                    requestedMoreRef.current = true;
+                    awaitingServerAppendRef.current = true;
+
+                    setControlledChunkLoading(true);
+                    onLoadMore();
+                }
+            },
+            { root: rootEl, rootMargin: '900px', threshold: 0.1 }
+        );
+
+        io.observe(el);
+        return () => io.disconnect();
+    }, [controlled, list.length, renderCount, controlledChunkLoading, hasMoreExternal, onLoadMore]);
 
     // Extra safety: if parent passes a selectedId that isn’t in the current list, don’t highlight anything.
     let effectiveSelectedId = null;
@@ -936,6 +1102,32 @@ export default function CommunityList({
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', width: '100%', overflowX: 'hidden' }}>
                     {renderedGrid}
 
+                    {/* ✅ Controlled-mode skeletons while revealing or waiting on server */}
+                    {controlled && controlledChunkLoading && (
+                        <>
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <Box
+                                    key={`controlled-sk-${i}`}
+                                    sx={{
+                                        flex: {
+                                            xs: '0 0 100%',
+                                            sm: '0 0 100%',
+                                            md: '0 0 calc(50% - 16px)',
+                                            lg: '0 0 calc(50% - 16px)',
+                                            xl: '0 0 calc(50% - 16px)',
+                                        },
+                                        mx: 1,
+                                        my: 1,
+                                        minWidth: 0,
+                                        maxWidth: '100%',
+                                    }}
+                                >
+                                    <SkeletonPostCard />
+                                </Box>
+                            ))}
+                        </>
+                    )}
+
                     {/* Bottom-of-list inline loader under the last row while fetching (≥ 250ms) */}
                     {showBottomLoader && (
                         <Box sx={{ flex: '0 0 100%', display: 'flex', justifyContent: 'center', py: 2 }}>
@@ -946,7 +1138,10 @@ export default function CommunityList({
             )}
 
             {/* Invisible sentinel to trigger next fetch (bottom) */}
-            <Box ref={sentinelRef} sx={{ height: 1 }} />
+            {!controlled && <Box ref={sentinelRef} sx={{ height: 1 }} />}
+
+            {/* Controlled sentinel (trigger reveal / server page) */}
+            {controlled && <Box ref={controlledSentinelRef} sx={{ height: 1 }} />}
 
             {/* Initial full-screen overlay only for the very first load */}
             {initialLoading && (
@@ -975,7 +1170,7 @@ export default function CommunityList({
                     }}
                 >
                     <Typography variant="body2" color="text.secondary">
-                        No posts found.
+                        {isTrendingView ? 'No trending posts yet for these filters.' : 'No posts found.'}
                     </Typography>
                 </Box>
             )}
@@ -1005,6 +1200,13 @@ CommunityList.propTypes = {
     onLocationClick: PropTypes.func.isRequired,
     onCardClick: PropTypes.func,
     query: PropTypes.string,
+    view: PropTypes.string,
     selectedId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     selectable: PropTypes.bool,
+
+    // NEW (optional)
+    totalCount: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    hasMoreExternal: PropTypes.bool,
+    onLoadMore: PropTypes.func,
+    onDisplayStatsChange: PropTypes.func,
 };

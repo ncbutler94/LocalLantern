@@ -34,6 +34,13 @@ function makeId() {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function normalizeCategoryToAnnouncementSlug(cat) {
+    const s = String(cat || '').trim().toLowerCase();
+    if (!s) return 'announcement';
+    if (s === 'announcements') return 'announcement';
+    return s;
+}
+
 export default function NewAnnouncementForm({
                                                 onClose,
                                                 onSubmit,
@@ -41,12 +48,18 @@ export default function NewAnnouncementForm({
                                                 defaultCity = '',
                                                 defaultCounty = '',
                                                 countyRequired = true,
+
+                                                // Edit-mode support (shared component usage)
+                                                editMode = false,
+                                                initialData = null, // { id, title, description, city, county, visibility, photos: [url...] }
+                                                onDelete, // optional: () => void
                                             }) {
     const base = useBasePostForm({ defaultCity, defaultCounty, countyRequired });
 
     const [visibility, setVisibility] = React.useState('public');
 
     // Photos (ordered): index 0 = cover
+    // Each item: { id, url, file?: File, existing?: boolean }
     const [photos, setPhotos] = React.useState([]);
     const photosRef = React.useRef([]);
     const fileInputRef = React.useRef(null);
@@ -70,8 +83,9 @@ export default function NewAnnouncementForm({
     React.useEffect(() => {
         return () => {
             photosRef.current.forEach((p) => {
+                if (p?.existing) return;
                 try {
-                    URL.revokeObjectURL(p.url);
+                    if (p?.url) URL.revokeObjectURL(p.url);
                 } catch (e) {
                     // ignore
                 }
@@ -79,15 +93,43 @@ export default function NewAnnouncementForm({
         };
     }, []);
 
+    // Prefill in edit mode
+    React.useEffect(() => {
+        if (!editMode) return;
+        if (!initialData) return;
+
+        // Base fields
+        if (typeof initialData.title === 'string') base.setTitle(initialData.title);
+        if (typeof initialData.description === 'string') base.setDescription(initialData.description);
+        if (typeof initialData.city === 'string') base.setCity(initialData.city);
+        if (typeof initialData.county === 'string') base.setCounty(initialData.county);
+
+        const vis = String(initialData.visibility || '').trim().toLowerCase();
+        if (vis === 'followers' || vis === 'public') setVisibility(vis || 'public');
+
+        // Existing photos
+        const existing = Array.isArray(initialData.photos) ? initialData.photos : [];
+        const cleaned = existing
+            .map((u) => String(u || '').trim())
+            .filter(Boolean)
+            .slice(0, MAX_PHOTOS)
+            .map((url) => ({ id: makeId(), url, existing: true }));
+
+        setPhotos(cleaned);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editMode, initialData]);
+
     // Apply passed defaults (if base isn't already populated)
     React.useEffect(() => {
+        if (editMode) return; // edit mode already sets values
         if (!city && defaultCity) setCity(defaultCity);
         if (!county && defaultCounty) setCounty(defaultCounty);
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
-    // Fallback: if no defaults were provided, auto-fill from profile
+    // Fallback: if no defaults were provided, auto-fill from profile (create-mode only)
     const fetchedProfileRef = React.useRef(false);
     React.useEffect(() => {
+        if (editMode) return;
         if (fetchedProfileRef.current) return;
         if (defaultCity || defaultCounty) return;
         if (city || county) return;
@@ -112,7 +154,7 @@ export default function NewAnnouncementForm({
             });
 
         return () => ac.abort();
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
     const addFiles = React.useCallback((fileList) => {
         const incoming = Array.from(fileList || []).filter((f) =>
@@ -129,7 +171,7 @@ export default function NewAnnouncementForm({
 
             slice.forEach((file) => {
                 const url = URL.createObjectURL(file);
-                next.push({ id: makeId(), file, url });
+                next.push({ id: makeId(), file, url, existing: false });
             });
 
             return next;
@@ -156,7 +198,7 @@ export default function NewAnnouncementForm({
         setPhotos((prev) => {
             if (idx < 0 || idx >= prev.length) return prev;
             const toRemove = prev[idx];
-            if (toRemove?.url) {
+            if (toRemove?.url && !toRemove?.existing) {
                 try {
                     URL.revokeObjectURL(toRemove.url);
                 } catch (e) {
@@ -180,12 +222,15 @@ export default function NewAnnouncementForm({
         });
     }, []);
 
-    const onThumbDragStart = React.useCallback((idx) => {
-        // Only allow dragging real photos (no empty slots)
-        if (idx < 0 || idx >= photos.length) return;
-        dragIndexRef.current = idx;
-        isReorderingRef.current = true;
-    }, [photos.length]);
+    const onThumbDragStart = React.useCallback(
+        (idx) => {
+            // Only allow dragging real photos (no empty slots)
+            if (idx < 0 || idx >= photos.length) return;
+            dragIndexRef.current = idx;
+            isReorderingRef.current = true;
+        },
+        [photos.length]
+    );
 
     const onThumbDragEnd = React.useCallback(() => {
         dragIndexRef.current = null;
@@ -257,14 +302,15 @@ export default function NewAnnouncementForm({
     );
 
     /* Safe submitter */
-    const doSubmit = async (formData) => {
+    const doSubmit = async (payloadOrFormData) => {
         if (typeof onSubmit === 'function') {
-            return onSubmit(formData);
+            return onSubmit(payloadOrFormData);
         }
 
+        // Create-mode fallback only
         const res = await fetch('/api/announcements', {
             method: 'POST',
-            body: formData,
+            body: payloadOrFormData,
             credentials: 'include',
         });
 
@@ -276,7 +322,7 @@ export default function NewAnnouncementForm({
         return res.json();
     };
 
-    async function handlePost() {
+    async function handleSaveOrPost() {
         base.setAttemptedSubmit(true);
         base.setError('');
         if (base.isDisabled) return;
@@ -286,6 +332,31 @@ export default function NewAnnouncementForm({
             const coords = base.coordsFromLocalData(base.city, base.county) || [];
             const [lat, lng] = coords.length === 2 ? coords : ['', ''];
 
+            if (editMode) {
+                // Edit-mode: send a plain JSON payload (handled by EditCommunityPostDialog)
+                const payload = {
+                    category: normalizeCategoryToAnnouncementSlug(initialData?.category || 'announcement'),
+                    title: base.title,
+                    visibility,
+                    description: base.description,
+                    city: base.city,
+                    county: base.county,
+                    latitude: lat,
+                    longitude: lng,
+                    // In edit mode, we can only persist photo URLs (existing) unless your backend supports uploads on PATCH.
+                    photos: photos
+                        .filter((p) => p?.existing && p?.url)
+                        .map((p) => String(p.url).trim())
+                        .filter(Boolean),
+                };
+
+                await doSubmit(payload);
+                if (typeof onRefresh === 'function') await onRefresh();
+                onClose();
+                return;
+            }
+
+            // Create-mode: FormData + uploaded photos
             const form = new FormData();
             form.append('title', base.title);
             form.append('visibility', visibility);
@@ -296,7 +367,9 @@ export default function NewAnnouncementForm({
             form.append('longitude', lng);
 
             // Order matters: first = cover photo
-            photos.forEach((p) => form.append('photos', p.file));
+            photos.forEach((p) => {
+                if (p?.file) form.append('photos', p.file);
+            });
 
             await doSubmit(form);
             if (typeof onRefresh === 'function') await onRefresh();
@@ -304,15 +377,18 @@ export default function NewAnnouncementForm({
         } catch (err) {
             // eslint-disable-next-line no-console
             console.error(err);
-            base.setError(err?.message || 'Submission failed.');
+            base.setError(err?.message || (editMode ? 'Save failed.' : 'Submission failed.'));
         } finally {
             base.setSubmitting(false);
         }
     }
 
+    const titleText = editMode ? 'Edit Announcement' : 'New Announcement';
+    const primaryBtnText = editMode ? 'Save' : 'Post';
+
     return (
         <>
-            <DialogTitle>New Announcement</DialogTitle>
+            <DialogTitle>{titleText}</DialogTitle>
 
             <DialogContent
                 dividers
@@ -330,7 +406,9 @@ export default function NewAnnouncementForm({
                     onChange={(e) => base.setTitle(e.target.value)}
                     inputProps={{ maxLength: MAX_TITLE }}
                 />
-                <Typography variant="caption">{base.title.length} / {MAX_TITLE}</Typography>
+                <Typography variant="caption">
+                    {base.title.length} / {MAX_TITLE}
+                </Typography>
 
                 <FormControl required sx={{ width: { xs: '100%', sm: 180 } }}>
                     <InputLabel>Visibility</InputLabel>
@@ -635,6 +713,17 @@ export default function NewAnnouncementForm({
                                 );
                             })}
                         </Box>
+
+                        {editMode && photos.some((p) => p?.existing === false) && (
+                            <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                                    Note: New photo uploads on edit will work once your PATCH endpoint accepts multipart uploads.
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    Right now, edits will only persist existing photo URLs.
+                                </Typography>
+                            </Box>
+                        )}
                     </Box>
                 </Box>
             </DialogContent>
@@ -642,11 +731,28 @@ export default function NewAnnouncementForm({
             <DialogActions sx={{ justifyContent: 'flex-end', gap: 1, p: 2 }}>
                 <Tooltip title={base.tooltipMsg} disableHoverListener={!base.tooltipMsg}>
                     <span>
-                        <Button variant="contained" onClick={handlePost} disabled={base.isDisabled}>
-                            {base.submitting ? <CircularProgress size={20} /> : 'Post'}
+                        <Button
+                            variant="contained"
+                            onClick={handleSaveOrPost}
+                            disabled={base.isDisabled}
+                        >
+                            {base.submitting ? <CircularProgress size={20} /> : primaryBtnText}
                         </Button>
                     </span>
                 </Tooltip>
+
+                {editMode && typeof onDelete === 'function' && (
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={onDelete}
+                        disabled={base.submitting}
+                        sx={{ fontWeight: 900 }}
+                    >
+                        Delete Post
+                    </Button>
+                )}
+
                 <Button variant="outlined" onClick={onClose} disabled={base.submitting}>
                     Cancel
                 </Button>

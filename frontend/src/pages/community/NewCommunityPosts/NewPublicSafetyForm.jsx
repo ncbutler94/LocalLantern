@@ -17,10 +17,7 @@ import PhotoLibraryOutlinedIcon from '@mui/icons-material/PhotoLibraryOutlined';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 
-import useBasePostForm, {
-    MAX_TITLE,
-    MAX_DESCRIPTION,
-} from './useBasePostForm';
+import useBasePostForm, { MAX_TITLE, MAX_DESCRIPTION } from './useBasePostForm';
 import CityCountySelect from '../../../components/CityCountySelect';
 import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -36,27 +33,33 @@ function makeId() {
 
 export default function NewPublicSafetyForm({
                                                 onClose,
-                                                onSubmit,       // optional — safe local fallback included below
-                                                onRefresh,      // optional
-                                                // injected by NewPostDialogs.jsx (DB defaults, not GPS)
+                                                onSubmit, // optional — safe local fallback included below
+                                                onRefresh, // optional
                                                 defaultCity = '',
                                                 defaultCounty = '',
-                                                countyRequired = true,   // show asterisk and enforce validation
+                                                countyRequired = true,
+
+                                                // Edit-mode support
+                                                editMode = false,
+                                                initialData = null, // { id, title, description, city, county, expires_at, photos:[url...] }
+                                                onDelete, // optional () => void
                                             }) {
     /* ─── shared base fields ─────────────────────────────────────────────── */
     const base = useBasePostForm({ defaultCity, defaultCounty, countyRequired });
 
     const { city, county, setCity, setCounty } = base;
 
-    // Apply passed defaults (if base isn't already populated)
+    // Apply passed defaults (create-mode only)
     React.useEffect(() => {
+        if (editMode) return;
         if (!city && defaultCity) setCity(defaultCity);
         if (!county && defaultCounty) setCounty(defaultCounty);
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
-    // Fallback: if no defaults were provided, auto-fill from profile (matches announcements)
+    // Fallback: if no defaults were provided, auto-fill from profile (create-mode only)
     const fetchedProfileRef = React.useRef(false);
     React.useEffect(() => {
+        if (editMode) return;
         if (fetchedProfileRef.current) return;
         if (defaultCity || defaultCounty) return;
         if (city || county) return;
@@ -81,13 +84,13 @@ export default function NewPublicSafetyForm({
             });
 
         return () => ac.abort();
-    }, [city, county, defaultCity, defaultCounty, setCity, setCounty]);
+    }, [editMode, city, county, defaultCity, defaultCounty, setCity, setCounty]);
 
     /* ─── public-safety specific fields ──────────────────────────────────── */
     const [expiresAt, setExpiresAt] = useState(dayjs().add(24, 'hour'));
 
-    /* ─── photos (drag/drop + reorder, like announcements) ───────────────── */
-    // Photos (ordered): index 0 = cover
+    /* ─── photos (drag/drop + reorder) ───────────────────────────────────── */
+    // Each item: { id, url, file?: File, existing?: boolean }
     const [photos, setPhotos] = useState([]);
     const photosRef = React.useRef([]);
     const fileInputRef = React.useRef(null);
@@ -100,23 +103,49 @@ export default function NewPublicSafetyForm({
 
     const remainingCount = MAX_PHOTOS - photos.length;
 
-    // Keep ref for cleanup
     React.useEffect(() => {
         photosRef.current = photos;
     }, [photos]);
 
-    // Cleanup object URLs on unmount
     React.useEffect(() => {
         return () => {
             photosRef.current.forEach((p) => {
+                if (p?.existing) return;
                 try {
-                    URL.revokeObjectURL(p.url);
+                    if (p?.url) URL.revokeObjectURL(p.url);
                 } catch (e) {
                     // ignore
                 }
             });
         };
     }, []);
+
+    // Prefill in edit mode
+    React.useEffect(() => {
+        if (!editMode) return;
+        if (!initialData) return;
+
+        if (typeof initialData.title === 'string') base.setTitle(initialData.title);
+        if (typeof initialData.description === 'string') base.setDescription(initialData.description);
+        if (typeof initialData.city === 'string') base.setCity(initialData.city);
+        if (typeof initialData.county === 'string') base.setCounty(initialData.county);
+
+        const exp = initialData.expires_at || initialData.expiresAt || null;
+        if (exp) {
+            const d = dayjs(exp);
+            if (d.isValid()) setExpiresAt(d);
+        }
+
+        const existing = Array.isArray(initialData.photos) ? initialData.photos : [];
+        const cleaned = existing
+            .map((u) => String(u || '').trim())
+            .filter(Boolean)
+            .slice(0, MAX_PHOTOS)
+            .map((url) => ({ id: makeId(), url, existing: true }));
+
+        setPhotos(cleaned);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editMode, initialData]);
 
     const addFiles = React.useCallback((fileList) => {
         const incoming = Array.from(fileList || []).filter((f) =>
@@ -133,7 +162,7 @@ export default function NewPublicSafetyForm({
 
             slice.forEach((file) => {
                 const url = URL.createObjectURL(file);
-                next.push({ id: makeId(), file, url });
+                next.push({ id: makeId(), file, url, existing: false });
             });
 
             return next;
@@ -150,7 +179,6 @@ export default function NewPublicSafetyForm({
         (e) => {
             if (base.submitting) return;
             addFiles(e.target.files);
-            // allow selecting the same file again
             e.target.value = '';
         },
         [addFiles, base.submitting]
@@ -160,7 +188,7 @@ export default function NewPublicSafetyForm({
         setPhotos((prev) => {
             if (idx < 0 || idx >= prev.length) return prev;
             const toRemove = prev[idx];
-            if (toRemove?.url) {
+            if (toRemove?.url && !toRemove?.existing) {
                 try {
                     URL.revokeObjectURL(toRemove.url);
                 } catch (e) {
@@ -184,12 +212,14 @@ export default function NewPublicSafetyForm({
         });
     }, []);
 
-    const onThumbDragStart = React.useCallback((idx) => {
-        // Only allow dragging real photos (no empty slots)
-        if (idx < 0 || idx >= photos.length) return;
-        dragIndexRef.current = idx;
-        isReorderingRef.current = true;
-    }, [photos.length]);
+    const onThumbDragStart = React.useCallback(
+        (idx) => {
+            if (idx < 0 || idx >= photos.length) return;
+            dragIndexRef.current = idx;
+            isReorderingRef.current = true;
+        },
+        [photos.length]
+    );
 
     const onThumbDragEnd = React.useCallback(() => {
         dragIndexRef.current = null;
@@ -200,9 +230,8 @@ export default function NewPublicSafetyForm({
     const onThumbDrop = React.useCallback(
         (e, idx) => {
             e.preventDefault();
-            e.stopPropagation(); // prevent bubbling to drop-zone
+            e.stopPropagation();
 
-            // Only allow dropping onto slots that already have photos
             if (idx < 0 || idx >= photos.length) {
                 dragIndexRef.current = null;
                 isReorderingRef.current = false;
@@ -224,10 +253,7 @@ export default function NewPublicSafetyForm({
     const onDropZoneDragOver = React.useCallback(
         (e) => {
             e.preventDefault();
-
-            // If we're reordering an existing photo, don't treat the zone as an "upload drop"
             if (isReorderingRef.current) return;
-
             if (base.submitting || remainingCount <= 0) return;
             if (!isDropActive) setIsDropActive(true);
         },
@@ -235,7 +261,6 @@ export default function NewPublicSafetyForm({
     );
 
     const onDropZoneDragLeave = React.useCallback(() => {
-        // Only clear if not actively reordering
         if (isReorderingRef.current) return;
         setIsDropActive(false);
     }, []);
@@ -244,7 +269,6 @@ export default function NewPublicSafetyForm({
         (e) => {
             e.preventDefault();
 
-            // If we're reordering, ignore the zone drop completely
             if (isReorderingRef.current) {
                 dragIndexRef.current = null;
                 isReorderingRef.current = false;
@@ -261,24 +285,20 @@ export default function NewPublicSafetyForm({
     );
 
     /* ─── validation ─────────────────────────────────────────────────────── */
-    const needsTitle  = !base.title.trim();
+    const needsTitle = !base.title.trim();
     const needsCounty = !base.county.trim();
-    const isDisabled  = base.submitting || needsTitle || needsCounty;
+    const isDisabled = base.submitting || needsTitle || needsCounty;
 
-    const tooltipMsg = needsTitle
-        ? 'Title is required.'
-        : needsCounty
-            ? 'County is required.'
-            : '';
+    const tooltipMsg = needsTitle ? 'Title is required.' : needsCounty ? 'County is required.' : '';
 
     /* ─── safe local submitter (prevents “onSubmit is not a function”) ───── */
-    const doSubmit = async (formData) => {
+    const doSubmit = async (payloadOrFormData) => {
         if (typeof onSubmit === 'function') {
-            return onSubmit(formData);
+            return onSubmit(payloadOrFormData);
         }
         const res = await fetch('/api/public-safety', {
             method: 'POST',
-            body: formData,
+            body: payloadOrFormData,
             credentials: 'include',
         });
         if (!res.ok) {
@@ -289,7 +309,7 @@ export default function NewPublicSafetyForm({
     };
 
     /* ─── submit ─────────────────────────────────────────────────────────── */
-    async function handlePost() {
+    async function handleSaveOrPost() {
         base.setAttemptedSubmit(true);
         base.setError('');
         if (isDisabled) return;
@@ -299,38 +319,62 @@ export default function NewPublicSafetyForm({
             const coords = base.coordsFromLocalData(base.city, base.county) || [];
             const [lat, lng] = coords;
 
-            const fd = new FormData();
-            fd.append('title',       base.title);
-            fd.append('description', base.description);
-            fd.append('city',        base.city);    // optional
-            fd.append('county',      base.county);  // required
-            fd.append('latitude',    lat ?? '');
-            fd.append('longitude',   lng ?? '');
-            fd.append('expires_at',  expiresAt ? expiresAt.toISOString() : '');
+            if (editMode) {
+                const payload = {
+                    category: 'public-safety-alerts',
+                    title: base.title,
+                    description: base.description,
+                    city: base.city,
+                    county: base.county,
+                    latitude: lat ?? '',
+                    longitude: lng ?? '',
+                    expires_at: expiresAt ? expiresAt.toISOString() : '',
+                    photos: photos
+                        .filter((p) => p?.existing && p?.url)
+                        .map((p) => String(p.url).trim())
+                        .filter(Boolean),
+                };
 
-            // Order matters: first = cover photo
-            photos.forEach((p) => fd.append('photos', p.file));
+                await doSubmit(payload);
+                if (typeof onRefresh === 'function') await onRefresh();
+                onClose();
+                return;
+            }
+
+            const fd = new FormData();
+            fd.append('title', base.title);
+            fd.append('description', base.description);
+            fd.append('city', base.city);
+            fd.append('county', base.county);
+            fd.append('latitude', lat ?? '');
+            fd.append('longitude', lng ?? '');
+            fd.append('expires_at', expiresAt ? expiresAt.toISOString() : '');
+
+            photos.forEach((p) => {
+                if (p?.file) fd.append('photos', p.file);
+            });
 
             await doSubmit(fd);
             if (typeof onRefresh === 'function') await onRefresh();
             onClose();
         } catch (err) {
+            // eslint-disable-next-line no-console
             console.error(err);
-            base.setError(err?.message || 'Submission failed.');
+            base.setError(err?.message || (editMode ? 'Save failed.' : 'Submission failed.'));
         } finally {
             base.setSubmitting(false);
         }
     }
 
+    const titleText = editMode ? 'Edit Public Safety Alert' : 'New Public Safety Alert';
+    const primaryBtnText = editMode ? 'Save' : 'Post';
+
     /* ─── render ─────────────────────────────────────────────────────────── */
     return (
         <>
-            <DialogTitle>New Public Safety Alert</DialogTitle>
+            <DialogTitle>{titleText}</DialogTitle>
 
-            <DialogContent
-                dividers
-                sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
-            >
+            <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {base.error && <Typography color="error">{base.error}</Typography>}
 
                 {/* Title */}
@@ -346,7 +390,7 @@ export default function NewPublicSafetyForm({
                     {base.title.length} / {MAX_TITLE}
                 </Typography>
 
-                {/* City / County — County required (shows *) */}
+                {/* City / County — County required */}
                 <CityCountySelect
                     city={base.city}
                     setCity={base.setCity}
@@ -354,9 +398,7 @@ export default function NewPublicSafetyForm({
                     setCounty={base.setCounty}
                     countyRequired={countyRequired}
                     countyLabelOverride={countyRequired ? 'County *' : 'County'}
-                    countyError={
-                        base.attemptedSubmit && !base.county ? 'County is required.' : ''
-                    }
+                    countyError={base.attemptedSubmit && !base.county ? 'County is required.' : ''}
                 />
 
                 {/* Expires At */}
@@ -383,7 +425,7 @@ export default function NewPublicSafetyForm({
                     {base.description.length} / {MAX_DESCRIPTION}
                 </Typography>
 
-                {/* Photos section (drag & drop + reorder — matches announcements) */}
+                {/* Photos */}
                 <Box
                     sx={{
                         mt: 1,
@@ -509,9 +551,7 @@ export default function NewPublicSafetyForm({
                                                 variant="caption"
                                                 sx={{
                                                     fontWeight: 700,
-                                                    color: isCoverSlot
-                                                        ? 'primary.main'
-                                                        : 'text.secondary',
+                                                    color: isCoverSlot ? 'primary.main' : 'text.secondary',
                                                 }}
                                             >
                                                 {isCoverSlot ? 'Cover Photo' : 'Photo'}
@@ -523,7 +563,6 @@ export default function NewPublicSafetyForm({
                                     );
                                 }
 
-                                // Only allow dropping onto existing photos (slotIdx < photos.length)
                                 const canDropHere = slotIdx < photos.length;
 
                                 return (
@@ -554,16 +593,8 @@ export default function NewPublicSafetyForm({
                                     >
                                         <img
                                             src={p.url}
-                                            alt={
-                                                slotIdx === 0
-                                                    ? 'Cover photo preview'
-                                                    : `Photo ${slotIdx + 1} preview`
-                                            }
-                                            style={{
-                                                width: '100%',
-                                                height: '100%',
-                                                objectFit: 'cover',
-                                            }}
+                                            alt={slotIdx === 0 ? 'Cover photo preview' : `Photo ${slotIdx + 1} preview`}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                             draggable={false}
                                         />
 
@@ -610,9 +641,7 @@ export default function NewPublicSafetyForm({
                                                     sx={{
                                                         bgcolor: 'rgba(0,0,0,0.45)',
                                                         color: 'white',
-                                                        '&:hover': {
-                                                            bgcolor: 'rgba(0,0,0,0.55)',
-                                                        },
+                                                        '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
                                                     }}
                                                     aria-label="Move photo left"
                                                 >
@@ -625,16 +654,11 @@ export default function NewPublicSafetyForm({
                                                         e.stopPropagation();
                                                         movePhoto(slotIdx, slotIdx + 1);
                                                     }}
-                                                    disabled={
-                                                        base.submitting ||
-                                                        slotIdx === photos.length - 1
-                                                    }
+                                                    disabled={base.submitting || slotIdx === photos.length - 1}
                                                     sx={{
                                                         bgcolor: 'rgba(0,0,0,0.45)',
                                                         color: 'white',
-                                                        '&:hover': {
-                                                            bgcolor: 'rgba(0,0,0,0.55)',
-                                                        },
+                                                        '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
                                                     }}
                                                     aria-label="Move photo right"
                                                 >
@@ -652,9 +676,7 @@ export default function NewPublicSafetyForm({
                                                 sx={{
                                                     bgcolor: 'rgba(0,0,0,0.45)',
                                                     color: 'white',
-                                                    '&:hover': {
-                                                        bgcolor: 'rgba(0,0,0,0.55)',
-                                                    },
+                                                    '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
                                                 }}
                                                 aria-label={`Remove photo ${slotIdx + 1}`}
                                             >
@@ -665,18 +687,42 @@ export default function NewPublicSafetyForm({
                                 );
                             })}
                         </Box>
+
+                        {editMode && photos.some((p) => p?.existing === false) && (
+                            <Box sx={{ mt: 1 }}>
+                                <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
+                                    Note: New photo uploads on edit will work once your PATCH endpoint accepts multipart uploads.
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    Right now, edits will only persist existing photo URLs.
+                                </Typography>
+                            </Box>
+                        )}
                     </Box>
                 </Box>
             </DialogContent>
 
             <DialogActions sx={{ justifyContent: 'flex-end', gap: 1, p: 2 }}>
                 <Tooltip title={tooltipMsg} disableHoverListener={!tooltipMsg}>
-          <span>
-            <Button variant="contained" disabled={isDisabled} onClick={handlePost}>
-              {base.submitting ? <CircularProgress size={20} /> : 'Post'}
-            </Button>
-          </span>
+                    <span>
+                        <Button variant="contained" disabled={isDisabled} onClick={handleSaveOrPost}>
+                            {base.submitting ? <CircularProgress size={20} /> : primaryBtnText}
+                        </Button>
+                    </span>
                 </Tooltip>
+
+                {editMode && typeof onDelete === 'function' && (
+                    <Button
+                        variant="contained"
+                        color="error"
+                        onClick={onDelete}
+                        disabled={base.submitting}
+                        sx={{ fontWeight: 900 }}
+                    >
+                        Delete Post
+                    </Button>
+                )}
+
                 <Button variant="outlined" onClick={onClose} disabled={base.submitting}>
                     Cancel
                 </Button>
