@@ -12,13 +12,12 @@ const router  = express.Router();
 /* ── Google Cloud Storage setup (identical to announcements) ── */
 const storage       = new Storage({ projectId: process.env.GCP_PROJECT_ID });
 const bucket        = storage.bucket(process.env.GCS_BUCKET);
-const FOLDER_PREFIX = 'community/recommendations-and-tips';
+const FOLDER_PREFIX = 'community/recommendations';
 const upload        = multer({ storage: multer.memoryStorage() });
 
 /* ── Field validation ── */
 const validate = [
     body('title').trim().notEmpty().isLength({ max: 80 }),
-    body('rec_type').isIn(['business','tip']),
     body('description').trim().isLength({ max: 2000 }).optional({ nullable: true }),
     body('city').trim().optional({ nullable: true }),
     body('county').trim().notEmpty()
@@ -28,7 +27,7 @@ const validate = [
 router.post(
     '/',
     authenticateToken,
-    upload.array('photos', 4),
+    upload.array('photos', 10),
     validate,
     async (req, res, next) => {
 
@@ -63,7 +62,6 @@ router.post(
         /* 3️⃣ INSERT in a single transaction */
         const {
             title,
-            rec_type,
             description = '',
             city  = null,
             county,
@@ -76,7 +74,7 @@ router.post(
             /* a) aggregator table (global feed) */
             const [postId] = await trx('community_posts').insert({
                 user_id : req.user.id,
-                category: 'recommendations-tips',     // NEW CATEGORY
+                category: 'recommendations',     // CATEGORY
                 title,
                 description,
                 city,
@@ -87,12 +85,11 @@ router.post(
             });
 
             /* b) main table */
-            await trx('recommendations_and_tips').insert({
+            await trx('recommendations').insert({
                 id         : postId,            // keep IDs aligned
                 user_id    : req.user.id,
                 title,
                 description,
-                rec_type,
                 city,
                 county,
                 latitude : latitude  ? parseFloat(latitude)  : null,

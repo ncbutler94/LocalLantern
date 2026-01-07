@@ -25,7 +25,7 @@ const FOLDER_PREFIX = 'community/lost-and-found';
 router.post(
     '/',
     authenticateToken,
-    upload.array('photos', 8),
+    upload.array('photos', 10),
     async (req, res, next) => {
         try {
             /* 1️⃣ upload photos ---------------------------------------------------- */

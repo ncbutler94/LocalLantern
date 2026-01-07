@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
     Box,
-    IconButton,
     Tooltip,
     Typography,
     Dialog,
@@ -16,17 +15,29 @@ import {
     Radio,
     TextField,
     Snackbar,
+    IconButton,
 } from '@mui/material';
 
-import ThumbUpOffAltIcon from '@mui/icons-material/ThumbUpOffAlt';
-import ThumbUpIcon from '@mui/icons-material/ThumbUp';
-import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import ShareOutlinedIcon from '@mui/icons-material/ShareOutlined';
-import RepeatIcon from '@mui/icons-material/Repeat';
-import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import CloseIcon from '@mui/icons-material/Close';
 
 import { useAuth } from './AuthModalContext';
+
+import likeIconDiscreet from '../assets/actionBar/like_icon_discreet.png';
+import likeIconLit from '../assets/actionBar/like_icon_lit.png';
+
+import commentIconDiscreet from '../assets/actionBar/comment_discreet.png';
+import commentIconLit from '../assets/actionBar/comment_lit.png';
+
+import repostIconDiscreet from '../assets/actionBar/repost_discreet.png';
+import repostIconLit from '../assets/actionBar/repost_lit.png';
+
+import shareIconDiscreet from '../assets/actionBar/share_discreet.png';
+import shareIconLit from '../assets/actionBar/share_lit.png';
+
+import reportIconDiscreet from '../assets/actionBar/report_discreet.png';
+import reportIconLit from '../assets/actionBar/report_lit.png';
+
+import boostIconLit from '../assets/actionBar/boost_lit.png';
 
 /* ────────────────────────────────────────────────────────────────────────────
    Helpers
@@ -68,8 +79,34 @@ async function tryPost(urls, body) {
 const LIKE_EVT = 'll:post:like-changed';
 const REPOST_EVT = 'll:post:repost-changed';
 
+
+/* Lightweight in-memory cache so optimistic like/repost doesn't revert on re-mount
+   (e.g., switching tabs causes cards to unmount and mount with stale props). */
+function getActionStateCache() {
+    if (typeof window === 'undefined') return {};
+    if (!window.__llPostActionState) window.__llPostActionState = {};
+    return window.__llPostActionState;
+}
+function readCachedActionState(postId) {
+    const cache = getActionStateCache();
+    return cache && cache[String(postId)] ? cache[String(postId)] : null;
+}
+function writeCachedActionState(postId, patch) {
+    const cache = getActionStateCache();
+    const key = String(postId);
+    const prev = cache[key] || {};
+    cache[key] = { ...prev, ...patch, t: Date.now() };
+}
+
 function broadcast(evt, detail) {
     try {
+        if (detail && (evt === LIKE_EVT || evt === REPOST_EVT)) {
+            if (evt === LIKE_EVT) {
+                writeCachedActionState(detail.postId, { liked: Boolean(detail.liked), likes: clamp0(detail.likes) });
+            } else if (evt === REPOST_EVT) {
+                writeCachedActionState(detail.postId, { reposted: Boolean(detail.reposted), reposts: clamp0(detail.reposts) });
+            }
+        }
         window.dispatchEvent(new CustomEvent(evt, { detail }));
     } catch {
         /* no-op */
@@ -77,7 +114,7 @@ function broadcast(evt, detail) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Report dialog (keeps your original behavior: X to close, no click-away)
+   Report dialog (X to close, no click-away)
    ─────────────────────────────────────────────────────────────────────────── */
 function ReportDialog({ open, onClose, onSubmit }) {
     const [reason, setReason] = useState('spam');
@@ -103,11 +140,7 @@ function ReportDialog({ open, onClose, onSubmit }) {
         >
             <DialogTitle sx={{ pr: 7 }}>
                 Report post
-                <IconButton
-                    aria-label="Close"
-                    onClick={onClose}
-                    sx={{ position: 'absolute', right: 8, top: 8 }}
-                >
+                <IconButton aria-label="Close" onClick={onClose} sx={{ position: 'absolute', right: 8, top: 8 }}>
                     <CloseIcon />
                 </IconButton>
             </DialogTitle>
@@ -154,6 +187,7 @@ ReportDialog.propTypes = {
 /* ────────────────────────────────────────────────────────────────────────────
    Component
    ─────────────────────────────────────────────────────────────────────────── */
+
 export default function ActionBar({
                                       user,
                                       postId,
@@ -165,7 +199,6 @@ export default function ActionBar({
                                       onComment,
                                       onShare,
                                       enableFlag = true,
-                                      showLabels = false, // kept for API compatibility; UI remains icon-first
                                       onLikeChange,
                                       onRepostChange,
                                   }) {
@@ -187,6 +220,23 @@ export default function ActionBar({
     const [reportOpen, setReportOpen] = useState(false);
     const [toast, setToast] = useState({ open: false, msg: '' });
 
+    // Hover / burst (visual only)
+    const [likeHover, setLikeHover] = useState(false);
+    const [likeSuppressHover, setLikeSuppressHover] = useState(false);
+    const [commentHover, setCommentHover] = useState(false);
+    const [repostHover, setRepostHover] = useState(false);
+    const [repostSuppressHover, setRepostSuppressHover] = useState(false);
+    const [shareHover, setShareHover] = useState(false);
+    const [reportHover, setReportHover] = useState(false);
+
+    const [boostHover, setBoostHover] = useState(false);
+
+    const [likeBurst, setLikeBurst] = useState(0);
+    const [commentBurst, setCommentBurst] = useState(0);
+    const [repostBurst, setRepostBurst] = useState(0);
+    const [shareBurst, setShareBurst] = useState(0);
+    const [reportBurst, setReportBurst] = useState(0);
+
     // keep "latest" refs to avoid stale closures
     const likesRef = useRef(likes);
     const likedRef = useRef(liked);
@@ -206,13 +256,24 @@ export default function ActionBar({
         repostedRef.current = reposted;
     }, [reposted]);
 
-    // sync when switching to a different post
+    // sync only when switching to a different postId (avoid reverting optimistic unlike/repost on parent re-renders)
     useEffect(() => {
-        setLikes(clamp0(initialLikes));
-        setLiked(Boolean(initiallyLiked));
-        setReposts(clamp0(initialReposts));
-        setReposted(Boolean(initiallyReposted));
-    }, [postId, initialLikes, initiallyLiked, initialReposts, initiallyReposted]);
+        const cached = readCachedActionState(postId);
+
+        setLikes(clamp0(cached && cached.likes != null ? cached.likes : initialLikes));
+        setLiked(Boolean(cached && cached.liked != null ? cached.liked : initiallyLiked));
+        setReposts(clamp0(cached && cached.reposts != null ? cached.reposts : initialReposts));
+        setReposted(Boolean(cached && cached.reposted != null ? cached.reposted : initiallyReposted));
+
+        setLikeHover(false);
+        setLikeSuppressHover(false);
+        setCommentHover(false);
+        setRepostHover(false);
+        setRepostSuppressHover(false);
+        setShareHover(false);
+        setReportHover(false);
+        setBoostHover(false);
+    }, [postId]);
 
     // listen for global like/repost changes for this post
     useEffect(() => {
@@ -248,7 +309,7 @@ export default function ActionBar({
         }
     }, [auth]);
 
-    // ✅ FIX: treat user as logged in if either props.user OR auth.user exists
+    // treat user as logged in if either props.user OR auth.user exists
     const requireAuth = useCallback(
         (cb) => {
             const u = viewer;
@@ -263,6 +324,7 @@ export default function ActionBar({
        LIKE (optimistic + server reconciliation)
        ──────────────────────────────────────────────────────────────────────── */
     const likeReqId = useRef(0);
+
     const handleLike = useCallback(() => {
         requireAuth(async () => {
             if (likeBusy) return;
@@ -276,6 +338,13 @@ export default function ActionBar({
 
             setLiked(nextLiked);
             setLikes(newLikes);
+
+            // If they UN-like while still hovering/focused, force the discreet lantern until they leave.
+            if (!nextLiked) setLikeSuppressHover(true);
+            else setLikeSuppressHover(false);
+
+            if (nextLiked) setLikeBurst((v) => v + 1);
+
             broadcast(LIKE_EVT, { postId, liked: nextLiked, likes: newLikes });
             onLikeChange?.({ postId, liked: nextLiked });
 
@@ -292,8 +361,7 @@ export default function ActionBar({
             if (reqId !== likeReqId.current) return;
 
             if (result) {
-                const serverLiked =
-                    result.viewerLiked ?? result.viewer_liked ?? result.is_liked ?? result.liked;
+                const serverLiked = result.viewerLiked ?? result.viewer_liked ?? result.is_liked ?? result.liked;
                 const serverLikes =
                     result.likesCount ??
                     result.likes_count ??
@@ -307,6 +375,9 @@ export default function ActionBar({
 
                     setLiked(finalLiked);
                     setLikes(finalLikes);
+
+                    if (finalLiked && !nextLiked) setLikeBurst((v) => v + 1);
+
                     broadcast(LIKE_EVT, { postId, liked: finalLiked, likes: finalLikes });
                     onLikeChange?.({ postId, liked: finalLiked });
                 }
@@ -320,6 +391,7 @@ export default function ActionBar({
        REPOST (mirrors like)
        ──────────────────────────────────────────────────────────────────────── */
     const repostReqId = useRef(0);
+
     const handleRepost = useCallback(() => {
         requireAuth(async () => {
             if (repostBusy) return;
@@ -333,6 +405,13 @@ export default function ActionBar({
 
             setReposted(nextReposted);
             setReposts(newReposts);
+
+            // If they UN-repost while still hovering/focused, force the discreet icon until they leave.
+            if (!nextReposted) setRepostSuppressHover(true);
+            else setRepostSuppressHover(false);
+
+            if (nextReposted) setRepostBurst((v) => v + 1);
+
             broadcast(REPOST_EVT, { postId, reposted: nextReposted, reposts: newReposts });
             onRepostChange?.({ postId, reposted: nextReposted });
 
@@ -364,6 +443,9 @@ export default function ActionBar({
 
                     setReposted(finalReposted);
                     setReposts(finalReposts);
+
+                    if (finalReposted && !nextReposted) setRepostBurst((v) => v + 1);
+
                     broadcast(REPOST_EVT, { postId, reposted: finalReposted, reposts: finalReposts });
                     onRepostChange?.({ postId, reposted: finalReposted });
                 }
@@ -396,6 +478,94 @@ export default function ActionBar({
         [apiBase, postId]
     );
 
+    const likeIconSrc = liked || (likeHover && !likeSuppressHover) ? likeIconLit : likeIconDiscreet;
+    const likeTooltipTitle = liked ? 'Unlike' : 'Like';
+
+    const commentIconSrc = commentHover ? commentIconLit : commentIconDiscreet;
+    const repostIconSrc = reposted || (repostHover && !repostSuppressHover) ? repostIconLit : repostIconDiscreet;
+    const repostTooltipTitle = reposted ? 'Undo repost' : 'Repost';
+    const shareIconSrc = shareHover ? shareIconLit : shareIconDiscreet;
+    const reportIconSrc = reportHover ? reportIconLit : reportIconDiscreet;
+
+    const boostIconSrc = boostIconLit;
+
+    const glowBg =
+        'radial-gradient(circle, rgba(201,162,77,0.70) 0%, rgba(201,162,77,0.28) 40%, rgba(201,162,77,0.00) 72%)';
+
+    const pillSx = {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: { xs: 0.9, sm: 1 },
+        py: 0.5,
+        borderRadius: 999,
+        cursor: 'pointer',
+        userSelect: 'none',
+        outline: 'none',
+        bgcolor: 'transparent',
+        '&:hover': { bgcolor: 'action.hover' },
+        '&:focus-visible': {
+            boxShadow: (t) => `0 0 0 4px ${t.palette.action.focus}`,
+        },
+        '@keyframes llActionGlow': {
+            '0%': { transform: 'translate(-50%, -50%) scale(0.55)', opacity: 0.0 },
+            '14%': { opacity: 0.95 },
+            '60%': { opacity: 0.28 },
+            '100%': { transform: 'translate(-50%, -50%) scale(1.55)', opacity: 0.0 },
+        },
+        '@media (prefers-reduced-motion: reduce)': {
+            '@keyframes llActionGlow': {
+                '0%': { opacity: 0.0 },
+                '100%': { opacity: 0.0 },
+            },
+        },
+    };
+
+    const iconBoxSx = (kind) => ({
+        position: 'relative',
+        width:
+            kind === 'like'
+                ? { xs: 22, sm: 24 }
+                : kind === 'boost'
+                    ? { xs: 32, sm: 36 }
+                    : { xs: 22, sm: 24 },
+        height:
+            kind === 'like'
+                ? { xs: 32, sm: 35 }
+                : kind === 'boost'
+                    ? { xs: 32, sm: 36 }
+                    : { xs: 22, sm: 24 },
+        flexShrink: 0,
+    });
+
+    const iconImgSx = (hovered, scale = 1, yOffset = 0) => ({
+        width: '100%',
+        height: '100%',
+        display: 'block',
+        objectFit: 'contain',
+        filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.18))',
+        transform: `translateY(${yOffset + (hovered ? -1 : 0)}px) scale(${scale})`,
+        transition: 'transform 140ms ease, filter 140ms ease',
+        pointerEvents: 'none',
+    });
+
+    const handleCommentClick = useCallback(() => {
+        setCommentBurst((v) => v + 1);
+        onComment?.();
+    }, [onComment]);
+
+    const handleShareClick = useCallback(() => {
+        setShareBurst((v) => v + 1);
+        onShare?.();
+    }, [onShare]);
+
+    const handleReportClick = useCallback(() => {
+        requireAuth(() => {
+            setReportBurst((v) => v + 1);
+            setReportOpen(true);
+        });
+    }, [requireAuth]);
+
     return (
         <>
             <Box
@@ -404,39 +574,83 @@ export default function ActionBar({
                 sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 1.5,
+                    gap: 1.25,
                     flexWrap: 'wrap',
-                    justifyContent: 'left',
+                    justifyContent: 'flex-start',
                 }}
             >
                 {/* Left: Like + Comment */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-                    <Tooltip title={liked ? 'Unlike' : 'Like'}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
+                    <Tooltip title={likeTooltipTitle}>
                         <Box
                             onClick={handleLike}
                             onKeyDown={(e) =>
-                                e.key === 'Enter' || e.key === ' '
-                                    ? (e.preventDefault(), handleLike())
-                                    : null
+                                e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), handleLike()) : null
                             }
+                            onMouseEnter={() => {
+                                setLikeHover(true);
+                                setLikeSuppressHover(false);
+                            }}
+                            onMouseLeave={() => {
+                                setLikeHover(false);
+                                setLikeSuppressHover(false);
+                            }}
+                            onFocus={() => {
+                                setLikeHover(true);
+                                setLikeSuppressHover(false);
+                            }}
+                            onBlur={() => {
+                                setLikeHover(false);
+                                setLikeSuppressHover(false);
+                            }}
                             tabIndex={0}
                             role="button"
+                            aria-label={liked ? 'Unlike' : 'Like'}
                             aria-pressed={liked ? 'true' : 'false'}
                             sx={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 0.75,
-                                px: 1,
-                                py: 0.5,
-                                borderRadius: 999,
-                                bgcolor: liked ? 'primary.main' : 'transparent',
-                                color: liked ? '#fff' : 'text.primary',
+                                ...pillSx,
                                 cursor: likeBusy ? 'default' : 'pointer',
-                                '&:hover': { bgcolor: liked ? 'primary.dark' : 'action.hover' },
                             }}
                         >
-                            {liked ? <ThumbUpIcon fontSize="small" /> : <ThumbUpOffAltIcon fontSize="small" />}
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            <Box sx={iconBoxSx('like')}>
+                                {likeBurst > 0 && liked && (
+                                    <Box
+                                        key={`like-burst-${postId}-${likeBurst}`}
+                                        aria-hidden="true"
+                                        sx={{
+                                            position: 'absolute',
+                                            left: '50%',
+                                            top: '50%',
+                                            width: { xs: 86, sm: 96 },
+                                            height: { xs: 86, sm: 96 },
+                                            transform: 'translate(-50%, -50%)',
+                                            borderRadius: '50%',
+                                            background: glowBg,
+                                            filter: 'blur(0.2px)',
+                                            animation: 'llActionGlow 600ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                                            pointerEvents: 'none',
+                                        }}
+                                    />
+                                )}
+
+                                <Box
+                                    component="img"
+                                    src={likeIconSrc}
+                                    alt=""
+                                    draggable={false}
+                                    sx={iconImgSx(likeHover || liked, 1, -3)}
+                                />
+                            </Box>
+
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    fontWeight: 800,
+                                    color: liked ? 'primary.main' : 'text.primary',
+                                    lineHeight: 1,
+                                    transform: 'translateY(-1px)',
+                                }}
+                            >
                                 {fmtCount(likes)}
                             </Typography>
                         </Box>
@@ -444,28 +658,50 @@ export default function ActionBar({
 
                     <Tooltip title="Comments">
                         <Box
-                            onClick={() => onComment?.()}
+                            onClick={handleCommentClick}
                             onKeyDown={(e) =>
-                                e.key === 'Enter' || e.key === ' '
-                                    ? (e.preventDefault(), onComment?.())
-                                    : null
+                                e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), handleCommentClick()) : null
                             }
+                            onMouseEnter={() => setCommentHover(true)}
+                            onMouseLeave={() => setCommentHover(false)}
+                            onFocus={() => setCommentHover(true)}
+                            onBlur={() => setCommentHover(false)}
                             tabIndex={0}
                             role="button"
                             aria-label="Open comments"
-                            sx={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 0.75,
-                                px: 1,
-                                py: 0.5,
-                                borderRadius: 999,
-                                cursor: likeBusy ? 'default' : 'pointer',
-                                '&:hover': { bgcolor: 'action.hover' },
-                            }}
+                            sx={pillSx}
                         >
-                            <ChatBubbleOutlineIcon fontSize="small" />
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            <Box sx={iconBoxSx('boost')}>
+                                {commentBurst > 0 && (
+                                    <Box
+                                        key={`comment-burst-${postId}-${commentBurst}`}
+                                        aria-hidden="true"
+                                        sx={{
+                                            position: 'absolute',
+                                            left: '50%',
+                                            top: '50%',
+                                            width: { xs: 64, sm: 74 },
+                                            height: { xs: 64, sm: 74 },
+                                            transform: 'translate(-50%, -50%)',
+                                            borderRadius: '50%',
+                                            background: glowBg,
+                                            filter: 'blur(0.2px)',
+                                            animation: 'llActionGlow 520ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                                            pointerEvents: 'none',
+                                        }}
+                                    />
+                                )}
+
+                                <Box
+                                    component="img"
+                                    src={commentIconSrc}
+                                    alt=""
+                                    draggable={false}
+                                    sx={iconImgSx(commentHover, 0.93)}
+                                />
+                            </Box>
+
+                            <Typography variant="body2" sx={{ fontWeight: 800, lineHeight: 1, transform: 'translateY(-1px)' }}>
                                 {fmtCount(commentsCount)}
                             </Typography>
                         </Box>
@@ -473,53 +709,201 @@ export default function ActionBar({
                 </Box>
 
                 {/* Right: Repost + Share + Report */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Tooltip title={reposted ? 'Undo repost' : 'Repost'}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.15, flexWrap: 'wrap' }}>
+                    <Tooltip title={repostTooltipTitle}>
                         <Box
                             onClick={handleRepost}
                             onKeyDown={(e) =>
-                                e.key === 'Enter' || e.key === ' '
-                                    ? (e.preventDefault(), handleRepost())
-                                    : null
+                                e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), handleRepost()) : null
                             }
+                            onMouseEnter={() => {
+                                setRepostHover(true);
+                                setRepostSuppressHover(false);
+                            }}
+                            onMouseLeave={() => {
+                                setRepostHover(false);
+                                setRepostSuppressHover(false);
+                            }}
+                            onFocus={() => {
+                                setRepostHover(true);
+                                setRepostSuppressHover(false);
+                            }}
+                            onBlur={() => {
+                                setRepostHover(false);
+                                setRepostSuppressHover(false);
+                            }}
                             tabIndex={0}
                             role="button"
+                            aria-label={repostTooltipTitle}
                             aria-pressed={reposted ? 'true' : 'false'}
                             sx={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 0.75,
-                                px: 1,
-                                py: 0.5,
-                                borderRadius: 999,
-                                bgcolor: reposted ? 'success.main' : 'transparent',
+                                ...pillSx,
                                 cursor: repostBusy ? 'default' : 'pointer',
-                                color: reposted ? '#fff' : 'text.primary',
-                                '&:hover': { bgcolor: reposted ? 'success.dark' : 'action.hover' },
                             }}
                         >
-                            <RepeatIcon fontSize="small" />
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            <Box sx={iconBoxSx('other')}>
+                                {repostBurst > 0 && reposted && (
+                                    <Box
+                                        key={`repost-burst-${postId}-${repostBurst}`}
+                                        aria-hidden="true"
+                                        sx={{
+                                            position: 'absolute',
+                                            left: '50%',
+                                            top: '50%',
+                                            width: { xs: 78, sm: 88 },
+                                            height: { xs: 78, sm: 88 },
+                                            transform: 'translate(-50%, -50%)',
+                                            borderRadius: '50%',
+                                            background: glowBg,
+                                            filter: 'blur(0.2px)',
+                                            animation: 'llActionGlow 540ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                                            pointerEvents: 'none',
+                                        }}
+                                    />
+                                )}
+
+                                <Box
+                                    component="img"
+                                    src={repostIconSrc}
+                                    alt=""
+                                    draggable={false}
+                                    sx={iconImgSx(repostHover || reposted, 0.93)}
+                                />
+                            </Box>
+
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    fontWeight: 800,
+                                    color: reposted ? 'primary.main' : 'text.primary',
+                                    lineHeight: 1,
+                                    transform: 'translateY(-1px)',
+                                }}
+                            >
                                 {fmtCount(reposts)}
                             </Typography>
                         </Box>
                     </Tooltip>
 
                     <Tooltip title="Share">
-                        <IconButton onClick={() => onShare?.()} size="small" aria-label="Share post">
-                            <ShareOutlinedIcon fontSize="small" />
-                        </IconButton>
+                        <Box
+                            onClick={handleShareClick}
+                            onKeyDown={(e) =>
+                                e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), handleShareClick()) : null
+                            }
+                            onMouseEnter={() => setShareHover(true)}
+                            onMouseLeave={() => setShareHover(false)}
+                            onFocus={() => setShareHover(true)}
+                            onBlur={() => setShareHover(false)}
+                            tabIndex={0}
+                            role="button"
+                            aria-label="Share post"
+                            sx={pillSx}
+                        >
+                            <Box sx={iconBoxSx('other')}>
+                                {shareBurst > 0 && (
+                                    <Box
+                                        key={`share-burst-${postId}-${shareBurst}`}
+                                        aria-hidden="true"
+                                        sx={{
+                                            position: 'absolute',
+                                            left: '50%',
+                                            top: '50%',
+                                            width: { xs: 78, sm: 88 },
+                                            height: { xs: 78, sm: 88 },
+                                            transform: 'translate(-50%, -50%)',
+                                            borderRadius: '50%',
+                                            background: glowBg,
+                                            opacity: 0.7,
+                                            filter: 'blur(0.2px)',
+                                            animation: 'llActionGlow 420ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                                            pointerEvents: 'none',
+                                        }}
+                                    />
+                                )}
+
+                                <Box
+                                    component="img"
+                                    src={shareIconSrc}
+                                    alt=""
+                                    draggable={false}
+                                    sx={iconImgSx(shareHover, 0.86, -1)}
+                                />
+                            </Box>
+                        </Box>
+                    </Tooltip>
+
+
+                    <Tooltip title="Boost Post">
+                        <Box
+                            onMouseEnter={() => setBoostHover(true)}
+                            onMouseLeave={() => setBoostHover(false)}
+                            onFocus={() => setBoostHover(true)}
+                            onBlur={() => setBoostHover(false)}
+                            tabIndex={0}
+                            role="button"
+                            aria-label="Boost post"
+                            sx={pillSx}
+                        >
+                            <Box sx={iconBoxSx('boost')}>
+                                <Box
+                                    component="img"
+                                    src={boostIconSrc}
+                                    alt=""
+                                    draggable={false}
+                                    sx={iconImgSx(boostHover, 1.12, -1)}
+                                />
+                            </Box>
+                        </Box>
                     </Tooltip>
 
                     {enableFlag && (
                         <Tooltip title="Report">
-                            <IconButton
-                                onClick={() => requireAuth(() => setReportOpen(true))}
-                                size="small"
+                            <Box
+                                onClick={handleReportClick}
+                                onKeyDown={(e) =>
+                                    e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), handleReportClick()) : null
+                                }
+                                onMouseEnter={() => setReportHover(true)}
+                                onMouseLeave={() => setReportHover(false)}
+                                onFocus={() => setReportHover(true)}
+                                onBlur={() => setReportHover(false)}
+                                tabIndex={0}
+                                role="button"
                                 aria-label="Report post"
+                                sx={pillSx}
                             >
-                                <FlagOutlinedIcon fontSize="small" />
-                            </IconButton>
+                                <Box sx={iconBoxSx('other')}>
+                                    {reportBurst > 0 && (
+                                        <Box
+                                            key={`report-burst-${postId}-${reportBurst}`}
+                                            aria-hidden="true"
+                                            sx={{
+                                                position: 'absolute',
+                                                left: '50%',
+                                                top: '50%',
+                                                width: { xs: 58, sm: 68 },
+                                                height: { xs: 58, sm: 68 },
+                                                transform: 'translate(-50%, -50%)',
+                                                borderRadius: '50%',
+                                                background: glowBg,
+                                                opacity: 0.6,
+                                                filter: 'blur(0.2px)',
+                                                animation: 'llActionGlow 420ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                                                pointerEvents: 'none',
+                                            }}
+                                        />
+                                    )}
+
+                                    <Box
+                                        component="img"
+                                        src={reportIconSrc}
+                                        alt=""
+                                        draggable={false}
+                                        sx={iconImgSx(reportHover, 0.84, -1)}
+                                    />
+                                </Box>
+                            </Box>
                         </Tooltip>
                     )}
                 </Box>
@@ -549,7 +933,6 @@ ActionBar.propTypes = {
     onComment: PropTypes.func,
     onShare: PropTypes.func,
     enableFlag: PropTypes.bool,
-    showLabels: PropTypes.bool,
     onLikeChange: PropTypes.func,
     onRepostChange: PropTypes.func,
 };

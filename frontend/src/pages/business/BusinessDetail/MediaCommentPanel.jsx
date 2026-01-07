@@ -72,7 +72,7 @@ export default function MediaCommentPanel({ mediaId, user, currentUser }) {
                     {comments.map(c => (
                         <Box key={c.id} sx={{ p:1, borderRadius:1, bgcolor:'background.default', border:'1px solid', borderColor:'divider' }}>
                             <Stack direction="row" spacing={1} alignItems="center">
-                                <Avatar src={c.avatar_url} sx={{ width:28, height:28 }}>{(c.first_name||'?')[0]}</Avatar>
+                                <Avatar src={c.avatar_url} sx={{ bgcolor: 'grey.600', width:28, height:28 }}>{(c.first_name||'?')[0]}</Avatar>
                                 <Typography variant="body2" sx={{ fontWeight:600 }}>{c.first_name} {c.last_name}</Typography>
                                 <Box sx={{ flex:1 }} />
                                 <IconButton size="small" onClick={() => onToggleLike(c.id)} aria-label="like">

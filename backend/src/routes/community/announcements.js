@@ -28,7 +28,7 @@ const validate = [
 router.post(
     '/',
     authenticateToken,
-    upload.array('photos', 4),
+    upload.array('photos', 8),
     validate,
     async (req, res, next) => {
         /* 1. validate */

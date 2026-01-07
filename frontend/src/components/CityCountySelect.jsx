@@ -54,6 +54,16 @@ export default function CityCountySelect({
 
     const cityLabel = county ? `City (${county})` : 'City';
 
+    // Make the dropdown/menu background white (instead of theme tan)
+    const whiteMenuProps = {
+        PaperProps: {
+            sx: {
+                bgcolor: '#fff',
+                backgroundImage: 'none', // prevents theme overlays/gradients in some setups
+            },
+        },
+    };
+
     /* ───────── render ───────── */
     return (
         <Grid
@@ -78,6 +88,7 @@ export default function CityCountySelect({
                     <Select
                         value={county}
                         label="County"
+                        MenuProps={whiteMenuProps}
                         onChange={(e) => {
                             setCounty(e.target.value);
                             setCity(''); // reset city when county changes
@@ -109,6 +120,7 @@ export default function CityCountySelect({
                     <Select
                         value={city}
                         label={cityLabel}
+                        MenuProps={whiteMenuProps}
                         onChange={(e) => setCity(e.target.value)}
                     >
                         <MenuItem value="">

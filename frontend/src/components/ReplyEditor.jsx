@@ -58,7 +58,7 @@ export default function ReplyEditor({
 
     return (
         <Box sx={{ display:'flex', gap:1, mt:1, minWidth: 0 }}>
-            <Avatar src={avatar} sx={{ width:32, height:32 }} />
+            <Avatar src={avatar} sx={{ bgcolor: 'grey.600', width:32, height:32 }} />
             <Paper
                 variant="outlined"
                 sx={{

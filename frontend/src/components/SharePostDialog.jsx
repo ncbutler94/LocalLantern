@@ -324,7 +324,7 @@ export default function SharePostDialog({ open, onClose, post, viewer, onShared 
                             src={u.profile_picture || u.avatar_url || ''}
                             alt={displayName || username || 'User'}
                             imgProps={{ style: squareAvatar }}
-                            sx={squareAvatar}
+                            sx={{squareAvatar, bgcolor: 'grey.600'}}
                             variant="rounded"
                         />
 
@@ -585,7 +585,7 @@ export default function SharePostDialog({ open, onClose, post, viewer, onShared 
                     {Array.from(selected.values()).map((u) => (
                         <Chip
                             key={u.id}
-                            avatar={<Avatar src={u.profile_picture || u.avatar_url || ''} />}
+                            avatar={<Avatar src={u.profile_picture || u.avatar_url || ''} sx={{bgcolor: 'grey.600'}} />}
                             label={`${safeStr(u.first_name)} ${safeStr(u.last_name)} (@${safeStr(u.handle || u.username)})`}
                             onDelete={() =>
                                 setSelected((prev) => {

@@ -9,14 +9,10 @@ import {
     Button,
     InputAdornment,
 } from '@mui/material';
-import GlobalStyles from '@mui/material/GlobalStyles';
+import { alpha } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthModalContext';
-import registerArt from '../assets/register.png';
 import CityCountySelect from '../components/CityCountySelect';
-
-// Page background tone (the warm cream)
-const REGISTER_BG = '#F7F0E6';
 
 const API_BASE = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 const handleRegex = /^[a-zA-Z0-9_.-]{3,30}$/;
@@ -60,12 +56,13 @@ export default function Register() {
     const MAX_DOB = toISODate(maxDobDate); // must be <= this (18+)
     const MIN_DOB = toISODate(minDobDate);
 
-    // Anti‑autofill attributes
+    // Anti-autofill attributes
     const antiFillAttrs = {
         autoComplete: 'off',
         'data-1p-ignore': 'true',
         'data-lpignore': 'true',
     };
+
     const makeEditableOnFocus = (e) => {
         if (e && e.target && e.target.hasAttribute('readonly')) {
             e.target.removeAttribute('readonly');
@@ -208,321 +205,339 @@ export default function Register() {
     const formDisabled = Boolean(user);
 
     return (
-        <>
-            <GlobalStyles
-                styles={{
-                    html: { backgroundColor: REGISTER_BG },
-                    body: { margin: 0, backgroundColor: REGISTER_BG },
-                    '#root': { backgroundColor: REGISTER_BG },
-                }}
-            />
-
-            <Box sx={{ bgcolor: REGISTER_BG, minHeight: '100vh' }}>
-                <Container
-                    maxWidth="xl"
-                    sx={{ pt: { xs: 2, md: 3 }, pb: { xs: 6, md: 9 } }}
+        <Box
+            sx={{
+                minHeight: { xs: 'auto', md: 'calc(100vh - 120px)' },
+                bgcolor: 'background.default',
+                display: 'flex',
+                alignItems: { xs: 'stretch', sm: 'flex-start' },
+                pt: { xs: 2, sm: 2.5, md: 3.5 },
+                pb: { xs: 2, sm: 2.5, md: 3.5 },
+            }}
+        >
+            <Container maxWidth="sm" sx={{ px: { xs: 1.25, sm: 2 } }}>
+                <Paper
+                    elevation={0}
+                    sx={{
+                        width: '100%',
+                        mx: 'auto',
+                        overflow: 'hidden',
+                        borderRadius: 3,
+                        border: '1px solid',
+                        borderColor: (t) => alpha(t.palette.primary.main, 0.12),
+                        bgcolor: (t) => alpha(t.palette.common.white, 0.80),
+                        mt: { xs: 0, sm: 1.5, md: 2 },
+                        backdropFilter: 'saturate(140%) blur(10px)',
+                        backgroundImage: 'none',
+                        boxShadow: (t) => `0 16px 46px ${alpha(t.palette.common.black, 0.10)}`,
+                    }}
                 >
-                    <Paper
-                        elevation={1}
-                        sx={{
-                            width: '100%',
-                            maxWidth: { xs: 1080, md: 1500 },
-                            mx: 'auto',
-                            overflow: 'hidden',
-                            borderRadius: 2,
-                        }}
-                    >
-                        <Box
-                            sx={{
-                                display: 'grid',
-                                gridTemplateColumns: {
-                                    xs: '1fr',
-                                    md: 'minmax(560px, 52%) 1fr',
-                                    lg: 'minmax(720px, 54%) 1fr',
-                                },
-                                alignItems: 'start',
-                            }}
-                        >
-                            {/* LEFT: Illustration */}
-                            <Box
+                    <Box sx={{ p: { xs: 2.25, sm: 3, md: 4 } }}>
+                        <Box sx={{ mb: 2.5, textAlign: 'center' }}>
+                            <Typography
+                                variant="h5"
+                                sx={{ fontWeight: 900, letterSpacing: -0.3, mb: 0.75 }}
+                            >
+                                Create your account
+                            </Typography>
+                            <Typography
+                                variant="body2"
                                 sx={{
-                                    p: { xs: 3, md: 4 },
-                                    borderRight: { md: '1px solid rgba(0,0,0,0.06)' },
-                                    display: 'flex',
-                                    justifyContent: 'center',
+                                    color: 'text.secondary',
+                                    maxWidth: 520,
+                                    mx: 'auto',
                                 }}
                             >
-                                <Box
-                                    component="img"
-                                    src={registerArt}
-                                    alt="Join the community illustration"
-                                    sx={{
-                                        width: '100%',
-                                        maxWidth: { xs: 560, md: 900, lg: 1040 },
-                                        height: 'auto',
-                                        objectFit: 'contain',
-                                        display: 'block',
+                                Join The Local Lantern and connect with your community!
+                            </Typography>
+                        </Box>
+
+                        {user && (
+                            <Box
+                                role="note"
+                                sx={{
+                                    border: '1px solid',
+                                    borderColor: (t) => alpha(t.palette.info.main, 0.35),
+                                    bgcolor: (t) => alpha(t.palette.info.main, 0.08),
+                                    color: 'text.primary',
+                                    p: 1.25,
+                                    borderRadius: 2,
+                                    mb: 2,
+                                    fontSize: 14,
+                                    textAlign: 'center',
+                                }}
+                            >
+                                <Typography variant="body2" sx={{ mb: 0.75 }}>
+                                    You’re already signed in.
+                                </Typography>
+                                <Button
+                                    size="small"
+                                    onClick={logout}
+                                    variant="outlined"
+                                    sx={{ borderRadius: 999, fontWeight: 900 }}
+                                >
+                                    Log out to create a different account
+                                </Button>
+                            </Box>
+                        )}
+
+                        {errors.general ? (
+                            <Box
+                                role="alert"
+                                sx={{
+                                    border: '1px solid',
+                                    borderColor: (t) => alpha(t.palette.error.main, 0.35),
+                                    bgcolor: (t) => alpha(t.palette.error.main, 0.08),
+                                    color: 'text.primary',
+                                    p: 1.25,
+                                    borderRadius: 2,
+                                    mb: 2,
+                                    fontSize: 14,
+                                    textAlign: 'center',
+                                }}
+                            >
+                                {errors.general}
+                            </Box>
+                        ) : null}
+
+                        <Box
+                            component="form"
+                            onSubmit={submit}
+                            noValidate
+                            autoComplete="off"
+                            sx={formDisabled ? { opacity: 0.55, pointerEvents: 'none' } : undefined}
+                        >
+                            {/* Honeypots to absorb Chrome autofill */}
+                            <input
+                                type="text"
+                                name="username"
+                                autoComplete="username"
+                                tabIndex={-1}
+                                aria-hidden="true"
+                                style={{
+                                    position: 'absolute',
+                                    opacity: 0,
+                                    height: 0,
+                                    width: 0,
+                                    border: 0,
+                                    padding: 0,
+                                }}
+                            />
+                            <input
+                                type="password"
+                                name="password"
+                                autoComplete="current-password"
+                                tabIndex={-1}
+                                aria-hidden="true"
+                                style={{
+                                    position: 'absolute',
+                                    opacity: 0,
+                                    height: 0,
+                                    width: 0,
+                                    border: 0,
+                                    padding: 0,
+                                }}
+                            />
+
+                            <Box
+                                sx={{
+                                    display: 'grid',
+                                    gap: 2,
+                                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                                    gridTemplateAreas: {
+                                        xs: `
+                                            "first"
+                                            "last"
+                                            "email"
+                                            "dob"
+                                            "location"
+                                            "username"
+                                            "password"
+                                        `,
+                                        sm: `
+                                            "first last"
+                                            "email dob"
+                                            "location location"
+                                            "username username"
+                                            "password password"
+                                        `,
+                                    },
+                                }}
+                            >
+                                <TextField
+                                    sx={{ gridArea: 'first' }}
+                                    label="First name"
+                                    id={`first-name-${autoToken}`}
+                                    name={`first-name-${autoToken}`}
+                                    value={form.first_name}
+                                    onChange={update('first_name')}
+                                    onFocus={makeEditableOnFocus}
+                                    fullWidth
+                                    required
+                                    autoComplete="off"
+                                    inputProps={{ ...antiFillAttrs, maxLength: 50, readOnly: true }}
+                                />
+                                <TextField
+                                    sx={{ gridArea: 'last' }}
+                                    label="Last name"
+                                    id={`last-name-${autoToken}`}
+                                    name={`last-name-${autoToken}`}
+                                    value={form.last_name}
+                                    onChange={update('last_name')}
+                                    onFocus={makeEditableOnFocus}
+                                    fullWidth
+                                    required
+                                    autoComplete="off"
+                                    inputProps={{ ...antiFillAttrs, maxLength: 50, readOnly: true }}
+                                />
+
+                                <TextField
+                                    sx={{ gridArea: 'email' }}
+                                    label="Email"
+                                    id={`email-${autoToken}`}
+                                    name={`email-${autoToken}`}
+                                    type="email"
+                                    value={form.email}
+                                    onChange={update('email')}
+                                    onFocus={makeEditableOnFocus}
+                                    fullWidth
+                                    required
+                                    autoComplete="off"
+                                    inputProps={{
+                                        ...antiFillAttrs,
+                                        maxLength: 254,
+                                        readOnly: true,
+                                        inputMode: 'email',
+                                    }}
+                                />
+
+                                <TextField
+                                    sx={{ gridArea: 'dob' }}
+                                    label="Date of Birth"
+                                    id={`dob-${autoToken}`}
+                                    name={`dob-${autoToken}`}
+                                    type="date"
+                                    value={form.dob}
+                                    onChange={update('dob')}
+                                    onFocus={makeEditableOnFocus}
+                                    fullWidth
+                                    required
+                                    autoComplete="off"
+                                    error={Boolean(errors.dob)}
+                                    helperText={errors.dob || 'Must be 18 or older.'}
+                                    InputLabelProps={{ shrink: true }}
+                                    inputProps={{
+                                        ...antiFillAttrs,
+                                        min: MIN_DOB,
+                                        max: MAX_DOB,
+                                        readOnly: true,
+                                        'aria-label': 'Date of birth',
+                                    }}
+                                />
+
+                                <Box sx={{ gridArea: 'location' }}>
+                                    <CityCountySelect
+                                        city={form.city}
+                                        setCity={(v) => {
+                                            setForm((s) => ({ ...s, city: v }));
+                                            if (v) setErrors((er) => ({ ...er, city: '' }));
+                                        }}
+                                        county={form.county}
+                                        setCounty={(v) => {
+                                            setForm((s) => ({ ...s, county: v }));
+                                            if (v) setErrors((er) => ({ ...er, county: '' }));
+                                        }}
+                                        cityError={errors.city}
+                                        countyError={errors.county}
+                                        cityRequired
+                                        countyRequired
+                                        sx={{ mt: 0 }}
+                                    />
+                                </Box>
+
+                                <TextField
+                                    sx={{ gridArea: 'username' }}
+                                    label="Username"
+                                    id={`username-${autoToken}`}
+                                    name={`username-${autoToken}`}
+                                    value={form.handle}
+                                    onChange={update('handle')}
+                                    onFocus={makeEditableOnFocus}
+                                    fullWidth
+                                    required
+                                    autoComplete="off"
+                                    helperText="3–30 chars: letters, numbers, dot, dash, underscore"
+                                    inputProps={{
+                                        ...antiFillAttrs,
+                                        maxLength: 30,
+                                        readOnly: true,
+                                        'aria-label': 'Username',
+                                    }}
+                                    InputProps={{
+                                        startAdornment: <InputAdornment position="start">@</InputAdornment>,
+                                    }}
+                                />
+
+                                <TextField
+                                    sx={{ gridArea: 'password' }}
+                                    label="Password"
+                                    id={`password-${autoToken}`}
+                                    name={`password-${autoToken}`}
+                                    type="password"
+                                    value={form.password}
+                                    onChange={update('password')}
+                                    onFocus={makeEditableOnFocus}
+                                    fullWidth
+                                    required
+                                    autoComplete="new-password"
+                                    error={Boolean(errors.password)}
+                                    helperText={
+                                        errors.password ||
+                                        'Use 10–20 characters, include at least 1 uppercase letter and 1 special character (e.g., !@#$%&*).'
+                                    }
+                                    inputProps={{
+                                        ...antiFillAttrs,
+                                        maxLength: 20,
+                                        readOnly: true,
+                                        'aria-label': 'Password',
                                     }}
                                 />
                             </Box>
 
-                            {/* RIGHT: Form */}
-                            <Box sx={{ p: { xs: 3, md: 4 } }}>
-                                <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-                                    Create your account
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-                                    Join The Local Lantern to connect with your community.
-                                </Typography>
+                            <Button
+                                type="submit"
+                                variant="contained"
+                                size="large"
+                                fullWidth
+                                disabled={submitting || formDisabled}
+                                sx={{
+                                    mt: 3,
+                                    py: 1.35,
+                                    fontWeight: 950,
+                                    borderRadius: 999,
+                                }}
+                            >
+                                {submitting ? 'Creating account…' : 'Create Account'}
+                            </Button>
 
-                                {user && (
-                                    <Box
-                                        role="note"
-                                        sx={{
-                                            border: '1px solid',
-                                            borderColor: 'info.light',
-                                            bgcolor: '#f0f6ff',
-                                            color: 'info.main',
-                                            p: 1.25,
-                                            borderRadius: 1,
-                                            mb: 2,
-                                            fontSize: 14,
-                                        }}
-                                    >
-                                        You’re already signed in. To create a different account,{' '}
-                                        <Button size="small" onClick={logout}>log out</Button> first.
-                                    </Box>
-                                )}
-
-                                {errors.general ? (
-                                    <Box
-                                        role="alert"
-                                        sx={{
-                                            border: '1px solid',
-                                            borderColor: 'error.light',
-                                            bgcolor: '#fff5f5',
-                                            color: 'error.main',
-                                            p: 1.25,
-                                            borderRadius: 1,
-                                            mb: 2,
-                                            fontSize: 14,
-                                        }}
-                                    >
-                                        {errors.general}
-                                    </Box>
-                                ) : null}
-
-                                <Box
-                                    component="form"
-                                    onSubmit={submit}
-                                    noValidate
-                                    autoComplete="off"
-                                    // visually indicate disabled if already logged in
-                                    sx={formDisabled ? { opacity: 0.55, pointerEvents: 'none' } : undefined}
+                            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+                                <Button
+                                    variant="text"
+                                    onClick={() => navigate('/login')}
+                                    sx={{
+                                        borderRadius: 999,
+                                        fontWeight: 900,
+                                        color: 'text.secondary',
+                                        '&:hover': { color: 'primary.main' },
+                                    }}
                                 >
-                                    {/* Honeypots to absorb Chrome autofill */}
-                                    <input
-                                        type="text"
-                                        name="username"
-                                        autoComplete="username"
-                                        tabIndex={-1}
-                                        aria-hidden="true"
-                                        style={{ position: 'absolute', opacity: 0, height: 0, width: 0, border: 0, padding: 0 }}
-                                    />
-                                    <input
-                                        type="password"
-                                        name="password"
-                                        autoComplete="current-password"
-                                        tabIndex={-1}
-                                        aria-hidden="true"
-                                        style={{ position: 'absolute', opacity: 0, height: 0, width: 0, border: 0, padding: 0 }}
-                                    />
-
-                                    <Box
-                                        sx={{
-                                            display: 'grid',
-                                            gap: 2,
-                                            gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                                            gridTemplateAreas: {
-                                                xs: `
-                          "first"
-                          "last"
-                          "email"
-                          "dob"
-                          "location"
-                          "username"
-                          "password"
-                        `,
-                                                md: `
-                          "first last"
-                          "email dob"
-                          "location location"
-                          "username username"
-                          "password password"
-                        `,
-                                            },
-                                        }}
-                                    >
-                                        {/* Row 1 */}
-                                        <TextField
-                                            sx={{ gridArea: 'first' }}
-                                            label="First name"
-                                            id={`first-name-${autoToken}`}
-                                            name={`first-name-${autoToken}`}
-                                            value={form.first_name}
-                                            onChange={update('first_name')}
-                                            onFocus={makeEditableOnFocus}
-                                            fullWidth
-                                            required
-                                            autoComplete="off"
-                                            inputProps={{ ...antiFillAttrs, maxLength: 50, readOnly: true }}
-                                        />
-                                        <TextField
-                                            sx={{ gridArea: 'last' }}
-                                            label="Last name"
-                                            id={`last-name-${autoToken}`}
-                                            name={`last-name-${autoToken}`}
-                                            value={form.last_name}
-                                            onChange={update('last_name')}
-                                            onFocus={makeEditableOnFocus}
-                                            fullWidth
-                                            required
-                                            autoComplete="off"
-                                            inputProps={{ ...antiFillAttrs, maxLength: 50, readOnly: true }}
-                                        />
-
-                                        {/* Row 2: Email + DOB */}
-                                        <TextField
-                                            sx={{ gridArea: 'email' }}
-                                            label="Email"
-                                            id={`email-${autoToken}`}
-                                            name={`email-${autoToken}`}
-                                            type="email"
-                                            value={form.email}
-                                            onChange={update('email')}
-                                            onFocus={makeEditableOnFocus}
-                                            fullWidth
-                                            required
-                                            autoComplete="off"
-                                            inputProps={{
-                                                ...antiFillAttrs,
-                                                maxLength: 254,
-                                                readOnly: true,
-                                                inputMode: 'email',
-                                            }}
-                                        />
-                                        <TextField
-                                            sx={{ gridArea: 'dob' }}
-                                            label="Date of Birth"
-                                            id={`dob-${autoToken}`}
-                                            name={`dob-${autoToken}`}
-                                            type="date"
-                                            value={form.dob}
-                                            onChange={update('dob')}
-                                            onFocus={makeEditableOnFocus}
-                                            fullWidth
-                                            required
-                                            autoComplete="off"
-                                            error={Boolean(errors.dob)}
-                                            helperText={errors.dob || 'Must be 18 or older.'}
-                                            InputLabelProps={{ shrink: true }}
-                                            inputProps={{
-                                                ...antiFillAttrs,
-                                                min: MIN_DOB,
-                                                max: MAX_DOB,
-                                                readOnly: true,
-                                                'aria-label': 'Date of birth',
-                                            }}
-                                        />
-
-                                        {/* Row 3: City/County combined */}
-                                        <Box sx={{ gridArea: 'location' }}>
-                                            <CityCountySelect
-                                                city={form.city}
-                                                setCity={(v) => {
-                                                    setForm((s) => ({ ...s, city: v }));
-                                                    if (v) setErrors((er) => ({ ...er, city: '' }));
-                                                }}
-                                                county={form.county}
-                                                setCounty={(v) => {
-                                                    setForm((s) => ({ ...s, county: v }));
-                                                    if (v) setErrors((er) => ({ ...er, county: '' }));
-                                                }}
-                                                cityError={errors.city}
-                                                countyError={errors.county}
-                                                cityRequired
-                                                countyRequired
-                                                sx={{ mt: { xs: 0, md: 0 } }}
-                                            />
-                                        </Box>
-
-                                        {/* Row 4 */}
-                                        <TextField
-                                            sx={{ gridArea: 'username' }}
-                                            label="Username"
-                                            id={`username-${autoToken}`}
-                                            name={`username-${autoToken}`}
-                                            value={form.handle}
-                                            onChange={update('handle')}
-                                            onFocus={makeEditableOnFocus}
-                                            fullWidth
-                                            required
-                                            autoComplete="off"
-                                            helperText="3–30 chars: letters, numbers, dot, dash, underscore"
-                                            inputProps={{
-                                                ...antiFillAttrs,
-                                                maxLength: 30,
-                                                readOnly: true,
-                                                'aria-label': 'Username',
-                                            }}
-                                            InputProps={{
-                                                startAdornment: <InputAdornment position="start">@</InputAdornment>,
-                                            }}
-                                        />
-
-                                        {/* Row 5 */}
-                                        <TextField
-                                            sx={{ gridArea: 'password' }}
-                                            label="Password"
-                                            id={`password-${autoToken}`}
-                                            name={`password-${autoToken}`}
-                                            type="password"
-                                            value={form.password}
-                                            onChange={update('password')}
-                                            onFocus={makeEditableOnFocus}
-                                            fullWidth
-                                            required
-                                            autoComplete="new-password"
-                                            error={Boolean(errors.password)}
-                                            helperText={
-                                                errors.password ||
-                                                'Use 10–20 characters, include at least 1 uppercase letter and 1 special character (e.g., !@#$%&*).'
-                                            }
-                                            inputProps={{
-                                                ...antiFillAttrs,
-                                                maxLength: 20,
-                                                readOnly: true,
-                                                'aria-label': 'Password',
-                                            }}
-                                        />
-                                    </Box>
-
-                                    <Button
-                                        type="submit"
-                                        variant="contained"
-                                        size="large"
-                                        fullWidth
-                                        disabled={submitting || formDisabled}
-                                        sx={{ mt: 3 }}
-                                    >
-                                        {submitting ? 'Creating account…' : 'Create Account'}
-                                    </Button>
-                                </Box>
+                                    Already have an account? Sign in
+                                </Button>
                             </Box>
                         </Box>
-                    </Paper>
-                </Container>
-            </Box>
-        </>
+                    </Box>
+                </Paper>
+            </Container>
+        </Box>
     );
 }

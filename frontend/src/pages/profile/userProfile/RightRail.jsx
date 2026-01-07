@@ -22,6 +22,9 @@ const sectionBoxSx = {
     border: '1px solid rgba(0,0,0,0.08)',
     background: '#fff',
     overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 0,
 };
 
 const headerRowSx = {
@@ -36,16 +39,19 @@ const headerRowSx = {
 };
 
 const scrollerSx = {
-    maxHeight: 520,
-    overflowY: 'auto',
+    // On desktop, keep the rail compact by scrolling inside the list area.
+    // On mobile, let the page itself scroll naturally.
+    overflowY: { xs: 'visible', md: 'auto' },
     overflowX: 'hidden',
+    maxHeight: { xs: 'none', md: 'none' },
+    scrollbarGutter: 'stable',
     pl: 2,
-    pr: { xs: 4, md: 4 },
+    pr: { xs: 2, md: 2 },
     pt: 1,
-    pb: 1,
-    scrollbarGutter: 'stable both-edges',
+    pb: 1.5,
     boxSizing: 'border-box',
     width: '100%',
+    minHeight: 0,
     '& > *': { maxWidth: '100%' },
 };
 
@@ -107,13 +113,20 @@ export default function RightRail({
                                       onPrivacy, // (e, 'posts'|'reposts'|'likes')
                                       privacy = {}, // { posts, reposts, likes }
                                       useProvidedPosts = false, // when true, use the posts prop as source of truth and skip fetching
+                                      isScrollBox = true,
+                                      scrollBoxHeight = 680,
                                   }) {
     const [subtype, setSubtype] = useState('all');
     const [sort, setSort] = useState('newest');
 
     const postsScrollRef = useRef(null);
     const scrollToTop = () => {
-        if (postsScrollRef.current) postsScrollRef.current.scrollTop = 0;
+        if (!postsScrollRef.current) return;
+        try {
+            postsScrollRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch {
+            // ignore
+        }
     };
     const handleSubtypeChange = (val) => {
         setSubtype(val);
@@ -280,6 +293,17 @@ export default function RightRail({
         return list;
     }, [rawPosts, normalizedSubtype, sort]);
 
+    const [postsVisibleCount, setPostsVisibleCount] = useState(0);
+    const [repostsVisibleCount, setRepostsVisibleCount] = useState(0);
+    const [likesVisibleCount, setLikesVisibleCount] = useState(0);
+
+    const countText = (showing, total) => {
+        const t = Number(total || 0);
+        const s = Math.min(Math.max(0, Number(showing || 0)), t);
+        const word = t === 1 ? 'post' : 'posts';
+        return `Displaying ${s} of ${t} ${word}`;
+    };
+
     // Likes/Reposts
     const [loadingRL, setLoadingRL] = useState(false);
     const [repostPosts, setRepostPosts] = useState([]);
@@ -335,7 +359,7 @@ export default function RightRail({
     };
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%', minWidth: 0 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, width: '100%', minWidth: 0 }}>
             {/* Community Posts */}
             <Box sx={sectionBoxSx}>
                 <Box sx={headerRowSx}>
@@ -402,12 +426,48 @@ export default function RightRail({
                 {/* IMPORTANT: add marker for save/restore logic */}
                 <Box
                     ref={postsScrollRef}
-                    sx={scrollerSx}
+                    sx={{
+                        ...scrollerSx,
+                        ...(isScrollBox
+                            ? { maxHeight: { xs: 'none', md: scrollBoxHeight }, overflowY: { xs: 'visible', md: 'auto' } }
+                            : { overflowY: 'visible' }),
+                    }}
                     data-profile-posts-scroll
                     className="profile-posts-scroller"
                 >
-                    <ProfilePostsList user={me} posts={visiblePosts} loading={loadingPosts} onCardClick={onOpenPost} />
+                    <ProfilePostsList
+                        user={me}
+                        posts={visiblePosts}
+                        loading={loadingPosts}
+                        onCardClick={onOpenPost}
+                        onVisibleCountChange={setPostsVisibleCount}
+                    />
                 </Box>
+                <Box
+                    sx={{
+                        borderTop: '1px solid rgba(0,0,0,0.06)',
+                        bgcolor: '#fff',
+                        px: 2,
+                        py: 1,
+                        display: 'flex',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <Box
+                        sx={{
+                            px: 1.5,
+                            py: 0.5,
+                            borderRadius: 999,
+                            border: '1px solid rgba(0,0,0,0.10)',
+                            bgcolor: 'rgba(2,6,23,0.03)',
+                        }}
+                    >
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
+                            {countText(postsVisibleCount, visiblePosts.length)}
+                        </Typography>
+                    </Box>
+                </Box>
+
             </Box>
 
             {/* Reposts */}
@@ -433,10 +493,22 @@ export default function RightRail({
                     {loadingRL ? <CircularProgress size={18} /> : null}
                 </Box>
                 <Divider />
-                <Box sx={scrollerSx}>
+                <Box
+                    sx={{
+                        ...scrollerSx,
+                        ...(isScrollBox
+                            ? { maxHeight: { xs: 'none', md: scrollBoxHeight }, overflowY: { xs: 'visible', md: 'auto' } }
+                            : { overflowY: 'visible' }),
+                    }}
+                >
                     {canViewReposts ? (
                         repostPosts?.length ? (
-                            <ProfilePostsList user={me} posts={repostPosts} onCardClick={onOpenPost} />
+                            <ProfilePostsList
+                                user={me}
+                                posts={repostPosts}
+                                onCardClick={onOpenPost}
+                                onVisibleCountChange={setRepostsVisibleCount}
+                            />
                         ) : (
                             <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
                                 No reposts yet.
@@ -448,6 +520,33 @@ export default function RightRail({
                         </Typography>
                     )}
                 </Box>
+
+                {canViewReposts ? (
+                    <Box
+                        sx={{
+                            borderTop: '1px solid rgba(0,0,0,0.06)',
+                            bgcolor: '#fff',
+                            px: 2,
+                            py: 1,
+                            display: 'flex',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Box
+                            sx={{
+                                px: 1.5,
+                                py: 0.5,
+                                borderRadius: 999,
+                                border: '1px solid rgba(0,0,0,0.10)',
+                                bgcolor: 'rgba(2,6,23,0.03)',
+                            }}
+                        >
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
+                                {countText(repostsVisibleCount, repostPosts.length)}
+                            </Typography>
+                        </Box>
+                    </Box>
+                ) : null}
             </Box>
 
             {/* Likes */}
@@ -473,10 +572,22 @@ export default function RightRail({
                     {loadingRL ? <CircularProgress size={18} /> : null}
                 </Box>
                 <Divider />
-                <Box sx={scrollerSx}>
+                <Box
+                    sx={{
+                        ...scrollerSx,
+                        ...(isScrollBox
+                            ? { maxHeight: { xs: 'none', md: scrollBoxHeight }, overflowY: { xs: 'visible', md: 'auto' } }
+                            : { overflowY: 'visible' }),
+                    }}
+                >
                     {canViewLikes ? (
                         likedPosts?.length ? (
-                            <ProfilePostsList user={me} posts={likedPosts} onCardClick={onOpenPost} />
+                            <ProfilePostsList
+                                user={me}
+                                posts={likedPosts}
+                                onCardClick={onOpenPost}
+                                onVisibleCountChange={setLikesVisibleCount}
+                            />
                         ) : (
                             <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
                                 No likes yet.
@@ -488,6 +599,33 @@ export default function RightRail({
                         </Typography>
                     )}
                 </Box>
+
+                {canViewLikes ? (
+                    <Box
+                        sx={{
+                            borderTop: '1px solid rgba(0,0,0,0.06)',
+                            bgcolor: '#fff',
+                            px: 2,
+                            py: 1,
+                            display: 'flex',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Box
+                            sx={{
+                                px: 1.5,
+                                py: 0.5,
+                                borderRadius: 999,
+                                border: '1px solid rgba(0,0,0,0.10)',
+                                bgcolor: 'rgba(2,6,23,0.03)',
+                            }}
+                        >
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
+                                {countText(likesVisibleCount, likedPosts.length)}
+                            </Typography>
+                        </Box>
+                    </Box>
+                ) : null}
             </Box>
         </Box>
     );

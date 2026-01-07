@@ -1,67 +1,136 @@
 // src/hooks/community/useCommunityData.js
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
- * Custom hook to fetch community posts and GeoJSON points.
- * @param {{ city:string, county:string, search:string, view:string,
- *           subtype:string, sort:string, dateRange:string }} filters
+ * Fetch community posts + build GeoJSON points for markers.
+ *
+ * Supports:
+ * - view=all|mine|following|trending
+ * - subtype (category/subtype filter)
+ * - sort=newest|popular|trending|random
+ * - randomSeed (stable pseudo-random ordering for paging when sort=random)
+ * - includeTotal=1 (backend returns X-Total-Count)
  */
 export default function useCommunityData({
-                                             city,
-                                             county,
-                                             search,
-                                             view,
-                                             subtype,
-                                             sort,
-                                             dateRange,
-                                         }) {
+                                             city = '',
+                                             county = '',
+                                             search = '',
+                                             view = 'all',
+                                             subtype = '',
+                                             sort = 'newest',
+                                             dateRange = 'all',
+                                             window = '48h',
+                                             limit = 100,
+                                             offset = 0,
+                                             randomSeed = '',
+                                         } = {}) {
     const [posts, setPosts] = useState([]);
-    const [points, setPoints] = useState({
-        type: 'FeatureCollection',
-        features: [],
-    });
+    const [points, setPoints] = useState({ type: 'FeatureCollection', features: [] });
+    const [totalCount, setTotalCount] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    /* helper → generate GeoJSON Features */
-    const toFeatures = (items) =>
-        items
-            .filter((p) => p.latitude != null && p.longitude != null)
+    const abortRef = useRef(null);
+
+    const buildPoints = useCallback((items) => {
+        const arr = Array.isArray(items) ? items : [];
+        const features = arr
+            .filter((p) => Number.isFinite(Number(p?.latitude)) && Number.isFinite(Number(p?.longitude)))
             .map((p) => ({
                 type: 'Feature',
                 geometry: {
                     type: 'Point',
                     coordinates: [Number(p.longitude), Number(p.latitude)],
                 },
-                properties: { id: `c${p.id}`, category: p.category },
+                properties: {
+                    id: p.id,
+                    category: p.category || '',
+                },
             }));
 
-    const fetchData = async () => {
+        return { type: 'FeatureCollection', features };
+    }, []);
+
+    const fetchData = useCallback(async () => {
+        if (abortRef.current) {
+            try {
+                abortRef.current.abort();
+            } catch {
+                // ignore
+            }
+        }
+
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         setIsLoading(true);
+
         try {
-            const { data } = await axios.get('/api/community', {
-                params: { view, search, subtype, sort, dateRange, city, county },
-                withCredentials: true,
+            const params = new URLSearchParams();
+
+            const v = String(view || 'all').trim().toLowerCase();
+            const s = String(sort || 'newest').trim().toLowerCase();
+            const st = String(subtype || '').trim().toLowerCase();
+
+            if (city) params.set('city', String(city).trim());
+            if (county) params.set('county', String(county).trim());
+            if (search) params.set('search', String(search).trim());
+            if (v) params.set('view', v);
+            if (st) params.set('subtype', st);
+            if (s) params.set('sort', s);
+            if (dateRange) params.set('dateRange', String(dateRange).trim().toLowerCase());
+            if (window) params.set('window', String(window).trim().toLowerCase());
+
+            if (s === 'random' && randomSeed) params.set('randomSeed', String(randomSeed));
+
+            params.set('limit', String(Number.isFinite(Number(limit)) ? Number(limit) : 100));
+            params.set('offset', String(Number.isFinite(Number(offset)) ? Number(offset) : 0));
+            params.set('includeTotal', '1');
+
+            const res = await fetch(`/api/community?${params.toString()}`, {
+                credentials: 'include',
+                cache: 'no-store',
+                signal: controller.signal,
             });
 
-            setPosts(data);
-            setPoints({
-                type: 'FeatureCollection',
-                features: toFeatures(data),
-            });
+            if (!res.ok) {
+                setPosts([]);
+                setPoints({ type: 'FeatureCollection', features: [] });
+                setTotalCount(null);
+                return;
+            }
+
+            const data = await res.json();
+            const arr = Array.isArray(data) ? data : [];
+            setPosts(arr);
+            setPoints(buildPoints(arr));
+
+            const headerVal = Number(res.headers.get('x-total-count'));
+            if (Number.isFinite(headerVal)) setTotalCount(headerVal);
+            else setTotalCount(null);
         } catch (err) {
-            console.error('useCommunityData fetch error:', err);
-            setPosts([]);
-            setPoints({ type: 'FeatureCollection', features: [] });
+            const aborted = err?.name === 'AbortError';
+            if (!aborted) {
+                setPosts([]);
+                setPoints({ type: 'FeatureCollection', features: [] });
+                setTotalCount(null);
+            }
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [buildPoints, city, county, dateRange, limit, offset, randomSeed, search, sort, subtype, view, window]);
 
-    /* refetch whenever filters change */
     useEffect(() => {
         fetchData();
-    }, [city, county, search, view, subtype, sort, dateRange]);
+        return () => {
+            if (abortRef.current) {
+                try {
+                    abortRef.current.abort();
+                } catch {
+                    // ignore
+                }
+            }
+        };
+    }, [fetchData]);
 
-    return { posts, points, isLoading, refetch: fetchData };
+    return { posts, points, totalCount, isLoading, refetch: fetchData };
 }

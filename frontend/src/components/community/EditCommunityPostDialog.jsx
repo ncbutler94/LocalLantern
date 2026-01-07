@@ -87,6 +87,47 @@ export default function EditCommunityPostDialog({ open, postId, onClose }) {
 
     const category = post?.category || '';
 
+
+    const formatApiErrorMessage = (status, dataOrText) => {
+        // Backend may return JSON: { message, remaining, resetAt }
+        let payload = null;
+
+        if (dataOrText && typeof dataOrText === 'object') {
+            payload = dataOrText;
+        } else if (typeof dataOrText === 'string') {
+            // Try parse JSON string
+            try {
+                payload = JSON.parse(dataOrText);
+            } catch {
+                payload = null;
+            }
+        }
+
+        if (payload && typeof payload === 'object') {
+            const msg = typeof payload.message === 'string' ? payload.message : '';
+
+            // Special case: edit limit (429)
+            if (Number(status) === 429) {
+                const resetAt = payload.resetAt ? new Date(payload.resetAt) : null;
+                const resetText =
+                    resetAt && Number.isFinite(resetAt.getTime())
+                        ? ` You can edit again on ${resetAt.toLocaleString()}.`
+                        : '';
+
+                return `Edit limit reached. ${msg || 'You can only edit a post a limited number of times within 24 hours.'}${resetText}`.trim();
+            }
+
+            if (msg) return msg;
+        }
+
+        // Fallback for non-JSON errors
+        if (typeof dataOrText === 'string' && dataOrText.trim()) return dataOrText.trim();
+
+        if (Number(status) === 403) return 'You are not allowed to edit this post.';
+        if (Number(status) === 404) return 'Post not found.';
+        return 'Failed to save changes. Please try again.';
+    };
+
     const patchPost = async (payloadOrFormData) => {
         let res;
 
@@ -108,8 +149,28 @@ export default function EditCommunityPostDialog({ open, postId, onClose }) {
         }
 
         if (!res.ok) {
-            const msg = (await res.text()) || 'Failed to save changes.';
-            throw new Error(msg);
+            let bodyText = '';
+            let bodyJson = null;
+
+            try {
+                const ct = res.headers.get('content-type') || '';
+                if (ct.includes('application/json')) {
+                    bodyJson = await res.json();
+                } else {
+                    bodyText = (await res.text()) || '';
+                    // Some handlers return JSON but without content-type; try parse
+                    try {
+                        bodyJson = JSON.parse(bodyText);
+                    } catch {
+                        bodyJson = null;
+                    }
+                }
+            } catch {
+                // ignore parse errors
+            }
+
+            const friendly = formatApiErrorMessage(res.status, bodyJson || bodyText);
+            throw new Error(friendly);
         }
 
         const updated = await res.json();
@@ -235,4 +296,5 @@ export default function EditCommunityPostDialog({ open, postId, onClose }) {
             />
         </>
     );
+
 }

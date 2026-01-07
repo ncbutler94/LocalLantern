@@ -8,6 +8,8 @@
  * ------------------------------------------------------------------------- */
 
 import express           from 'express';
+import multer            from 'multer';
+import { Storage }        from '@google-cloud/storage';
 import db                from '../../config/db.js';
 import authenticateToken from '../../middleware/auth.js';
 import optionalAuth      from '../../middleware/optionalAuth.js';
@@ -15,8 +17,195 @@ import optionalAuth      from '../../middleware/optionalAuth.js';
 const router = express.Router();
 
 /* Pagination defaults / hard limits */
-const DEFAULT_LIMIT = 100;
+const DEFAULT_LIMIT = 50;
 const MAX_LIMIT     = 500;
+
+/* ─────────── GCS uploads (used for PATCH photo updates) ─────────── */
+const gcsStorage = new Storage({ projectId: process.env.GCP_PROJECT_ID });
+const gcsBucket  = gcsStorage.bucket(process.env.GCS_BUCKET);
+const upload     = multer({ storage: multer.memoryStorage() });
+
+// Accept multiple common field names used by different clients when editing a post.
+// (Some clients send `photo`/`images`/`files` instead of `photos`.)
+const uploadEditPhotos = upload.fields([
+    { name: 'photos', maxCount: 12 },
+    { name: 'photo', maxCount: 12 },
+    { name: 'images', maxCount: 12 },
+    { name: 'files', maxCount: 12 },
+]);
+
+function flattenMulterFiles(req) {
+    // multer .array()   -> req.files = File[]
+    // multer .fields()  -> req.files = { fieldName: File[] }
+    // multer .single()  -> req.file  = File
+    const out = [];
+
+    if (Array.isArray(req?.files)) {
+        return req.files;
+    }
+
+    if (req?.files && typeof req.files === 'object') {
+        Object.values(req.files).forEach((arr) => {
+            if (Array.isArray(arr)) out.push(...arr);
+        });
+    }
+
+    if (req?.file) out.push(req.file);
+
+    return out;
+}
+
+
+function safeFileName(name) {
+    const raw = String(name || 'photo').trim() || 'photo';
+    return raw.replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+
+function folderForCategory(category) {
+    const c = String(category || '').trim().toLowerCase();
+
+    // Announcements
+    if (c === 'announcement' || c === 'announcements') return 'community/announcements';
+
+    // Discussions
+    if (c === 'general-discussion' || c === 'discussion') return 'community/general-discussion';
+
+    // Lost & Found
+    if (c === 'lost-and-found' || c === 'lost-found') return 'community/lost-and-found';
+
+    // Public Safety
+    if (c === 'public-safety-alerts') return 'community/public-safety';
+
+    // Recommendations (tips removed; keep legacy folder name for continuity)
+    if (c === 'recommendations' || c === 'recommendation' || c === 'recommendations-tips' || c === 'tips' || c === 'tip') {
+        return 'community/recommendations-and-tips';
+    }
+
+    // Volunteer / Help (split categories in cp, unified folder)
+    if (c === 'help-requests' || c === 'help_requests' || c === 'volunteer-requests' || c === 'volunteers' || c === 'volunteer' ||
+        c === 'volunteer-help-requests' || c === 'volunteer-help' || c === 'volunteer_help_requests') {
+        return 'community/volunteer-and-help-requests';
+    }
+
+    return 'community/misc';
+}
+
+function maxPhotosForCategory(category) {
+    // Unified limit across all Community post types (front-end enforces 10 too).
+    // Keeping this server-side cap prevents accidental oversized uploads.
+    const c = String(category || '').trim().toLowerCase();
+    if (!c) return 10;
+    return 10;
+}
+
+function parseJsonArray(val) {
+    if (Array.isArray(val)) return val;
+    const s = String(val || '').trim();
+    if (!s) return null;
+    try {
+        const parsed = JSON.parse(s);
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+
+function normalizeMySqlDateTime(input) {
+    // Accepts: ISO strings (with/without Z), MySQL datetime strings, Date objects, or empty.
+    // Returns: Date object (preferred for knex/mysql2) or null.
+    if (input === null || typeof input === 'undefined') return null;
+
+    if (input instanceof Date) {
+        // Invalid dates become NaN
+        return Number.isNaN(input.getTime()) ? null : input;
+    }
+
+    const s = String(input).trim();
+    if (!s) return null;
+
+    // If it's already a MySQL DATETIME-ish string, try Date parse anyway (still works for 'YYYY-MM-DD HH:mm:ss')
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d;
+
+    return null;
+}
+
+
+let HAS_COMMUNITY_PHOTO_POSITION = undefined; // boolean
+async function hasCommunityPhotoPosition() {
+    if (HAS_COMMUNITY_PHOTO_POSITION !== undefined) return HAS_COMMUNITY_PHOTO_POSITION;
+    try {
+        const hasTable = await db.schema.hasTable('community_photos');
+        if (!hasTable) {
+            HAS_COMMUNITY_PHOTO_POSITION = false;
+            return HAS_COMMUNITY_PHOTO_POSITION;
+        }
+        const hasCol = await db.schema.hasColumn('community_photos', 'position');
+        HAS_COMMUNITY_PHOTO_POSITION = Boolean(hasCol);
+        return HAS_COMMUNITY_PHOTO_POSITION;
+    } catch {
+        HAS_COMMUNITY_PHOTO_POSITION = false;
+        return HAS_COMMUNITY_PHOTO_POSITION;
+    }
+}
+
+
+function photosArrayAggSql(hasPos) {
+    // Some MySQL versions do NOT support ORDER BY inside JSON_ARRAYAGG().
+    // To guarantee cover-photo ordering (and stay compatible), build JSON using GROUP_CONCAT(JSON_QUOTE(...)) with ORDER BY,
+    // then CAST the resulting string to JSON. If no rows, this yields '[]'.
+    const orderCol = hasPos ? 'p2.position' : 'p2.id';
+    return `COALESCE(
+        CAST(
+            CONCAT(
+                '[',
+                IFNULL(
+                    (SELECT GROUP_CONCAT(JSON_QUOTE(p2.url) ORDER BY ${orderCol} SEPARATOR ',')
+                     FROM community_photos p2
+                     WHERE p2.post_id = cp.id),
+                    ''
+                ),
+                ']'
+            ) AS JSON
+        ),
+        JSON_ARRAY()
+    ) AS photos`;
+}
+
+
+
+async function uploadFilesToGcs(files, folderPrefix) {
+    const list = Array.isArray(files) ? files : [];
+    if (!list.length) return [];
+
+    const uploaded = [];
+
+    for (const file of list) {
+        if (!file || !file.buffer) continue;
+        const safe = safeFileName(file.originalname);
+        const gcsName = `${folderPrefix}/${Date.now()}_${safe}`;
+        const blob = gcsBucket.file(gcsName);
+        const stream = blob.createWriteStream({
+            resumable: false,            metadata: { contentType: file.mimetype },
+        });
+
+        // eslint-disable-next-line no-await-in-loop
+        const url = await new Promise((resolve, reject) => {
+            stream
+                .on('error', reject)
+                .on('finish', () =>
+                    resolve(`https://storage.googleapis.com/${gcsBucket.name}/${gcsName}`)
+                );
+            stream.end(file.buffer);
+        });
+
+        uploaded.push(url);
+    }
+
+    return uploaded;
+}
+
 
 /* ---------------------------------------------------------------------------
  * Post edit history + Lost & Found resolution
@@ -127,6 +316,92 @@ function parseWindowToHours(win) {
     return n; // hours
 }
 
+
+let CP_DATE_EXPR_SQL;
+
+/**
+ * Returns a SQL expression (string) representing the best available "post created" timestamp
+ * for community_posts (aliased as `cp` in queries).
+ * We prefer posted_at, then date_created, then created_at.
+ */
+async function getCommunityPostsDateExprSql(alias = 'cp') {
+    if (alias === 'cp' && CP_DATE_EXPR_SQL) return CP_DATE_EXPR_SQL;
+
+    const [hasPostedAt, hasDateCreated, hasCreatedAt] = await Promise.all([
+        db.schema.hasColumn('community_posts', 'posted_at'),
+        db.schema.hasColumn('community_posts', 'date_created'),
+        db.schema.hasColumn('community_posts', 'created_at'),
+    ]);
+
+    const cols = [];
+    if (hasPostedAt) cols.push(`${alias}.posted_at`);
+    if (hasDateCreated) cols.push(`${alias}.date_created`);
+    if (hasCreatedAt) cols.push(`${alias}.created_at`);
+
+    // Fallback to posted_at if we can't detect (keeps behavior consistent with older builds)
+    const expr = cols.length === 0 ? `${alias}.posted_at` : (cols.length === 1 ? cols[0] : `COALESCE(${cols.join(', ')})`);
+
+    if (alias === 'cp') CP_DATE_EXPR_SQL = expr;
+    return expr;
+}
+
+function applyDateRange(q, dateRange, dateExprSql = 'cp.posted_at') {
+    const raw = String(dateRange || 'all').trim().toLowerCase();
+    if (!raw || raw === 'all' || raw === 'all time' || raw === 'all-time') return;
+
+    // Normalize common UI labels
+    // Examples: 'Past 24h', 'Past 24H', 'past24h', 'last 24 hours'
+    const dr = raw
+        .replace(/_/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const is24h =
+        dr === '24h' ||
+        dr === 'past 24h' ||
+        dr === 'past 24 h' ||
+        dr === 'last 24h' ||
+        dr === 'last 24 h' ||
+        dr === 'past day' ||
+        dr === 'last day' ||
+        dr === '24 hours' ||
+        dr === 'last 24 hours' ||
+        dr === 'past 24 hours';
+
+    const is7d =
+        dr === '7d' ||
+        dr === 'past week' ||
+        dr === 'last week' ||
+        dr === 'week' ||
+        dr === '7 days' ||
+        dr === 'last 7 days' ||
+        dr === 'past 7 days';
+
+    const is30d =
+        dr === '30d' ||
+        dr === 'past month' ||
+        dr === 'last month' ||
+        dr === 'month' ||
+        dr === '30 days' ||
+        dr === 'last 30 days' ||
+        dr === 'past 30 days';
+
+    if (is24h) {
+        q.andWhereRaw(`${dateExprSql} >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`);
+        return;
+    }
+    if (is7d) {
+        q.andWhereRaw(`${dateExprSql} >= DATE_SUB(NOW(), INTERVAL 7 DAY)`);
+        return;
+    }
+    if (is30d) {
+        q.andWhereRaw(`${dateExprSql} >= DATE_SUB(NOW(), INTERVAL 30 DAY)`);
+        return;
+    }
+
+    // unknown value -> ignore
+}
+
 /* Subtype normalization
  * NOTE: We normalize underscores/spaces to dashes and lowercase so legacy values
  * like "discussion" and "general_discussion" can be matched reliably.
@@ -152,31 +427,17 @@ function applySubtypeFilter(qb, rawSubtype) {
         return;
     }
 
-    // Recommendations & Tips stored under one category; split via rt.rec_type
-    if (sub === 'tips' || sub === 'tip') {
+    // Recommendations (tips merged into recommendations; legacy slugs supported)
+    if (
+        sub === 'recommendations' ||
+        sub === 'recommendation' ||
+        sub === 'recommendations-tips' ||
+        sub === 'tips' ||
+        sub === 'tip'
+    ) {
         qb.andWhere(function () {
-            this.where('cp.category', 'tips')
-                .orWhere(function () {
-                    this.where('cp.category', 'recommendations-tips');
-                    this.where('rt.rec_type', 'tip');
-                });
+            this.whereIn('cp.category', ['recommendations', 'recommendations-tips', 'tips', 'tip']);
         });
-        return;
-    }
-
-    if (sub === 'recommendations') {
-        qb.andWhere(function () {
-            this.where('cp.category', 'recommendations')
-                .orWhere(function () {
-                    this.where('cp.category', 'recommendations-tips');
-                    this.whereIn('rt.rec_type', ['business', 'recommendation']);
-                });
-        });
-        return;
-    }
-
-    if (sub === 'recommendations-tips' || sub === 'recommendation') {
-        qb.where('cp.category', 'recommendations-tips');
         return;
     }
 
@@ -215,10 +476,18 @@ function applySubtypeFilter(qb, rawSubtype) {
         return;
     }
 
-    // Default: exact match
+
+    // Lost & Found (legacy slug support)
+    if (sub === 'lost-and-found' || sub === 'lost-found') {
+        qb.andWhere(function () {
+            this.whereIn('cp.category', ['lost-and-found', 'lost-found']);
+        });
+        return;
+    }
+
+// Default: exact match
     qb.where('cp.category', sub);
 }
-
 
 /* =========================================================================
  * EDIT / DELETE community posts
@@ -263,39 +532,97 @@ async function safeInsertEditSnapshot(trx, payload) {
     const enabled = await hasPostEditsTable();
     if (!enabled) return;
 
-    // community_post_edits schema differs across environments:
-    // Most use `edited_at`; some older installs use `created_at`.
-    let tsCol = null;
-    try {
-        if (await trx.schema.hasColumn('community_post_edits', 'edited_at')) tsCol = 'edited_at';
-        else if (await trx.schema.hasColumn('community_post_edits', 'created_at')) tsCol = 'created_at';
-    } catch {
-        // ignore schema detection errors; we'll attempt inserts without a timestamp
-    }
+    const postId = payload?.post_id ?? payload?.postId;
+    const userId = payload?.user_id ?? payload?.userId ?? payload?.editor_user_id ?? payload?.editorUserId;
+    const snapshotJson =
+        payload?.snapshot_json ??
+        payload?.snapshotJson ??
+        payload?.snapshot_json_str ??
+        payload?.snapshot ??
+        payload?.data_json ??
+        payload?.data ??
+        null;
 
-    const base = {
-        post_id: payload.post_id,
-        user_id: payload.user_id,
-        ...(tsCol ? { [tsCol]: trx.fn.now() } : {}),
+    if (!Number.isFinite(Number(postId)) || !snapshotJson) return;
+
+    const hasCol = async (col) => {
+        try {
+            return await trx.schema.hasColumn('community_post_edits', col);
+        } catch {
+            return false;
+        }
     };
 
-    const snapshotJson = payload.snapshot_json || null;
+    const [
+        hasEditedAt,
+        hasCreatedAt,
+        hasSnapshotJson,
+        hasSnapshot,
+        hasDataJson,
+        hasData,
+        hasUserId,
+        hasEditorUserId,
+        hasAction,
+        hasVersion,
+    ] = await Promise.all([
+        hasCol('edited_at'),
+        hasCol('created_at'),
+        hasCol('snapshot_json'),
+        hasCol('snapshot'),
+        hasCol('data_json'),
+        hasCol('data'),
+        hasCol('user_id'),
+        hasCol('editor_user_id'),
+        hasCol('action'),
+        hasCol('version'),
+    ]);
 
-    const attempts = [
-        { ...base, snapshot_json: snapshotJson },
-        { ...base, snapshot: snapshotJson },
-        { ...base, data_json: snapshotJson },
-        { ...base, data: snapshotJson },
-        { ...base }, // minimal schema
-    ];
+    const row = { post_id: Number(postId) };
 
-    for (let i = 0; i < attempts.length; i += 1) {
+    if (hasEditorUserId && Number.isFinite(Number(userId))) row.editor_user_id = Number(userId);
+    else if (hasUserId && Number.isFinite(Number(userId))) row.user_id = Number(userId);
+
+    if (hasAction) row.action = String(payload?.action || 'edit').slice(0, 32);
+
+    if (hasEditedAt) row.edited_at = trx.fn.now();
+    else if (hasCreatedAt) row.created_at = trx.fn.now();
+
+    if (hasVersion) {
         try {
-            // eslint-disable-next-line no-await-in-loop
-            await trx('community_post_edits').insert(attempts[i]);
-            return;
+            const r = await trx('community_post_edits')
+                .where({ post_id: Number(postId) })
+                .max({ m: 'version' })
+                .first();
+            const current = Number(r?.m);
+            row.version = Number.isFinite(current) ? current + 1 : 1;
         } catch {
-            // try next shape
+            row.version = 1;
+        }
+    }
+
+    if (hasSnapshotJson) row.snapshot_json = String(snapshotJson);
+    else if (hasSnapshot) row.snapshot = String(snapshotJson);
+    else if (hasDataJson) row.data_json = String(snapshotJson);
+    else if (hasData) row.data = String(snapshotJson);
+
+    try {
+        await trx('community_post_edits').insert(row);
+    } catch {
+        // fallback attempts for older schemas
+        const attempts = [
+            { post_id: Number(postId), ...(Number.isFinite(Number(userId)) ? { user_id: Number(userId) } : {}), snapshot_json: String(snapshotJson) },
+            { post_id: Number(postId), ...(Number.isFinite(Number(userId)) ? { user_id: Number(userId) } : {}), snapshot: String(snapshotJson) },
+            { post_id: Number(postId), ...(Number.isFinite(Number(userId)) ? { user_id: Number(userId) } : {}), data_json: String(snapshotJson) },
+            { post_id: Number(postId), ...(Number.isFinite(Number(userId)) ? { user_id: Number(userId) } : {}), data: String(snapshotJson) },
+        ];
+        for (let i = 0; i < attempts.length; i += 1) {
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                await trx('community_post_edits').insert(attempts[i]);
+                return;
+            } catch {
+                // try next
+            }
         }
     }
 }
@@ -308,17 +635,21 @@ async function fetchCommunityPostById(postId, viewerId) {
         .leftJoin('announcements as a', 'cp.id', 'a.id')
         .leftJoin('public_safety_alerts as psa', 'cp.id', 'psa.id')
         .leftJoin('community_photos as p', 'cp.id', 'p.post_id')
-        .leftJoin('recommendations_and_tips as rt', 'cp.id', 'rt.id')
         .leftJoin('volunteer_help_requests as vh', 'cp.id', 'vh.id')
         .leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id')
         .where('cp.id', postId);
+
+    const hasPos = await hasCommunityPhotoPosition();
 
     const select = [
         'cp.id',
         'cp.user_id',
         'cp.category',
-        'cp.posted_at as posted_at',
-        'cp.posted_at as date_created',
+
+
+
+        db.raw('ANY_VALUE(cp.user_id)       AS user_id'),
+        db.raw('ANY_VALUE(cp.edited_at)     AS edited_at'),
         'cp.latitude',
         'cp.longitude',
         db.raw('COALESCE(cp.title, "")        AS title'),
@@ -343,13 +674,10 @@ async function fetchCommunityPostById(postId, viewerId) {
         db.raw('COALESCE(lf.resolved_by_user_id, NULL) AS resolved_by_user_id'),
 
         'vh.help_type',
+        'vh.help_type_other',
         'vh.request_kind',
-        'vh.needed_date',
-        'vh.contact',
-        db.raw('MAX(rt.rec_type) AS rec_type'),
-
-        db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
-
+        db.raw('COALESCE(ANY_VALUE(vh.is_urgent), 0) AS is_urgent'),
+        db.raw(photosArrayAggSql(hasPos)),
         db('post_likes')
             .count('*')
             .whereRaw('category = ? AND post_id = cp.id', ['community_post'])
@@ -389,12 +717,27 @@ router.get('/:id/edits', authenticateToken, async (req, res, next) => {
 
         const post = await db('community_posts').select('id', 'user_id').where({ id: postId }).first();
         if (!post) return res.status(404).json({ message: 'Not found' });
-        if (Number(post.user_id) !== Number(req.user.id)) {
+
+        const isAdmin = Boolean(
+            req.user?.is_admin ||
+            req.user?.isAdmin ||
+            String(req.user?.role || '').toLowerCase() === 'admin' ||
+            String(req.user?.account_type || '').toLowerCase() === 'admin'
+        );
+
+        // Privacy: only the post owner (or an admin) can view edit history.
+        if (!isAdmin && Number(post.user_id) !== Number(req.user.id)) {
             return res.status(403).json({ message: 'Not allowed' });
         }
 
         const enabled = await hasPostEditsTable();
         if (!enabled) return res.json([]);
+
+        const editorCol = (await db.schema.hasColumn('community_post_edits', 'editor_user_id'))
+            ? 'editor_user_id'
+            : (await db.schema.hasColumn('community_post_edits', 'user_id'))
+                ? 'user_id'
+                : null;
 
         const tsCol = (await db.schema.hasColumn('community_post_edits', 'edited_at'))
             ? 'edited_at'
@@ -402,11 +745,77 @@ router.get('/:id/edits', authenticateToken, async (req, res, next) => {
                 ? 'created_at'
                 : null;
 
-        let q = db('community_post_edits').where({ post_id: postId });
-        if (tsCol) q = q.orderBy(tsCol, 'desc');
-        const rows = await q.limit(50);
+        const hasVersion = await db.schema.hasColumn('community_post_edits', 'version');
+        const hasAction = await db.schema.hasColumn('community_post_edits', 'action');
 
-        return res.json(rows);
+        const snapCol = (await db.schema.hasColumn('community_post_edits', 'snapshot_json'))
+            ? 'snapshot_json'
+            : (await db.schema.hasColumn('community_post_edits', 'snapshot'))
+                ? 'snapshot'
+                : (await db.schema.hasColumn('community_post_edits', 'data_json'))
+                    ? 'data_json'
+                    : (await db.schema.hasColumn('community_post_edits', 'data'))
+                        ? 'data'
+                        : null;
+
+        let q = db('community_post_edits as e')
+            .where('e.post_id', postId)
+            .limit(50);
+
+        if (editorCol) {
+            q = q.leftJoin('users as u', `e.${editorCol}`, 'u.id');
+        }
+
+        const selectCols = [
+            'e.id',
+            'e.post_id',
+            ...(hasVersion ? ['e.version'] : []),
+            ...(hasAction ? ['e.action'] : []),
+            ...(tsCol ? [`e.${tsCol} as edited_at`] : []),
+            ...(snapCol ? [`e.${snapCol} as snapshot_raw`] : []),
+            ...(editorCol ? [db.raw('COALESCE(u.handle, "") AS editor_handle')] : []),
+        ];
+
+        q = q.select(selectCols);
+
+        if (tsCol) q = q.orderBy(`e.${tsCol}`, 'desc');
+        else q = q.orderBy('e.id', 'desc');
+
+        const rows = await q;
+
+        const out = rows.map((r, idx) => {
+            let parsed = {};
+            const raw = r.snapshot_raw;
+            if (raw) {
+                try {
+                    parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                } catch {
+                    parsed = {};
+                }
+            }
+
+            // normalize {before, after} snapshots into a flattened snapshot (after overrides before)
+            let snap = parsed;
+            if (parsed && typeof parsed === 'object' && (parsed.before || parsed.after)) {
+                const before = parsed.before && typeof parsed.before === 'object' ? parsed.before : {};
+                const after = parsed.after && typeof parsed.after === 'object' ? parsed.after : {};
+                snap = { ...before, ...after };
+            }
+
+            const version = Number.isFinite(Number(r.version)) ? Number(r.version) : idx + 1;
+
+            return {
+                id: r.id,
+                post_id: r.post_id,
+                version,
+                action: r.action || 'edit',
+                edited_at: r.edited_at || null,
+                editor_handle: r.editor_handle || '',
+                snapshot: snap && typeof snap === 'object' ? snap : {},
+            };
+        });
+
+        return res.json(out);
     } catch (err) {
         return next(err);
     }
@@ -446,232 +855,672 @@ router.post('/:id/mark-found', authenticateToken, express.json({ limit: '1mb' })
     }
 });
 
+
 /* PATCH /api/community/:id ----------------------------------------------- */
 /* PATCH /api/community/:id ----------------------------------------------- */
-router.patch('/:id', authenticateToken, express.json({ limit: '2mb' }), async (req, res, next) => {
-    try {
-        const postId = Number(req.params.id);
-        if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+router.patch(
+    '/:id',
+    authenticateToken,
+    uploadEditPhotos,
+    express.json({ limit: '2mb' }),
+    async (req, res, next) => {
+        try {
+            const postId = Number(req.params.id);
+            if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
 
-        const post = await db('community_posts')
-            .select('id', 'user_id', 'category', 'title', 'description', 'city', 'county', 'street_address')
-            .where({ id: postId })
-            .first();
+            const post = await db('community_posts')
+                .select('id', 'user_id', 'category', 'title', 'description', 'city', 'county', 'street_address')
+                .where({ id: postId })
+                .first();
 
-        if (!post) return res.status(404).json({ message: 'Not found' });
-        if (Number(post.user_id) !== Number(req.user.id)) {
-            return res.status(403).json({ message: 'Not allowed' });
-        }
+            if (!post) return res.status(404).json({ message: 'Not found' });
+            if (Number(post.user_id) !== Number(req.user.id)) {
+                return res.status(403).json({ message: 'Not allowed' });
+            }
 
-        const limitCheck = await canEditPostNow(postId);
-        if (!limitCheck.ok) {
-            return res.status(429).json({
-                message: 'You can edit a post up to 5 times within a 24-hour window.',
-                remaining: 0,
-                resetAt: limitCheck.resetAt ? limitCheck.resetAt.toISOString() : null,
-            });
-        }
+            const limitCheck = await canEditPostNow(postId);
+            if (!limitCheck.ok) {
+                return res.status(429).json({
+                    message: 'You can edit a post up to 5 times within a 24-hour window.',
+                    remaining: 0,
+                    resetAt: limitCheck.resetAt ? limitCheck.resetAt.toISOString() : null,
+                });
+            }
 
-        const body = req.body || {};
-        const updates = {};
+            const body = req.body || {};
+            const updates = {};
 
-        const setIfString = async (col, maxLen) => {
-            if (!Object.prototype.hasOwnProperty.call(body, col)) return;
-            const hasCol = await db.schema.hasColumn('community_posts', col);
-            if (!hasCol) return;
-            updates[col] = String(body[col] ?? '').slice(0, maxLen);
-        };
-
-        await setIfString('title', 120);
-        await setIfString('description', 5000);
-        await setIfString('city', 120);
-        await setIfString('county', 120);
-        await setIfString('street_address', 255);
-        await setIfString('visibility', 20);
-
-        const hasEditedAt = await hasCommunityPostsEditedAt();
-        if (hasEditedAt) updates.edited_at = db.fn.now();
-
-        // Optional photos as URL array: replace all existing in that order.
-        const wantsPhotos =
-            Object.prototype.hasOwnProperty.call(body, 'photos') && Array.isArray(body.photos);
-
-        await db.transaction(async (trx) => {
-            // log snapshot (best effort)
-            const snapshot = {
-                before: {
-                    title: post.title || '',
-                    description: post.description || '',
-                    city: post.city || '',
-                    county: post.county || '',
-                    street_address: post.street_address || '',
-                },
-                after: {
-                    ...(Object.prototype.hasOwnProperty.call(updates, 'title')
-                        ? { title: updates.title }
-                        : {}),
-                    ...(Object.prototype.hasOwnProperty.call(updates, 'description')
-                        ? { description: updates.description }
-                        : {}),
-                    ...(Object.prototype.hasOwnProperty.call(updates, 'city') ? { city: updates.city } : {}),
-                    ...(Object.prototype.hasOwnProperty.call(updates, 'county') ? { county: updates.county } : {}),
-                    ...(Object.prototype.hasOwnProperty.call(updates, 'street_address')
-                        ? { street_address: updates.street_address }
-                        : {}),
-                },
+            const setIfString = async (col, maxLen) => {
+                if (!Object.prototype.hasOwnProperty.call(body, col)) return;
+                const hasCol = await db.schema.hasColumn('community_posts', col);
+                if (!hasCol) return;
+                updates[col] = String(body[col] ?? '').slice(0, maxLen);
             };
 
-            await safeInsertEditSnapshot(trx, {
-                post_id: postId,
-                user_id: req.user.id,
-                snapshot_json: JSON.stringify(snapshot),
-            });
+            const setIfFloat = async (col) => {
+                if (!Object.prototype.hasOwnProperty.call(body, col)) return;
+                const hasCol = await db.schema.hasColumn('community_posts', col);
+                if (!hasCol) return;
+                const raw = String(body[col] ?? '').trim();
+                if (!raw) {
+                    updates[col] = null;
+                    return;
+                }
+                const n = Number(raw);
+                updates[col] = Number.isFinite(n) ? n : null;
+            };
 
-            if (Object.keys(updates).length) {
-                await trx('community_posts').where({ id: postId }).update(updates);
+            await setIfString('title', 120);
+            await setIfString('description', 5000);
+            await setIfString('city', 120);
+            await setIfString('county', 120);
+            await setIfString('street_address', 255);
+            await setIfString('visibility', 20);
+            await setIfFloat('latitude');
+            await setIfFloat('longitude');
+
+            const hasEditedAt = await hasCommunityPostsEditedAt();
+            if (hasEditedAt) updates.edited_at = db.fn.now();
+
+            const maxPhotos = maxPhotosForCategory(post.category);
+            const wantsPhotoOrder =
+                Object.prototype.hasOwnProperty.call(body, 'photo_order') ||
+                Object.prototype.hasOwnProperty.call(body, 'photoOrder');
+
+            const wantsPhotosArray = Object.prototype.hasOwnProperty.call(body, 'photos');
+
+            const photoOrder = parseJsonArray(body.photo_order) || parseJsonArray(body.photoOrder);
+
+            // Upload any new photos (multipart)
+            const files = flattenMulterFiles(req);
+            const folder = folderForCategory(post.category);
+            const newUrls = await uploadFilesToGcs(files, folder);
+
+            // Get current URLs (used for fallback ordering)
+            let currentUrls = [];
+            try {
+                const hasTable = await db.schema.hasTable('community_photos');
+                if (hasTable) {
+                    const hasPos = await db.schema.hasColumn('community_photos', 'position');
+                    const q = db('community_photos').where({ post_id: postId }).select('url');
+                    if (hasPos) q.orderBy('position', 'asc');
+                    currentUrls = (await q).map((r) => String(r.url || '').trim()).filter(Boolean);
+                }
+            } catch {
+                currentUrls = [];
             }
 
-            // Lost & Found
-            if (await trx.schema.hasTable('lost_and_found')) {
-                const lfUp = {};
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'lost_or_found') &&
-                    (await trx.schema.hasColumn('lost_and_found', 'lost_or_found'))
-                ) {
-                    lfUp.lost_or_found = String(body.lost_or_found || '').slice(0, 30);
+            let finalPhotoUrls = null;
+
+            if (photoOrder && (photoOrder.length || wantsPhotoOrder)) {
+                const out = [];
+                for (const tokenRaw of photoOrder) {
+                    const token = String(tokenRaw || '').trim();
+                    if (!token) continue;
+
+                    if (token.startsWith('__new__:')) {
+                        const idx = Number(token.slice(7));
+                        if (Number.isFinite(idx) && newUrls[idx]) out.push(newUrls[idx]);
+                        continue;
+                    }
+
+                    // treat as existing URL
+                    out.push(token);
                 }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'reward') &&
-                    (await trx.schema.hasColumn('lost_and_found', 'reward'))
-                ) {
-                    const n = Number(body.reward);
-                    lfUp.reward = Number.isFinite(n) ? n : null;
+                // If any new uploads weren't referenced, append them (best effort)
+                for (let i = 0; i < newUrls.length; i += 1) {
+                    const u = newUrls[i];
+                    if (!out.includes(u)) out.push(u);
                 }
-                if (Object.keys(lfUp).length) {
-                    await trx('lost_and_found').where({ id: postId }).update(lfUp);
-                }
+
+                finalPhotoUrls = out.filter(Boolean).slice(0, maxPhotos);
+            } else if (wantsPhotosArray && Array.isArray(body.photos) && newUrls.length === 0) {
+                // Legacy JSON path: replace with provided URLs
+                finalPhotoUrls = body.photos
+                    .map((u) => String(u || '').trim())
+                    .filter(Boolean)
+                    .slice(0, maxPhotos);
+            } else if (newUrls.length) {
+                // New uploads but no order specified: append to existing (or provided list)
+                const baseList = Array.isArray(body.photos)
+                    ? body.photos.map((u) => String(u || '').trim()).filter(Boolean)
+                    : currentUrls;
+                finalPhotoUrls = [...baseList, ...newUrls].filter(Boolean).slice(0, maxPhotos);
+            } else if (wantsPhotoOrder && (!photoOrder || photoOrder.length === 0)) {
+                // Explicitly clearing photos via photo_order: []
+                finalPhotoUrls = [];
             }
 
-            // Recommendations / Tips
-            if (await trx.schema.hasTable('recommendations_and_tips')) {
-                const rtUp = {};
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'rec_type') &&
-                    (await trx.schema.hasColumn('recommendations_and_tips', 'rec_type'))
-                ) {
-                    rtUp.rec_type = String(body.rec_type || '').slice(0, 40);
-                }
-                if (Object.keys(rtUp).length) {
-                    await trx('recommendations_and_tips').where({ id: postId }).update(rtUp);
-                }
-            }
+            await db.transaction(async (trx) => {
+                // log snapshot (best effort)
+                const snapshot = {
+                    before: {
+                        title: post.title || '',
+                        description: post.description || '',
+                        city: post.city || '',
+                        county: post.county || '',
+                        street_address: post.street_address || '',
+                    },
+                    after: {
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'title')
+                            ? { title: updates.title }
+                            : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'description')
+                            ? { description: updates.description }
+                            : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'city') ? { city: updates.city } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'county') ? { county: updates.county } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'street_address')
+                            ? { street_address: updates.street_address }
+                            : {}),
+                    },
+                };
 
-            // Volunteer / Help
-            if (await trx.schema.hasTable('volunteer_help_requests')) {
-                const vhUp = {};
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'help_type') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'help_type'))
-                ) {
-                    vhUp.help_type = String(body.help_type || '').slice(0, 60);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'request_kind') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'request_kind'))
-                ) {
-                    vhUp.request_kind = String(body.request_kind || '').slice(0, 40);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'needed_date') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'needed_date'))
-                ) {
-                    const d = String(body.needed_date || '').slice(0, 10);
-                    vhUp.needed_date = d || null;
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'contact') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'contact'))
-                ) {
-                    vhUp.contact = String(body.contact || '').slice(0, 255);
-                }
-                // Optional fields (best effort)
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'help_type_other') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'help_type_other'))
-                ) {
-                    vhUp.help_type_other = String(body.help_type_other || '').slice(0, 120);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'contact_method') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'contact_method'))
-                ) {
-                    vhUp.contact_method = String(body.contact_method || '').slice(0, 40);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'urgency') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'urgency'))
-                ) {
-                    vhUp.urgency = String(body.urgency || '').slice(0, 40);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'needed_time') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'needed_time'))
-                ) {
-                    vhUp.needed_time = String(body.needed_time || '').slice(0, 80);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'helpers_needed') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'helpers_needed'))
-                ) {
-                    vhUp.helpers_needed = String(body.helpers_needed || '').slice(0, 20);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'availability') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'availability'))
-                ) {
-                    vhUp.availability = String(body.availability || '').slice(0, 160);
-                }
-                if (
-                    Object.prototype.hasOwnProperty.call(body, 'travel_radius') &&
-                    (await trx.schema.hasColumn('volunteer_help_requests', 'travel_radius'))
-                ) {
-                    vhUp.travel_radius = String(body.travel_radius || '').slice(0, 60);
+                await safeInsertEditSnapshot(trx, {
+                    post_id: postId,
+                    user_id: req.user.id,
+                    snapshot_json: JSON.stringify(snapshot),
+                });
+
+                if (Object.keys(updates).length) {
+                    await trx('community_posts').where({ id: postId }).update(updates);
                 }
 
-                if (Object.keys(vhUp).length) {
-                    await trx('volunteer_help_requests').where({ id: postId }).update(vhUp);
-                }
-            }
-
-            // Photos: replace list of URLs
-            if (wantsPhotos && (await trx.schema.hasTable('community_photos'))) {
-                const hasUrl = await trx.schema.hasColumn('community_photos', 'url');
-                const hasPostId = await trx.schema.hasColumn('community_photos', 'post_id');
-                if (hasUrl && hasPostId) {
-                    await trx('community_photos').where({ post_id: postId }).del();
-
-                    const urls = body.photos
-                        .map((u) => String(u || '').trim())
-                        .filter(Boolean)
-                        .slice(0, 12);
-
-                    if (urls.length) {
-                        await trx('community_photos').insert(
-                            urls.map((url) => ({ post_id: postId, url }))
-                        );
+                // Lost & Found
+                if (await trx.schema.hasTable('lost_and_found')) {
+                    const lfUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'lost_or_found') &&
+                        (await trx.schema.hasColumn('lost_and_found', 'lost_or_found'))
+                    ) {
+                        lfUp.lost_or_found = String(body.lost_or_found || '').slice(0, 30);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'reward') &&
+                        (await trx.schema.hasColumn('lost_and_found', 'reward'))
+                    ) {
+                        const n = Number(body.reward);
+                        lfUp.reward = Number.isFinite(n) ? n : null;
+                    }
+                    if (Object.keys(lfUp).length) {
+                        await trx('lost_and_found').where({ id: postId }).update(lfUp);
                     }
                 }
-            }
-        });
+                // Recommendations / Tips (subtype table has no editable fields yet)
+                if (await trx.schema.hasTable('recommendations')) {
+                    const rtUp = {};
+                    // Add subtype-specific editable fields here in the future.
+                    if (Object.keys(rtUp).length) {
+                        await trx('recommendations').where({ id: postId }).update(rtUp);
+                    }
+                }
+                // Volunteer / Help
+                if (await trx.schema.hasTable('volunteer_help_requests')) {
+                    const vhUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'help_type') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'help_type'))
+                    ) {
+                        vhUp.help_type = String(body.help_type || '').slice(0, 60);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'request_kind') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'request_kind'))
+                    ) {
+                        vhUp.request_kind = String(body.request_kind || '').slice(0, 40);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'contact') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'contact'))
+                    ) {
+                        vhUp.contact = String(body.contact || '').slice(0, 255);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'help_type_other') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'help_type_other'))
+                    ) {
+                        vhUp.help_type_other = String(body.help_type_other || '').slice(0, 120);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'contact_method') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'contact_method'))
+                    ) {
+                        vhUp.contact_method = String(body.contact_method || '').slice(0, 40);
+                    }
 
-        const updated = await fetchCommunityPostById(postId, req.user.id);
-        return res.json(updated || { ok: true });
-    } catch (err) {
-        return next(err);
+
+// is_urgent flag (help requests). Accepts: 1/0, true/false, "urgent"/"flexible"/etc.
+                    const urgentRaw =
+                        Object.prototype.hasOwnProperty.call(body, 'is_urgent')
+                            ? body.is_urgent
+                            : (Object.prototype.hasOwnProperty.call(body, 'urgent') ? body.urgent : undefined);
+
+                    if (urgentRaw !== undefined) {
+                        const s = String(urgentRaw).trim().toLowerCase();
+                        const boolVal =
+                            s === '1' || s === 'true' || s === 'yes' || s === 'y' || s === 'on' || s === 'urgent';
+
+                        if (await trx.schema.hasColumn('volunteer_help_requests', 'is_urgent')) {
+                            vhUp.is_urgent = boolVal ? 1 : 0;
+                        }
+                        if (await trx.schema.hasColumn('volunteer_help_requests', 'urgent')) {
+                            vhUp.urgent = boolVal ? 1 : 0;
+                        }
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'travel_radius') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'travel_radius'))
+                    ) {
+                        vhUp.travel_radius = String(body.travel_radius || '').slice(0, 60);
+                    }
+
+                    if (Object.keys(vhUp).length) {
+                        await trx('volunteer_help_requests').where({ id: postId }).update(vhUp);
+                    }
+                }
+
+                // Public Safety extra fields
+                if (await trx.schema.hasTable('public_safety_alerts')) {
+                    const psUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'expires_at') &&
+                        (await trx.schema.hasColumn('public_safety_alerts', 'expires_at'))
+                    ) {
+                        const raw = String(body.expires_at || '').trim();
+                        psUp.expires_at = raw ? normalizeMySqlDateTime(raw) : null;
+                    }
+                    if (Object.keys(psUp).length) {
+                        await trx('public_safety_alerts').where({ id: postId }).update(psUp);
+                    }
+                }
+
+                // Announcements legacy table
+                if (await trx.schema.hasTable('announcements')) {
+                    const aUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'title') &&
+                        (await trx.schema.hasColumn('announcements', 'title'))
+                    ) {
+                        aUp.title = String(body.title || '').slice(0, 255);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'description') &&
+                        (await trx.schema.hasColumn('announcements', 'body'))
+                    ) {
+                        aUp.body = String(body.description || '').slice(0, 5000);
+                    }
+                    if (Object.keys(aUp).length) {
+                        await trx('announcements').where({ id: postId }).update(aUp);
+                    }
+                }
+
+                // Photos
+                if (finalPhotoUrls !== null && (await trx.schema.hasTable('community_photos'))) {
+                    const hasUrl = await trx.schema.hasColumn('community_photos', 'url');
+                    const hasPostId = await trx.schema.hasColumn('community_photos', 'post_id');
+                    const hasPos = await trx.schema.hasColumn('community_photos', 'position');
+                    if (hasUrl && hasPostId) {
+                        await trx('community_photos').where({ post_id: postId }).del();
+
+                        const urls = finalPhotoUrls
+                            .map((u) => String(u || '').trim())
+                            .filter(Boolean)
+                            .slice(0, maxPhotos);
+
+                        if (urls.length) {
+                            await trx('community_photos').insert(
+                                urls.map((url, idx) => ({
+                                    post_id: postId,
+                                    url,
+                                    ...(hasPos ? { position: idx } : {}),
+                                }))
+                            );
+                        }
+                    }
+                }
+
+            });
+
+            const updated = await fetchCommunityPostById(postId, req.user.id);
+            return res.json(updated || { ok: true });
+        } catch (err) {
+            return next(err);
+        }
     }
-});
+);
 
-/* DELETE /api/community/:id ------------------------------------------------ */
+
+// ALSO support PUT for clients that use axios.put() for edits
+router.put(
+    '/:id',
+    authenticateToken,
+    uploadEditPhotos,
+    express.json({ limit: '2mb' }),
+    async (req, res, next) => {
+        try {
+            const postId = Number(req.params.id);
+            if (!Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid post id' });
+
+            const post = await db('community_posts')
+                .select('id', 'user_id', 'category', 'title', 'description', 'city', 'county', 'street_address')
+                .where({ id: postId })
+                .first();
+
+            if (!post) return res.status(404).json({ message: 'Not found' });
+            if (Number(post.user_id) !== Number(req.user.id)) {
+                return res.status(403).json({ message: 'Not allowed' });
+            }
+
+            const limitCheck = await canEditPostNow(postId);
+            if (!limitCheck.ok) {
+                return res.status(429).json({
+                    message: 'You can edit a post up to 5 times within a 24-hour window.',
+                    remaining: 0,
+                    resetAt: limitCheck.resetAt ? limitCheck.resetAt.toISOString() : null,
+                });
+            }
+
+            const body = req.body || {};
+            const updates = {};
+
+            const setIfString = async (col, maxLen) => {
+                if (!Object.prototype.hasOwnProperty.call(body, col)) return;
+                const hasCol = await db.schema.hasColumn('community_posts', col);
+                if (!hasCol) return;
+                updates[col] = String(body[col] ?? '').slice(0, maxLen);
+            };
+
+            const setIfFloat = async (col) => {
+                if (!Object.prototype.hasOwnProperty.call(body, col)) return;
+                const hasCol = await db.schema.hasColumn('community_posts', col);
+                if (!hasCol) return;
+                const raw = String(body[col] ?? '').trim();
+                if (!raw) {
+                    updates[col] = null;
+                    return;
+                }
+                const n = Number(raw);
+                updates[col] = Number.isFinite(n) ? n : null;
+            };
+
+            await setIfString('title', 120);
+            await setIfString('description', 5000);
+            await setIfString('city', 120);
+            await setIfString('county', 120);
+            await setIfString('street_address', 255);
+            await setIfString('visibility', 20);
+            await setIfFloat('latitude');
+            await setIfFloat('longitude');
+
+            const hasEditedAt = await hasCommunityPostsEditedAt();
+            if (hasEditedAt) updates.edited_at = db.fn.now();
+
+            const maxPhotos = maxPhotosForCategory(post.category);
+            const wantsPhotoOrder =
+                Object.prototype.hasOwnProperty.call(body, 'photo_order') ||
+                Object.prototype.hasOwnProperty.call(body, 'photoOrder');
+
+            const wantsPhotosArray = Object.prototype.hasOwnProperty.call(body, 'photos');
+
+            const photoOrder = parseJsonArray(body.photo_order) || parseJsonArray(body.photoOrder);
+
+            // Upload any new photos (multipart)
+            const files = flattenMulterFiles(req);
+            const folder = folderForCategory(post.category);
+            const newUrls = await uploadFilesToGcs(files, folder);
+
+            // Get current URLs (used for fallback ordering)
+            let currentUrls = [];
+            try {
+                const hasTable = await db.schema.hasTable('community_photos');
+                if (hasTable) {
+                    const hasPos = await db.schema.hasColumn('community_photos', 'position');
+                    const q = db('community_photos').where({ post_id: postId }).select('url');
+                    if (hasPos) q.orderBy('position', 'asc');
+                    currentUrls = (await q).map((r) => String(r.url || '').trim()).filter(Boolean);
+                }
+            } catch {
+                currentUrls = [];
+            }
+
+            let finalPhotoUrls = null;
+
+            if (photoOrder && (photoOrder.length || wantsPhotoOrder)) {
+                const out = [];
+                for (const tokenRaw of photoOrder) {
+                    const token = String(tokenRaw || '').trim();
+                    if (!token) continue;
+
+                    if (token.startsWith('__new__:')) {
+                        const idx = Number(token.slice(7));
+                        if (Number.isFinite(idx) && newUrls[idx]) out.push(newUrls[idx]);
+                        continue;
+                    }
+
+                    // treat as existing URL
+                    out.push(token);
+                }
+                // If any new uploads weren't referenced, append them (best effort)
+                for (let i = 0; i < newUrls.length; i += 1) {
+                    const u = newUrls[i];
+                    if (!out.includes(u)) out.push(u);
+                }
+
+                finalPhotoUrls = out.filter(Boolean).slice(0, maxPhotos);
+            } else if (wantsPhotosArray && Array.isArray(body.photos) && newUrls.length === 0) {
+                // Legacy JSON path: replace with provided URLs
+                finalPhotoUrls = body.photos
+                    .map((u) => String(u || '').trim())
+                    .filter(Boolean)
+                    .slice(0, maxPhotos);
+            } else if (newUrls.length) {
+                // New uploads but no order specified: append to existing (or provided list)
+                const baseList = Array.isArray(body.photos)
+                    ? body.photos.map((u) => String(u || '').trim()).filter(Boolean)
+                    : currentUrls;
+                finalPhotoUrls = [...baseList, ...newUrls].filter(Boolean).slice(0, maxPhotos);
+            } else if (wantsPhotoOrder && (!photoOrder || photoOrder.length === 0)) {
+                // Explicitly clearing photos via photo_order: []
+                finalPhotoUrls = [];
+            }
+
+            await db.transaction(async (trx) => {
+                // log snapshot (best effort)
+                const snapshot = {
+                    before: {
+                        title: post.title || '',
+                        description: post.description || '',
+                        city: post.city || '',
+                        county: post.county || '',
+                        street_address: post.street_address || '',
+                    },
+                    after: {
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'title')
+                            ? { title: updates.title }
+                            : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'description')
+                            ? { description: updates.description }
+                            : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'city') ? { city: updates.city } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'county') ? { county: updates.county } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'street_address')
+                            ? { street_address: updates.street_address }
+                            : {}),
+                    },
+                };
+
+                await safeInsertEditSnapshot(trx, {
+                    post_id: postId,
+                    user_id: req.user.id,
+                    snapshot_json: JSON.stringify(snapshot),
+                });
+
+                if (Object.keys(updates).length) {
+                    await trx('community_posts').where({ id: postId }).update(updates);
+                }
+
+                // Lost & Found
+                if (await trx.schema.hasTable('lost_and_found')) {
+                    const lfUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'lost_or_found') &&
+                        (await trx.schema.hasColumn('lost_and_found', 'lost_or_found'))
+                    ) {
+                        lfUp.lost_or_found = String(body.lost_or_found || '').slice(0, 30);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'reward') &&
+                        (await trx.schema.hasColumn('lost_and_found', 'reward'))
+                    ) {
+                        const n = Number(body.reward);
+                        lfUp.reward = Number.isFinite(n) ? n : null;
+                    }
+                    if (Object.keys(lfUp).length) {
+                        await trx('lost_and_found').where({ id: postId }).update(lfUp);
+                    }
+                }
+                // Recommendations / Tips (subtype table has no editable fields yet)
+                if (await trx.schema.hasTable('recommendations')) {
+                    const rtUp = {};
+                    // Add subtype-specific editable fields here in the future.
+                    if (Object.keys(rtUp).length) {
+                        await trx('recommendations').where({ id: postId }).update(rtUp);
+                    }
+                }
+                // Volunteer / Help
+                if (await trx.schema.hasTable('volunteer_help_requests')) {
+                    const vhUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'help_type') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'help_type'))
+                    ) {
+                        vhUp.help_type = String(body.help_type || '').slice(0, 60);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'request_kind') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'request_kind'))
+                    ) {
+                        vhUp.request_kind = String(body.request_kind || '').slice(0, 40);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'contact') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'contact'))
+                    ) {
+                        vhUp.contact = String(body.contact || '').slice(0, 255);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'help_type_other') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'help_type_other'))
+                    ) {
+                        vhUp.help_type_other = String(body.help_type_other || '').slice(0, 120);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'contact_method') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'contact_method'))
+                    ) {
+                        vhUp.contact_method = String(body.contact_method || '').slice(0, 40);
+                    }
+
+
+// is_urgent flag (help requests). Accepts: 1/0, true/false, "urgent"/"flexible"/etc.
+                    const urgentRaw =
+                        Object.prototype.hasOwnProperty.call(body, 'is_urgent')
+                            ? body.is_urgent
+                            : (Object.prototype.hasOwnProperty.call(body, 'urgent') ? body.urgent : undefined);
+
+                    if (urgentRaw !== undefined) {
+                        const s = String(urgentRaw).trim().toLowerCase();
+                        const boolVal =
+                            s === '1' || s === 'true' || s === 'yes' || s === 'y' || s === 'on' || s === 'urgent';
+
+                        if (await trx.schema.hasColumn('volunteer_help_requests', 'is_urgent')) {
+                            vhUp.is_urgent = boolVal ? 1 : 0;
+                        }
+                        if (await trx.schema.hasColumn('volunteer_help_requests', 'urgent')) {
+                            vhUp.urgent = boolVal ? 1 : 0;
+                        }
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'travel_radius') &&
+                        (await trx.schema.hasColumn('volunteer_help_requests', 'travel_radius'))
+                    ) {
+                        vhUp.travel_radius = String(body.travel_radius || '').slice(0, 60);
+                    }
+
+                    if (Object.keys(vhUp).length) {
+                        await trx('volunteer_help_requests').where({ id: postId }).update(vhUp);
+                    }
+                }
+
+                // Public Safety extra fields
+                if (await trx.schema.hasTable('public_safety_alerts')) {
+                    const psUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'expires_at') &&
+                        (await trx.schema.hasColumn('public_safety_alerts', 'expires_at'))
+                    ) {
+                        const raw = String(body.expires_at || '').trim();
+                        psUp.expires_at = raw ? normalizeMySqlDateTime(raw) : null;
+                    }
+                    if (Object.keys(psUp).length) {
+                        await trx('public_safety_alerts').where({ id: postId }).update(psUp);
+                    }
+                }
+
+                // Announcements legacy table
+                if (await trx.schema.hasTable('announcements')) {
+                    const aUp = {};
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'title') &&
+                        (await trx.schema.hasColumn('announcements', 'title'))
+                    ) {
+                        aUp.title = String(body.title || '').slice(0, 255);
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(body, 'description') &&
+                        (await trx.schema.hasColumn('announcements', 'body'))
+                    ) {
+                        aUp.body = String(body.description || '').slice(0, 5000);
+                    }
+                    if (Object.keys(aUp).length) {
+                        await trx('announcements').where({ id: postId }).update(aUp);
+                    }
+                }
+
+                // Photos
+                if (finalPhotoUrls !== null && (await trx.schema.hasTable('community_photos'))) {
+                    const hasUrl = await trx.schema.hasColumn('community_photos', 'url');
+                    const hasPostId = await trx.schema.hasColumn('community_photos', 'post_id');
+                    const hasPos = await trx.schema.hasColumn('community_photos', 'position');
+                    if (hasUrl && hasPostId) {
+                        await trx('community_photos').where({ post_id: postId }).del();
+
+                        const urls = finalPhotoUrls
+                            .map((u) => String(u || '').trim())
+                            .filter(Boolean)
+                            .slice(0, maxPhotos);
+
+                        if (urls.length) {
+                            await trx('community_photos').insert(
+                                urls.map((url, idx) => ({
+                                    post_id: postId,
+                                    url,
+                                    ...(hasPos ? { position: idx } : {}),
+                                }))
+                            );
+                        }
+                    }
+                }
+
+            });
+
+            const updated = await fetchCommunityPostById(postId, req.user.id);
+            return res.json(updated || { ok: true });
+        } catch (err) {
+            return next(err);
+        }
+    }
+);
 router.delete('/:id', authenticateToken, async (req, res, next) => {
     try {
         const postId = Number(req.params.id);
@@ -697,13 +1546,39 @@ router.delete('/:id', authenticateToken, async (req, res, next) => {
             await safeDel('community_photos', { post_id: postId });
             await safeDel('post_likes', { post_id: postId, category: 'community_post' });
             await safeDel('post_reposts', { post_id: postId });
+// If comments exist, some schemas have dependent tables (likes/flags) with FK constraints.
+// Delete those first to avoid "cannot delete" failures.
+            try {
+                const hasPostComments = await trx.schema.hasTable('post_comments');
+                if (hasPostComments) {
+                    const sub = trx('post_comments').select('id').where({ post_id: postId });
+
+                    const safeDelWhereIn = async (table, col) => {
+                        try {
+                            const exists = await trx.schema.hasTable(table);
+                            if (!exists) return;
+                            await trx(table).whereIn(col, sub).del();
+                        } catch {
+                            // ignore
+                        }
+                    };
+
+                    await safeDelWhereIn('comment_likes', 'comment_id');
+                    await safeDelWhereIn('comment_flags', 'comment_id');
+                    await safeDelWhereIn('post_comment_likes', 'comment_id');
+                    await safeDelWhereIn('post_comment_flags', 'comment_id');
+                }
+            } catch {
+                // ignore
+            }
+
             await safeDel('post_comments', { post_id: postId });
             await safeDel('post_flags', { post_id: postId });
 
             await safeDel('lost_and_found', { id: postId });
             await safeDel('announcements', { id: postId });
             await safeDel('public_safety_alerts', { id: postId });
-            await safeDel('recommendations_and_tips', { id: postId });
+            await safeDel('recommendations', { id: postId });
             await safeDel('volunteer_help_requests', { id: postId });
 
             await safeDel('community_post_edits', { post_id: postId });
@@ -717,7 +1592,6 @@ router.delete('/:id', authenticateToken, async (req, res, next) => {
     }
 });
 
-
 /* ---------------------------------------------------------------------------
  * GET /api/community/trending
  * Returns trending posts within a time window.
@@ -729,11 +1603,14 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
             halfLife: halfLifeQ = '36',
             limit: limitQ = DEFAULT_LIMIT,
             offset: offsetQ = 0,
+            includeTotal: includeTotalQ = '0',
+            dateRange: dateRangeQ = 'all',
             subtype = '',
             city = '',
             county = '',
             user: userParam = '',
             view: viewParamRaw = '',
+            randomSeed: randomSeedQ = '',
         } = req.query;
 
         const viewParam = String(viewParamRaw || '').trim().toLowerCase();
@@ -743,6 +1620,8 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
 
         const viewerId = req.user?.id || 0;
 
+        // Seed for stable pseudo-random ordering when sort=random (keeps paging consistent)
+        const randomSeed = String(randomSeedQ || req.query.seed || req.user?.id || '').trim() || '0';
         const hoursWindow = parseWindowToHours(win);
         const halfLife = Math.max(6, Math.min(24 * 14, Number(halfLifeQ) || 36));
 
@@ -757,7 +1636,6 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
                 .leftJoin('announcements as a',          'cp.id', 'a.id')
                 .leftJoin('public_safety_alerts as psa', 'cp.id', 'psa.id')
                 .leftJoin('community_photos as p',       'cp.id', 'p.post_id')
-                .leftJoin('recommendations_and_tips as rt',  'cp.id', 'rt.id')
                 .leftJoin('volunteer_help_requests as vh',   'cp.id', 'vh.id')
                 .leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id')
                 .whereRaw('cp.posted_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)', [hoursWindow]);
@@ -814,11 +1692,23 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
             if (city.trim())   q.whereRaw('LOWER(cp.city)   = ?', city.trim().toLowerCase());
             if (county.trim()) q.whereRaw('LOWER(cp.county) = ?', county.trim().toLowerCase());
 
+            // Detect optional columns for persistent "Marked as Found" + Edited badges
+            const lfCols = await detectLostAndFoundResolveCols();
+            const hasEditedAtCol = await hasCommunityPostsEditedAt();
+
+            const dateExprSql = await getCommunityPostsDateExprSql('cp');
+
+            const hasPos = await hasCommunityPhotoPosition();
+
             const select = [
                 'cp.id',
+                db.raw('ANY_VALUE(cp.user_id) AS user_id'),
+                db.raw(`ANY_VALUE(${dateExprSql}) AS posted_at`),
+                db.raw(`ANY_VALUE(${dateExprSql}) AS date_created`),
+                ...(hasEditedAtCol ? [db.raw('ANY_VALUE(cp.edited_at) AS edited_at')] : [db.raw('NULL AS edited_at')]),
                 'cp.category',
-                'cp.posted_at as posted_at',
-                'cp.posted_at as date_created',
+
+
                 'cp.latitude',
                 'cp.longitude',
                 db.raw('COALESCE(cp.title, "")        AS title'),
@@ -836,13 +1726,14 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
                 db.raw('cc.label AS categoryLabel'),
                 'lf.lost_or_found',
                 'lf.reward',
+                ...(lfCols.resolved_at ? [db.raw('ANY_VALUE(lf.resolved_at) AS resolved_at')] : [db.raw('NULL AS resolved_at')]),
+                ...(lfCols.resolved_message ? [db.raw('COALESCE(ANY_VALUE(lf.resolved_message), "") AS resolved_message')] : [db.raw('"" AS resolved_message')]),
+                ...(lfCols.resolved_by_user_id ? [db.raw('ANY_VALUE(lf.resolved_by_user_id) AS resolved_by_user_id')] : [db.raw('NULL AS resolved_by_user_id')]),
                 'vh.help_type',
+                'vh.help_type_other',
                 'vh.request_kind',
-                'vh.needed_date',
-                'vh.contact',
-                db.raw('MAX(rt.rec_type) AS rec_type'),
-
-                db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
+                db.raw('COALESCE(ANY_VALUE(vh.is_urgent), 0) AS is_urgent'),
+                db.raw(photosArrayAggSql(hasPos)),
 
                 db.raw('COALESCE(MAX(ts.likes), 0)    AS likesCount'),
                 db.raw('COALESCE(MAX(ts.comments), 0) AS commentsCount'),
@@ -861,7 +1752,7 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
             ];
 
             q.groupBy('cp.id');
-            q.orderBy([{ column: 'score', order: 'desc' }, { column: 'cp.posted_at', order: 'desc' }]);
+            q.orderBy('score', 'desc').orderByRaw(`${dateExprSql} DESC`);
 
             const rows = await q.limit(limit).offset(offset).select(select);
             return res.json(rows);
@@ -875,7 +1766,6 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
             .leftJoin('announcements as a',          'cp.id', 'a.id')
             .leftJoin('public_safety_alerts as psa', 'cp.id', 'psa.id')
             .leftJoin('community_photos as p',       'cp.id', 'p.post_id')
-            .leftJoin('recommendations_and_tips as rt',  'cp.id', 'rt.id')
             .leftJoin('volunteer_help_requests as vh',   'cp.id', 'vh.id');
 
         if (subtype) applySubtypeFilter(q, subtype);
@@ -936,11 +1826,14 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
         const countyCols= await existingColumns('community_posts', ['county']);
         const addrCols  = await existingColumns('community_posts', ['street_address', 'address', 'location']);
 
+        const hasPos = await hasCommunityPhotoPosition();
+
         const select = [
             'cp.id',
+            db.raw(`ANY_VALUE(${dateExprSql}) AS posted_at`),
+            db.raw(`ANY_VALUE(${dateExprSql}) AS date_created`),
+            ...(hasEditedAtCol ? [db.raw('ANY_VALUE(cp.edited_at) AS edited_at')] : [db.raw('NULL AS edited_at')]),
             'cp.category',
-            'cp.posted_at as posted_at',
-            'cp.posted_at as date_created',
             'cp.latitude',
             'cp.longitude',
             db.raw(`${coalesceSql('cp.', titleCols, '""')} AS title`),
@@ -959,12 +1852,10 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
             'lf.lost_or_found',
             'lf.reward',
             'vh.help_type',
+            'vh.help_type_other',
             'vh.request_kind',
-            'vh.needed_date',
-            'vh.contact',
-            db.raw('MAX(rt.rec_type) AS rec_type'),
-
-            db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
+            db.raw('COALESCE(ANY_VALUE(vh.is_urgent), 0) AS is_urgent'),
+            db.raw(photosArrayAggSql(hasPos)),
 
             db('post_likes')
                 .count('*')
@@ -991,10 +1882,10 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
             ),
         ];
 
-        // Add a trending score when needed (view table or fallback)
-        if (sort === 'trending' && hasTsView) {
+        // Add a trending score when Trending is requested (either View=Trending or sort=trending)
+        if (wantsTrending && hasTsView) {
             select.push(db.raw('COALESCE(MAX(ts.trending_score), 0) AS score'));
-        } else if (sort === 'trending' && !hasTsView) {
+        } else if (wantsTrending && !hasTsView) {
             const windowSql = 'DATE_SUB(NOW(), INTERVAL ? HOUR)';
             select.push(
                 db.raw(
@@ -1013,12 +1904,15 @@ router.get('/trending', optionalAuth, async (req, res, next) => {
 
         q.groupBy('cp.id');
 
-        if (sort === 'popular') {
-            q.orderBy('likesCount', 'desc').orderBy('cp.posted_at', 'desc');
-        } else if (sort === 'trending') {
-            q.orderBy('score', 'desc').orderBy('cp.posted_at', 'desc');
+        if (sortMode === 'popular') {
+            q.orderBy('likesCount', 'desc').orderByRaw(`${dateExprSql} DESC`);
+        } else if (sortMode === 'trending') {
+            q.orderBy('score', 'desc').orderByRaw(`${dateExprSql} DESC`);
+        } else if (sortMode === 'random') {
+            // Stable pseudo-random ordering for paging
+            q.orderByRaw('MD5(CONCAT(cp.id, ?))', [randomSeed]).orderBy('cp.id', 'asc');
         } else {
-            q.orderBy('cp.posted_at', 'desc');
+            q.orderByRaw(`${dateExprSql} DESC`);
         }
 
         const posts = await q.limit(limit).offset(offset).select(select);
@@ -1045,13 +1939,7 @@ router.get('/trending/summary', optionalAuth, async (req, res, next) => {
                 WHEN LOWER(cp.category) IN ('general-discussion', 'discussion') THEN 'general-discussion'
                 WHEN LOWER(cp.category) IN ('announcement', 'announcements') THEN 'announcement'
 
-                WHEN LOWER(cp.category) = 'recommendations-tips' THEN
-                    CASE
-                        WHEN LOWER(COALESCE(rt.rec_type, '')) IN ('tip', 'tips') THEN 'tips'
-                        ELSE 'recommendations'
-                    END
-                WHEN LOWER(cp.category) IN ('tips', 'tip') THEN 'tips'
-                WHEN LOWER(cp.category) IN ('recommendations', 'recommendation') THEN 'recommendations'
+                WHEN LOWER(cp.category) IN ('recommendations-tips', 'recommendations', 'recommendation', 'tips', 'tip') THEN 'recommendations'
 
                 WHEN LOWER(cp.category) IN ('volunteer-requests', 'volunteer-help-requests', 'volunteer-help') THEN
                     CASE
@@ -1073,13 +1961,7 @@ router.get('/trending/summary', optionalAuth, async (req, res, next) => {
                 WHEN LOWER(cp.category) IN ('general-discussion', 'discussion') THEN 'Discussions'
                 WHEN LOWER(cp.category) IN ('announcement', 'announcements') THEN 'Announcements'
 
-                WHEN LOWER(cp.category) = 'recommendations-tips' THEN
-                    CASE
-                        WHEN LOWER(COALESCE(rt.rec_type, '')) IN ('tip', 'tips') THEN 'Tips'
-                        ELSE 'Recommendations'
-                    END
-                WHEN LOWER(cp.category) IN ('tips', 'tip') THEN 'Tips'
-                WHEN LOWER(cp.category) IN ('recommendations', 'recommendation') THEN 'Recommendations'
+                WHEN LOWER(cp.category) IN ('recommendations-tips', 'recommendations', 'recommendation', 'tips', 'tip') THEN 'Recommendations'
 
                 WHEN LOWER(cp.category) IN ('volunteer-requests', 'volunteer-help-requests', 'volunteer-help') THEN
                     CASE
@@ -1101,7 +1983,6 @@ router.get('/trending/summary', optionalAuth, async (req, res, next) => {
         const runFallback = async () => {
             let q = db('community_posts as cp')
                 .leftJoin('community_categories as cc', 'cp.category', 'cc.slug')
-                .leftJoin('recommendations_and_tips as rt', 'cp.id', 'rt.id')
                 .leftJoin('volunteer_help_requests as vh', 'cp.id', 'vh.id')
                 .whereRaw('cp.posted_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)', [hoursWindow]);
 
@@ -1143,7 +2024,6 @@ router.get('/trending/summary', optionalAuth, async (req, res, next) => {
             let q = db('ll_trending_scores as ts')
                 .join('community_posts as cp', 'cp.id', 'ts.post_id')
                 .leftJoin('community_categories as cc', 'cp.category', 'cc.slug')
-                .leftJoin('recommendations_and_tips as rt', 'cp.id', 'rt.id')
                 .leftJoin('volunteer_help_requests as vh', 'cp.id', 'vh.id')
                 .whereRaw('cp.posted_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)', [hoursWindow]);
 
@@ -1183,50 +2063,80 @@ router.get('/', optionalAuth, async (req, res, next) => {
         const {
             search = '',
             subtype = '',
-            sort = 'newest',               // 'newest' | 'popular' | 'trending'
+            sort = 'newest',               // 'newest' | 'popular' | 'trending' | 'random'
+            randomSeed: randomSeedQ = '',
             city = '',
             county = '',
             user: userParam = '',
             window: win = '48h',           // used when sort=trending and no view table
             halfLife: halfLifeQ = '36',    // used when sort=trending and no view table
-            limit:  limitQ  = DEFAULT_LIMIT,
+            dateRange: dateRangeQ = 'all',
+            limit: limitQ = DEFAULT_LIMIT,
             offset: offsetQ = 0,
+            includeTotal: includeTotalQ = '0',
         } = req.query;
 
         const viewParam = String(req.query.view || req.query.selectedView || '').trim().toLowerCase();
 
+        const includeTotal = ['1', 'true', 'yes'].includes(String(includeTotalQ || '').trim().toLowerCase());
         const isTrendingView = viewParam === 'trending';
-        const includeTotal = String(req.query.includeTotal || req.query.withTotal || '').trim() === '1';
-        const wantTrendingScore = isTrendingView || sort === 'trending';
 
-        const limit  = Math.max(1, Math.min(Number(limitQ)  || DEFAULT_LIMIT, MAX_LIMIT));
+        const sortNorm = String(sort || 'newest').trim().toLowerCase();
+        const sortMode = (sortNorm === 'popular' || sortNorm === 'trending' || sortNorm === 'random') ? sortNorm : 'newest';
+
+        // Stable random order (important for paging). Frontend should pass randomSeed when sort=random.
+        const wantsTrending = isTrendingView || sortMode === 'trending';
+
+        const limit = Math.max(1, Math.min(Number(limitQ) || DEFAULT_LIMIT, MAX_LIMIT));
         const offset = Math.max(0, Number(offsetQ) || 0);
 
         const viewerId = req.user?.id || 0;
 
+        const randomSeed = String(randomSeedQ || req.query.seed || req.user?.id || '').trim() || '0';
+
         const hasTsView = await db.schema.hasTable('ll_trending_scores');
         const hoursWindow = parseWindowToHours(win);
-        const halfLife    = Math.max(6, Math.min(24 * 14, Number(halfLifeQ) || 36));
+        const halfLife = Math.max(6, Math.min(24 * 14, Number(halfLifeQ) || 36));
+        const dateExprSql = await getCommunityPostsDateExprSql('cp');
+
+        // Live-computed fallback trending score (used when ll_trending_scores exists but is empty/stale).
+        // This keeps the Trending summary (which can fall back) consistent with the feed list.
+        const TRENDING_WINDOW_SQL = 'DATE_SUB(NOW(), INTERVAL ? HOUR)';
+        const TRENDING_FALLBACK_SCORE_SQL = `(
+            (
+                (SELECT COUNT(*) FROM post_likes    pl WHERE pl.post_id = cp.id AND pl.category='community_post' AND pl.created_at >= ${TRENDING_WINDOW_SQL}) * 1.0
+              + (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = cp.id AND pc.created_at >= ${TRENDING_WINDOW_SQL}) * 1.5
+              + (SELECT COUNT(*) FROM post_reposts  pr WHERE pr.post_id = cp.id AND pr.created_at >= ${TRENDING_WINDOW_SQL}) * 2.0
+              - (SELECT COUNT(*) FROM post_flags    pf WHERE pf.post_id = cp.id AND pf.created_at >= ${TRENDING_WINDOW_SQL}) * 2.0
+            ) * POW(0.5, GREATEST(TIMESTAMPDIFF(HOUR, ${dateExprSql}, NOW()), 0) / ?)
+        )`;
+        const TRENDING_FALLBACK_SCORE_BINDINGS = [hoursWindow, hoursWindow, hoursWindow, hoursWindow, halfLife];
+
 
         let q = db('community_posts as cp')
             .join('users as u', 'cp.user_id', 'u.id')
-            .leftJoin('community_categories as cc',  'cp.category', 'cc.slug')
-            .leftJoin('lost_and_found as lf',        'cp.id', 'lf.id')
-            .leftJoin('announcements as a',          'cp.id', 'a.id')
+            .leftJoin('community_categories as cc', 'cp.category', 'cc.slug')
+            .leftJoin('lost_and_found as lf', 'cp.id', 'lf.id')
+            .leftJoin('announcements as a', 'cp.id', 'a.id')
             .leftJoin('public_safety_alerts as psa', 'cp.id', 'psa.id')
-            .leftJoin('community_photos as p',       'cp.id', 'p.post_id')
-            .leftJoin('recommendations_and_tips as rt',  'cp.id', 'rt.id')
-            .leftJoin('volunteer_help_requests as vh',   'cp.id', 'vh.id');
+            .leftJoin('community_photos as p', 'cp.id', 'p.post_id')
+            .leftJoin('volunteer_help_requests as vh', 'cp.id', 'vh.id');
 
-        // When trending is involved (sort=trending OR view=trending) and the scored view exists, bring it in
-        if (wantTrendingScore && hasTsView) {
-            q = q
-                .leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id')
-                .where('ts.trending_score', '>', 0)
-                .whereRaw('cp.posted_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)', [hoursWindow]);
-        } else if (wantTrendingScore && !hasTsView) {
-            // fallback trending mode without the scored view: keep work bounded to the window
-            q = q.whereRaw('cp.posted_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)', [hoursWindow]);
+        // When Trending is requested (either View=Trending or sort=trending) and the scored view exists, join it in.
+        if (wantsTrending && hasTsView) {
+            q = q.leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id');
+
+            // Limit to the requested window.
+            q.andWhereRaw(`${dateExprSql} >= DATE_SUB(NOW(), INTERVAL ? HOUR)`, [hoursWindow]);
+
+            // IMPORTANT:
+            // Some installs have ll_trending_scores but it can be empty/stale (materialized/refresh lag).
+            // In that case, Trending summary can still show items (it falls back), but the feed would be empty.
+            // Fix: allow either a precomputed score OR a live-computed score to qualify as trending.
+            q.andWhereRaw(
+                `(COALESCE(ts.trending_score, 0) > 0 OR ${TRENDING_FALLBACK_SCORE_SQL} > 0)`,
+                TRENDING_FALLBACK_SCORE_BINDINGS
+            );
         }
 
         if (subtype) applySubtypeFilter(q, subtype);
@@ -1262,7 +2172,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
         }
 
         if (search.trim()) {
-            const stopWords = new Set(['the','for','an','a','and','of','to','in','on']);
+            const stopWords = new Set(['the', 'for', 'an', 'a', 'and', 'of', 'to', 'in', 'on']);
             const words = search
                 .trim().toLowerCase().split(/\s+/)
                 .filter((w) => w && !stopWords.has(w));
@@ -1274,7 +2184,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
                             this.where('cp.title', 'like', `%${w}%`)
                                 .orWhere('cp.description', 'like', `%${w}%`)
                                 .orWhere('u.first_name', 'like', `%${w}%`)
-                                .orWhere('u.last_name',  'like', `%${w}%`);
+                                .orWhere('u.last_name', 'like', `%${w}%`);
                         });
                     });
                 });
@@ -1298,28 +2208,127 @@ router.get('/', optionalAuth, async (req, res, next) => {
             });
         }
 
-        if (city.trim())   q.whereRaw('LOWER(cp.city)   = ?', city.trim().toLowerCase());
-        if (county.trim()) q.whereRaw('LOWER(cp.county) = ?', county.trim().toLowerCase());
+        applyDateRange(q, dateRangeQ, dateExprSql);
 
-        // Optional total count for pagination / footer display
+        if (city.trim()) q.whereRaw('LOWER(cp.city)   = ?', city.trim().toLowerCase());
+        if (county.trim()) q.whereRaw('LOWER(cp.county) = ?', county.trim().toLowerCase());
         if (includeTotal) {
             try {
-                const countQ = q.clone().clearSelect().clearOrder().clearGroup();
-                const row = await countQ.countDistinct({ total: 'cp.id' }).first();
-                const totalCount = Number(row?.total || 0);
-                res.set('X-Total-Count', String(totalCount));
-                res.set('Access-Control-Expose-Headers', 'X-Total-Count');
+                let countQ = db('community_posts as cp')
+                    .join('users as u', 'cp.user_id', 'u.id')
+                    // These joins are required for split category filtering (Recommendations/Tips + Volunteer/Help)
+                    .leftJoin('volunteer_help_requests as vh', 'cp.id', 'vh.id');
+
+                if (wantsTrending && hasTsView) {
+                    countQ = countQ
+                        .leftJoin('ll_trending_scores as ts', 'ts.post_id', 'cp.id')
+                        .andWhereRaw(`${dateExprSql} >= DATE_SUB(NOW(), INTERVAL ? HOUR)`, [hoursWindow])
+                        .andWhereRaw(
+                            `(COALESCE(ts.trending_score, 0) > 0 OR ${TRENDING_FALLBACK_SCORE_SQL} > 0)`,
+                            TRENDING_FALLBACK_SCORE_BINDINGS
+                        );
+                }
+
+                applyDateRange(countQ, dateRangeQ, dateExprSql);
+
+                if (subtype) applySubtypeFilter(countQ, subtype);
+
+                if (String(userParam).trim()) {
+                    const raw = String(userParam).trim();
+                    if (/^\d+$/.test(raw)) {
+                        countQ.andWhere('cp.user_id', Number(raw));
+                    } else {
+                        const handle = raw.replace(/^@/, '').toLowerCase();
+                        countQ.andWhereRaw('LOWER(u.handle) = ?', [handle]);
+                    }
+                }
+
+                if (viewParam === 'mine') {
+                    if (viewerId) countQ.andWhere('cp.user_id', viewerId);
+                    else countQ.whereRaw('1=0');
+                } else if (viewParam === 'following') {
+                    if (!viewerId) {
+                        countQ.whereRaw('1=0');
+                    } else {
+                        const schema = await detectFollowSchema();
+                        if (schema) {
+                            countQ.andWhereExists(function () {
+                                this.select(db.raw('1'))
+                                    .from(`${schema.table} as f`)
+                                    .whereRaw(`f.\`${schema.follower}\` = ? AND f.\`${schema.following}\` = cp.user_id`, [viewerId]);
+                            });
+                        } else {
+                            countQ.whereRaw('1=0');
+                        }
+                    }
+                }
+
+                const hasVisibility = await db.schema.hasColumn('community_posts', 'visibility');
+                if (hasVisibility) {
+                    const follow = await detectFollowSchema();
+                    countQ.andWhere(function () {
+                        this.whereNull('cp.visibility').orWhere('cp.visibility', 'public');
+                        if (viewerId && follow) {
+                            this.orWhere(function () {
+                                this.where('cp.visibility', 'followers').andWhereExists(function () {
+                                    this.select(db.raw('1'))
+                                        .from(`${follow.table} as f`)
+                                        .whereRaw(`f.\`${follow.follower}\` = ? AND f.\`${follow.following}\` = cp.user_id`, [viewerId]);
+                                });
+                            });
+                        }
+                    });
+                }
+
+                if (search.trim()) {
+                    const stopWords = new Set(['the', 'for', 'an', 'a', 'and', 'of', 'to', 'in', 'on']);
+                    const words = search
+                        .trim().toLowerCase().split(/\s+/)
+                        .filter((w) => w && !stopWords.has(w));
+
+                    if (words.length) {
+                        countQ.andWhere(function () {
+                            words.forEach((w, i) => {
+                                this[i ? 'orWhere' : 'where'](function () {
+                                    this.where('cp.title', 'like', `%${w}%`)
+                                        .orWhere('cp.description', 'like', `%${w}%`)
+                                        .orWhere('u.first_name', 'like', `%${w}%`)
+                                        .orWhere('u.last_name', 'like', `%${w}%`);
+                                });
+                            });
+                        });
+                    }
+                }
+
+                if (city.trim()) countQ.whereRaw('LOWER(cp.city)   = ?', city.trim().toLowerCase());
+                if (county.trim()) countQ.whereRaw('LOWER(cp.county) = ?', county.trim().toLowerCase());
+
+                if (wantsTrending && !hasTsView) {
+                    res.set('X-Total-Count', '0');
+                } else {
+                    const row = await countQ.countDistinct({total: 'cp.id'}).first();
+                    res.set('X-Total-Count', String(Number(row?.total || 0)));
+                }
             } catch {
                 res.set('X-Total-Count', '0');
-                res.set('Access-Control-Expose-Headers', 'X-Total-Count');
             }
         }
 
+// Detect optional Lost & Found resolve columns (for persistent "Marked as Found" on refresh)
+        const lfCols = await detectLostAndFoundResolveCols();
+
+// Detect optional edited_at column on community_posts
+        const hasEditedAtCol = await hasCommunityPostsEditedAt();
+
+        const hasPos = await hasCommunityPhotoPosition();
+
         const select = [
             'cp.id',
+            db.raw('ANY_VALUE(cp.user_id) AS user_id'),
+            db.raw(`ANY_VALUE(${dateExprSql}) AS posted_at`),
+            db.raw(`ANY_VALUE(${dateExprSql}) AS date_created`),
+            ...(hasEditedAtCol ? [db.raw('ANY_VALUE(cp.edited_at) AS edited_at')] : [db.raw('NULL AS edited_at')]),
             'cp.category',
-            'cp.posted_at as posted_at',
-            'cp.posted_at as date_created',
             'cp.latitude',
             'cp.longitude',
             db.raw('COALESCE(cp.title, "")        AS title'),
@@ -1335,15 +2344,16 @@ router.get('/', optionalAuth, async (req, res, next) => {
             db.raw('COALESCE(ANY_VALUE(u.profile_picture), "") AS profile_picture'),
 
             db.raw('ANY_VALUE(cc.label) AS categoryLabel'),
-            'ANY_VALUE(lf.lost_or_found)',
-            'ANY_VALUE(lf.reward)',
-            'ANY_VALUE(vh.help_type)',
-            'ANY_VALUE(vh.request_kind)',
-            'ANY_VALUE(vh.needed_date)',
-            'ANY_VALUE(vh.contact)',
-            db.raw('MAX(rt.rec_type) AS rec_type'),
-
-            db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
+            db.raw('ANY_VALUE(lf.lost_or_found) AS lost_or_found'),
+            db.raw('ANY_VALUE(lf.reward) AS reward'),
+            ...(lfCols.resolved_at ? [db.raw('ANY_VALUE(lf.resolved_at) AS resolved_at')] : [db.raw('NULL AS resolved_at')]),
+            ...(lfCols.resolved_message ? [db.raw('COALESCE(ANY_VALUE(lf.resolved_message), "") AS resolved_message')] : [db.raw('"" AS resolved_message')]),
+            ...(lfCols.resolved_by_user_id ? [db.raw('ANY_VALUE(lf.resolved_by_user_id) AS resolved_by_user_id')] : [db.raw('NULL AS resolved_by_user_id')]),
+            db.raw('ANY_VALUE(vh.help_type) AS help_type'),
+            db.raw('ANY_VALUE(vh.help_type_other) AS help_type_other'),
+            db.raw('ANY_VALUE(vh.request_kind) AS request_kind'),
+            db.raw('COALESCE(ANY_VALUE(vh.is_urgent), 0) AS is_urgent'),
+            db.raw(photosArrayAggSql(hasPos)),
 
             db('post_likes')
                 .count('*')
@@ -1371,9 +2381,10 @@ router.get('/', optionalAuth, async (req, res, next) => {
         ];
 
         // Add a trending score when needed (view table or fallback)
-        if (sort === 'trending' && hasTsView) {
-            select.push(db.raw('COALESCE(MAX(ts.trending_score), 0) AS score'));
-        } else if (wantTrendingScore && !hasTsView) {
+        if (wantsTrending && hasTsView) {
+            // Use precomputed score when available; otherwise fall back to a live-computed score.
+            select.push(db.raw(`COALESCE(MAX(ts.trending_score), ${TRENDING_FALLBACK_SCORE_SQL}) AS score`, TRENDING_FALLBACK_SCORE_BINDINGS));
+        } else if (wantsTrending && !hasTsView) {
             const windowSql = 'DATE_SUB(NOW(), INTERVAL ? HOUR)';
             select.push(
                 db.raw(
@@ -1383,7 +2394,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
                       + (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = cp.id AND pc.created_at >= ${windowSql}) * 1.5
                       + (SELECT COUNT(*) FROM post_reposts  pr WHERE pr.post_id = cp.id AND pr.created_at >= ${windowSql}) * 2.0
                       - (SELECT COUNT(*) FROM post_flags    pf WHERE pf.post_id = cp.id AND pf.created_at >= ${windowSql}) * 2.0
-                      ) * POW(0.5, GREATEST(TIMESTAMPDIFF(HOUR, cp.posted_at, NOW()), 0) / ?)
+                      ) * POW(0.5, GREATEST(TIMESTAMPDIFF(HOUR, ${dateExprSql}, NOW()), 0) / ?)
                     ) AS score`,
                     [hoursWindow, hoursWindow, hoursWindow, hoursWindow, halfLife]
                 )
@@ -1392,16 +2403,15 @@ router.get('/', optionalAuth, async (req, res, next) => {
 
         q.groupBy('cp.id');
 
-        if (wantTrendingScore && !hasTsView) {
-            q.havingRaw('score > 0');
-        }
-
-        if (sort === 'popular') {
-            q.orderBy('likesCount', 'desc').orderBy('cp.posted_at', 'desc');
-        } else if (sort === 'trending') {
-            q.orderBy('score', 'desc').orderBy('cp.posted_at', 'desc');
+        if (sortMode === 'popular') {
+            q.orderBy('likesCount', 'desc').orderByRaw(`${dateExprSql} DESC`);
+        } else if (sortMode === 'trending') {
+            q.orderBy('score', 'desc').orderByRaw(`${dateExprSql} DESC`);
+        } else if (sortMode === 'random') {
+            // Stable pseudo-random ordering for paging
+            q.orderByRaw('MD5(CONCAT(cp.id, ?))', [randomSeed]).orderBy('cp.id', 'asc');
         } else {
-            q.orderBy('cp.posted_at', 'desc');
+            q.orderByRaw(`${dateExprSql} DESC`);
         }
 
         const posts = await q.limit(limit).offset(offset).select(select);
@@ -1458,40 +2468,55 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
             .leftJoin('announcements as a',          'cp.id', 'a.id')
             .leftJoin('public_safety_alerts as psa', 'cp.id', 'psa.id')
             .leftJoin('community_photos as p',       'cp.id', 'p.post_id')
-            .leftJoin('recommendations_and_tips as rt',  'cp.id', 'rt.id')
             .leftJoin('volunteer_help_requests as vh',   'cp.id', 'vh.id')
             .where('cp.id', postId);
 
+        // Detect optional Lost & Found resolve columns (for persistent "Marked as Found")
+        const lfCols = await detectLostAndFoundResolveCols();
+
+        // Detect optional edited_at column on community_posts
+        const hasEditedAtCol = await hasCommunityPostsEditedAt();
+
+        const dateExprSql = await getCommunityPostsDateExprSql('cp');
+
+        const hasPos = await hasCommunityPhotoPosition();
+
         const select = [
             'cp.id',
-            'cp.user_id',
+            db.raw('ANY_VALUE(cp.user_id) AS user_id'),
+            db.raw(`ANY_VALUE(${dateExprSql}) AS posted_at`),
+            db.raw(`ANY_VALUE(${dateExprSql}) AS date_created`),
+            ...(hasEditedAtCol ? [db.raw('ANY_VALUE(cp.edited_at) AS edited_at')] : [db.raw('NULL AS edited_at')]),
             'cp.category',
-            'cp.posted_at as posted_at',
-            'cp.posted_at as date_created',
             'cp.latitude',
             'cp.longitude',
-            db.raw('COALESCE(cp.title, "")        AS title'),
-            db.raw('COALESCE(cp.description, "")  AS description'),
-            db.raw('COALESCE(cp.city, "")         AS city'),
-            db.raw('COALESCE(cp.county, "")       AS county'),
-            db.raw('COALESCE(cp.street_address, "") AS street_address'),
+            db.raw('COALESCE(ANY_VALUE(cp.title), "")        AS title'),
+            db.raw('COALESCE(ANY_VALUE(cp.description), "")  AS description'),
+            db.raw('COALESCE(ANY_VALUE(cp.city), "")         AS city'),
+            db.raw('COALESCE(ANY_VALUE(cp.county), "")       AS county'),
+            db.raw('COALESCE(ANY_VALUE(cp.street_address), "") AS street_address'),
 
-            'u.first_name',
-            'u.last_name',
-            db.raw('COALESCE(u.handle, "") AS handle'),
-            db.raw('COALESCE(u.avatar_url, "") AS avatar_url'),
-            db.raw('COALESCE(u.profile_picture, "") AS profile_picture'),
+            db.raw('ANY_VALUE(u.first_name) AS first_name'),
+            db.raw('ANY_VALUE(u.last_name) AS last_name'),
+            db.raw('COALESCE(ANY_VALUE(u.handle), "") AS handle'),
+            db.raw('COALESCE(ANY_VALUE(u.public_id), NULL) AS public_id'),
+            db.raw('COALESCE(ANY_VALUE(u.avatar_url), "") AS avatar_url'),
+            db.raw('COALESCE(ANY_VALUE(u.profile_picture), "") AS profile_picture'),
 
-            db.raw('cc.label AS categoryLabel'),
-            'lf.lost_or_found',
-            'lf.reward',
-            'vh.help_type',
-            'vh.request_kind',
-            'vh.needed_date',
-            'vh.contact',
-            db.raw('MAX(rt.rec_type) AS rec_type'),
+            db.raw('ANY_VALUE(cc.label) AS categoryLabel'),
 
-            db.raw('COALESCE(JSON_ARRAYAGG(p.url), JSON_ARRAY()) AS photos'),
+            db.raw('ANY_VALUE(lf.lost_or_found) AS lost_or_found'),
+            db.raw('ANY_VALUE(lf.reward) AS reward'),
+            ...(lfCols.resolved_at ? [db.raw('ANY_VALUE(lf.resolved_at) AS resolved_at')] : [db.raw('NULL AS resolved_at')]),
+            ...(lfCols.resolved_message ? [db.raw('COALESCE(ANY_VALUE(lf.resolved_message), "") AS resolved_message')] : [db.raw('"" AS resolved_message')]),
+            ...(lfCols.resolved_by_user_id ? [db.raw('ANY_VALUE(lf.resolved_by_user_id) AS resolved_by_user_id')] : [db.raw('NULL AS resolved_by_user_id')]),
+
+            db.raw('ANY_VALUE(vh.help_type) AS help_type'),
+            db.raw('ANY_VALUE(vh.help_type_other) AS help_type_other'),
+            db.raw('ANY_VALUE(vh.request_kind) AS request_kind'),
+            db.raw('COALESCE(ANY_VALUE(vh.is_urgent), 0) AS is_urgent'),
+            db.raw('COALESCE(ANY_VALUE(vh.is_urgent), 0) AS urgent'),
+            db.raw(photosArrayAggSql(hasPos)),
 
             db('post_likes').count('*').whereRaw('category = ? AND post_id = cp.id', ['community_post']).as('likesCount'),
             db('post_comments').count('*').whereRaw('post_id = cp.id').as('commentsCount'),
@@ -1768,6 +2793,93 @@ router.post('/comments', authenticateToken, async (req, res, next) => {
 });
 
 /* POST /api/community/comments/:commentId/like ------------------------------ */
+
+/* DELETE /api/community/comments/:commentId --------------------------------- */
+router.delete('/comments/:commentId', authenticateToken, async (req, res, next) => {
+    try {
+        const cid = Number(req.params.commentId);
+        if (!Number.isFinite(cid) || cid <= 0) return res.status(400).json({ message: 'Invalid comment id' });
+
+        await db.transaction(async (trx) => {
+            const row = await trx('post_comments')
+                .select('id', 'post_id', 'user_id', 'root_id', 'parent_id')
+                .where({ id: cid })
+                .first();
+
+            if (!row) {
+                const e = new Error('Comment not found');
+                e.status = 404;
+                throw e;
+            }
+
+            const post = await trx('community_posts').select('user_id').where({ id: row.post_id }).first();
+            const postOwnerId = post?.user_id ?? null;
+
+            const me = req.user?.id;
+            const isAuthor = Number(row.user_id) === Number(me);
+            const isPostOwner = postOwnerId != null && Number(postOwnerId) === Number(me);
+            if (!isAuthor && !isPostOwner) {
+                const e = new Error('Not allowed');
+                e.status = 403;
+                throw e;
+            }
+
+            const rootId = Number(row.root_id || row.id);
+
+            // Build descendant set (handles nested replies safely)
+            const all = await trx('post_comments')
+                .select('id', 'parent_id')
+                .where({ root_id: rootId });
+
+            const children = new Map();
+            for (const r of all) {
+                const pid = r.parent_id == null ? null : Number(r.parent_id);
+                const arr = children.get(pid) || [];
+                arr.push(Number(r.id));
+                children.set(pid, arr);
+            }
+
+            const toDelete = [];
+            const stack = [Number(row.id)];
+            const seen = new Set();
+
+            while (stack.length) {
+                const cur = stack.pop();
+                if (!cur || seen.has(cur)) continue;
+                seen.add(cur);
+                toDelete.push(cur);
+                const kids = children.get(cur) || [];
+                for (const k of kids) stack.push(k);
+            }
+
+            if (!toDelete.length) return;
+
+            // Delete likes/flags for these comments
+            await trx('comment_likes').whereIn('comment_id', toDelete).del();
+
+            const flagsEnabled = await hasCommentFlagsTable();
+            if (flagsEnabled) {
+                await trx('comment_flags').whereIn('comment_id', toDelete).del();
+            }
+
+            // Update root reply_count if deleting replies (not deleting the root comment itself)
+            if (Number(row.parent_id) && Number.isFinite(rootId) && rootId > 0) {
+                await trx('post_comments')
+                    .where({ id: rootId })
+                    .update({ reply_count: trx.raw('GREATEST(reply_count - ?, 0)', [toDelete.length]) });
+            }
+
+            await trx('post_comments').whereIn('id', toDelete).del();
+
+            res.locals.deletedIds = toDelete;
+        });
+
+        return res.json({ deleted: true, ids: res.locals.deletedIds || [Number(req.params.commentId)] });
+    } catch (err) {
+        return next(err);
+    }
+});
+
 router.post('/comments/:commentId/like', authenticateToken, async (req, res, next) => {
     try {
         const cid = Number(req.params.commentId);

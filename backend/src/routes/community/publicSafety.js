@@ -26,7 +26,7 @@ const validate = [
 router.post(
     '/',
     authenticateToken,
-    upload.array('photos', 8),
+    upload.array('photos', 10),
     validate,
     async (req, res, next) => {
         /* 1. validation errors */

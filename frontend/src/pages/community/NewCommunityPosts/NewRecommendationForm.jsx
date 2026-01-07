@@ -14,8 +14,8 @@ import {
     Button,
     Tooltip,
     CircularProgress,
-    IconButton,
-} from '@mui/material';
+    Alert,
+    IconButton} from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PhotoLibraryOutlinedIcon from '@mui/icons-material/PhotoLibraryOutlined';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
@@ -24,7 +24,7 @@ import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import useBasePostForm, { MAX_TITLE, MAX_DESCRIPTION } from './useBasePostForm';
 import CityCountySelect from '../../../components/CityCountySelect';
 
-const MAX_PHOTOS = 4;
+const MAX_PHOTOS = 8;
 
 function makeId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -32,6 +32,70 @@ function makeId() {
     }
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+function parseApiError(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+
+    if (s.startsWith('{') && s.endsWith('}')) {
+        try {
+            const obj = JSON.parse(s);
+            if (obj && typeof obj === 'object') return obj;
+        } catch {
+            // ignore
+        }
+    }
+    return null;
+}
+
+function formatResetAt(resetAt) {
+    if (!resetAt) return '';
+    try {
+        const d = new Date(resetAt);
+        if (Number.isNaN(d.getTime())) return String(resetAt);
+        return d.toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+    } catch {
+        return String(resetAt);
+    }
+}
+
+function buildPrettyError(raw) {
+    const obj = parseApiError(raw);
+    const msg = String(obj?.message || raw || '').trim();
+
+    const isEditLimit =
+        msg.toLowerCase().includes('edit a post up to') &&
+        msg.toLowerCase().includes('times') &&
+        msg.toLowerCase().includes('24-hour');
+
+    if (isEditLimit) {
+        const when = obj?.resetAt ? formatResetAt(obj.resetAt) : '';
+        return {
+            title: 'Edit limit reached',
+            body: 'You can edit a post up to 5 times within a 24-hour window.',
+            footer: when ? `Try again after ${when}.` : '',
+        };
+    }
+
+    if (obj && (obj.message || obj.resetAt || obj.remaining != null)) {
+        const when = obj?.resetAt ? formatResetAt(obj.resetAt) : '';
+        return {
+            title: 'Unable to save',
+            body: msg || 'Something went wrong.',
+            footer: when ? `Try again after ${when}.` : '',
+        };
+    }
+
+    if (!msg) return null;
+    return { title: 'Unable to save', body: msg, footer: '' };
+}
+
 
 /**
  * NewRecommendationForm
@@ -321,22 +385,57 @@ export default function NewRecommendationForm({
             const [lat, lng] = coords.length === 2 ? coords : ['', ''];
 
             if (editMode) {
-                const payload = {
-                    category: 'recommendations-tips',
-                    title: base.title,
-                    description: base.description,
-                    rec_type: recType,
-                    city: base.city,
-                    county: base.county,
-                    latitude: lat,
-                    longitude: lng,
-                    photos: photos
-                        .filter((p) => p?.existing && p?.url)
-                        .map((p) => String(p.url).trim())
-                        .filter(Boolean),
-                };
+                const postId = Number(initialData?.id ?? initialData?.post_id ?? initialData?.postId);
+                if (!Number.isFinite(postId) || postId <= 0) {
+                    throw new Error('Missing post id for edit.');
+                }
 
-                await doSubmit(payload);
+                const form = new FormData();
+                form.append('title', base.title || '');
+                form.append('description', base.description || '');
+                form.append('rec_type', recType || 'business');
+                form.append('city', base.city || '');
+                form.append('county', base.county || '');
+                form.append('latitude', lat ?? '');
+                form.append('longitude', lng ?? '');
+
+                const orderTokens = [];
+                let newIndex = 0;
+
+                photos.forEach((p) => {
+                    if (!p) return;
+
+                    if (p.existing && p.url) {
+                        orderTokens.push(String(p.url).trim());
+                        return;
+                    }
+
+                    if (p.file) {
+                        form.append('photos', p.file);
+                        orderTokens.push(`__new__:${newIndex}`);
+                        newIndex += 1;
+                    }
+                });
+
+                form.append('photo_order', JSON.stringify(orderTokens));
+
+                const res = await fetch(`/api/community/${postId}`, {
+                    method: 'PATCH',
+                    body: form,
+                    credentials: 'include',
+                });
+
+                if (!res.ok) {
+                    const msg = (await res.text()) || 'Save failed.';
+                    throw new Error(msg);
+                }
+
+                try {
+                    await res.json();
+                } catch {
+                    // ignore
+                }
+
                 if (typeof onRefresh === 'function') await onRefresh();
                 onClose();
                 return;
@@ -380,7 +479,25 @@ export default function NewRecommendationForm({
                 component="form"
                 sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
             >
-                {base.error && <Typography color="error">{base.error}</Typography>}
+                {base.error ? (() => {
+                    const pe = buildPrettyError(base.error);
+                    if (!pe) return null;
+                    return (
+                        <Alert severity="error" sx={{ borderRadius: 2 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                                {pe.title}
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 0.25 }}>
+                                {pe.body}
+                            </Typography>
+                            {pe.footer ? (
+                                <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                                    {pe.footer}
+                                </Typography>
+                            ) : null}
+                        </Alert>
+                    );
+                })() : null}
 
                 <TextField
                     label="Title"
@@ -394,17 +511,29 @@ export default function NewRecommendationForm({
                     {base.title.length} / {MAX_TITLE}
                 </Typography>
 
-                <FormControl component="fieldset" required>
-                    <FormLabel>Post Type</FormLabel>
-                    <RadioGroup row value={recType} onChange={(e) => setRecType(e.target.value)}>
+                <FormControl sx={{ mt: 0.5 }}>
+                    <FormLabel sx={{ fontWeight: 800 }}>Type</FormLabel>
+                    <RadioGroup
+                        row
+                        value={recType}
+                        onChange={(e) => setRecType(e.target.value)}
+                        sx={{ gap: 1 }}
+                    >
                         <FormControlLabel
                             value="business"
                             control={<Radio />}
-                            label="Business / Service"
+                            label="Recommendation"
+                            sx={{ m: 0 }}
                         />
-                        <FormControlLabel value="tip" control={<Radio />} label="General Tip / Idea" />
+                        <FormControlLabel
+                            value="tip"
+                            control={<Radio />}
+                            label="Tip"
+                            sx={{ m: 0 }}
+                        />
                     </RadioGroup>
                 </FormControl>
+
 
                 <CityCountySelect
                     city={base.city}
@@ -695,10 +824,10 @@ export default function NewRecommendationForm({
                         {editMode && photos.some((p) => p?.existing === false) && (
                             <Box sx={{ mt: 1 }}>
                                 <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
-                                    Note: New photo uploads on edit will work once your PATCH endpoint accepts multipart uploads.
+                                    Note: You can add, remove, and reorder photos while editing.
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                    Right now, edits will only persist existing photo URLs.
+                                    Your changes will upload to the same cloud storage as new posts.
                                 </Typography>
                             </Box>
                         )}

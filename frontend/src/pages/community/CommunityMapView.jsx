@@ -1,11 +1,14 @@
 // src/pages/community/CommunityMapView.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, IconButton, Typography } from '@mui/material';
+import { Box, Chip, IconButton, Typography } from '@mui/material';
 import { styled, useTheme } from '@mui/material/styles';
 import { GeoJSON, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import '../../components/MapView.css';
+
+import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded';
+import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 
 import alabama from '../../data/alabama.json';
 
@@ -13,12 +16,25 @@ import alabama from '../../data/alabama.json';
    Marker PNG imports (kept from your original)
    ─────────────────────────────────────────── */
 import communityMarkerPng from '../../assets/mapMarkers/community/community-marker.png';
+import communityMarkerGoldPng from '../../assets/mapMarkers/community/community-marker-gold.png';
+
 import announcementMarkerPng from '../../assets/mapMarkers/community/announcement-marker.png';
+import announcementMarkerGoldPng from '../../assets/mapMarkers/community/announcement-marker-gold.png';
+
 import discussionMarkerPng from '../../assets/mapMarkers/community/discussion-marker.png';
+import discussionMarkerGoldPng from '../../assets/mapMarkers/community/discussion-marker-gold.png';
+
 import lostAndFoundMarkerPng from '../../assets/mapMarkers/community/lost-and-found-marker.png';
+import lostAndFoundMarkerGoldPng from '../../assets/mapMarkers/community/lost-and-found-marker-gold.png';
+
 import publicSafetyAlertMarkerPng from '../../assets/mapMarkers/community/public-safety-alert-marker.png';
-import recommendationAndTipsMarkerPng from '../../assets/mapMarkers/community/recommendation-and-tips-marker.png';
+import publicSafetyAlertMarkerGoldPng from '../../assets/mapMarkers/community/public-safety-alert-marker-gold.png';
+
+import recommendationsMarkerPng from '../../assets/mapMarkers/community/recommendations-marker.png';
+import recommendationsMarkerGoldPng from '../../assets/mapMarkers/community/recommendations-marker-gold.png';
+
 import volunteerHelpRequestsMarkerPng from '../../assets/mapMarkers/community/volunteer-help-requests-marker.png';
+import volunteerHelpRequestsMarkerGoldPng from '../../assets/mapMarkers/community/volunteer-help-requests-marker-gold.png';
 
 /* ───────────────────────────────────────────
    Build DivIcons (same visual as before)
@@ -41,8 +57,17 @@ const announcementDivIcon = makeDivIcon(announcementMarkerPng);
 const discussionDivIcon = makeDivIcon(discussionMarkerPng);
 const lostAndFoundDivIcon = makeDivIcon(lostAndFoundMarkerPng);
 const publicSafetyAlertDivIcon = makeDivIcon(publicSafetyAlertMarkerPng);
-const recommendationDivIcon = makeDivIcon(recommendationAndTipsMarkerPng);
+const recommendationDivIcon = makeDivIcon(recommendationsMarkerPng);
 const volunteerHelpDivIcon = makeDivIcon(volunteerHelpRequestsMarkerPng);
+
+/* Gold (hover/active) variants */
+const communityDivIconGold = makeDivIcon(communityMarkerGoldPng);
+const announcementDivIconGold = makeDivIcon(announcementMarkerGoldPng);
+const discussionDivIconGold = makeDivIcon(discussionMarkerGoldPng);
+const lostAndFoundDivIconGold = makeDivIcon(lostAndFoundMarkerGoldPng);
+const publicSafetyAlertDivIconGold = makeDivIcon(publicSafetyAlertMarkerGoldPng);
+const recommendationDivIconGold = makeDivIcon(recommendationsMarkerGoldPng);
+const volunteerHelpDivIconGold = makeDivIcon(volunteerHelpRequestsMarkerGoldPng);
 
 /* Category → icon map (matches your original coverage) */
 const CATEGORY_ICON_MAP = {
@@ -67,6 +92,30 @@ const CATEGORY_ICON_MAP = {
     'volunteer-help-requests': volunteerHelpDivIcon,
 };
 
+
+/* Category → GOLD icon map (hover/selected) */
+const CATEGORY_ICON_MAP_GOLD = {
+    event: communityDivIconGold,
+    events: communityDivIconGold,
+    announcement: announcementDivIconGold,
+    announcements: announcementDivIconGold,
+    'general-discussion': discussionDivIconGold,
+    discussion: discussionDivIconGold,
+    'lost-and-found': lostAndFoundDivIconGold,
+    'lost-found': lostAndFoundDivIconGold,
+    'public-safety-alerts': publicSafetyAlertDivIconGold,
+    recommendation: recommendationDivIconGold,
+    recommendations: recommendationDivIconGold,
+    tips: recommendationDivIconGold,
+    'recommendations-tips': recommendationDivIconGold,
+    'volunteer-requests': volunteerHelpDivIconGold,
+    volunteers: volunteerHelpDivIconGold,
+    'help-requests': volunteerHelpDivIconGold,
+    'volunteer-and-help-requests': volunteerHelpDivIconGold,
+    'volunteer-help': volunteerHelpDivIconGold,
+    'volunteer-help-requests': volunteerHelpDivIconGold,
+};
+
 /* ───────────────────────────────────────────
    De-stack helpers (same behavior)
    ─────────────────────────────────────────── */
@@ -82,24 +131,102 @@ const offsetCoords = ([lat, lng], idx, total, zoom) => {
     return [lat + mToLat(r) * Math.sin(angle), lng + mToLng(r, lat) * Math.cos(angle)];
 };
 
+/** Pan target slightly north of the marker so the popup has breathing room (prevents crowding near the close "X"). */
+function getNorthPanTarget(map, latlng, offsetPx = 190) {
+    if (!map || !latlng) return latlng;
+    try {
+        const z = map.getZoom?.();
+        if (typeof z !== 'number') return latlng;
+        const p = map.project(latlng, z);
+        // Y grows downward in screen/pixel space. Subtracting moves the center north,
+        // which makes the marker appear lower (more room for popup chrome).
+        const targetPoint = L.point(p.x, p.y - offsetPx);
+        return map.unproject(targetPoint, z);
+    } catch {
+        return latlng;
+    }
+}
+
 /* ───────────────────────────────────────────
    Map constants & wrapper
    ─────────────────────────────────────────── */
-const DEFAULT_CENTER = [32.806671, -86.79113];
+const DEFAULT_CENTER = [32.69, -86.79113];
 const DEFAULT_ZOOM = 7.5;
 
 const RAW_BOUNDS = L.geoJSON(alabama.features[0]).getBounds();
 
-const MapWrapper = styled(Box)(() => ({
+const MapWrapper = styled(Box)(({ theme }) => ({
     position: 'relative',
     width: '100%',
     height: '100%',
     '& .leaflet-container': { width: '100%', height: '100%' },
+
+    // Center attribution just above the bottom of the panel
     '& .leaflet-control-attribution': {
         bottom: '32px !important',
         left: '50% !important',
         transform: 'translateX(-50%)',
         textAlign: 'center',
+    },
+
+    // ───────────────────────────────────────────
+    // Polished popup styling (UI only)
+    // ───────────────────────────────────────────
+    '& .leaflet-popup': {
+        marginBottom: 6,
+    },
+    '& .leaflet-popup-content-wrapper': {
+        background: theme.palette.background.paper,
+        borderRadius: 18,
+        padding: 0,
+        overflow: 'hidden',
+        border: `1px solid ${theme.palette.divider}`,
+        boxShadow: '0 16px 48px rgba(0,0,0,0.18)',
+    },
+    '& .leaflet-popup-content': {
+        margin: 0,
+        width: 'auto',
+        lineHeight: 1.2,
+    },
+    '& .leaflet-popup-tip': {
+        background: theme.palette.background.paper,
+        border: `1px solid ${theme.palette.divider}`,
+        boxShadow: '0 10px 28px rgba(0,0,0,0.12)',
+    },
+    '& .leaflet-popup-close-button': {
+        width: 28,
+        height: 28,
+        top: 10,
+        right: 10,
+        borderRadius: 999,
+        color: theme.palette.text.secondary,
+        background: theme.palette.background.paper,
+        border: `1px solid ${theme.palette.divider}`,
+        boxShadow: '0 8px 18px rgba(0,0,0,0.14)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    '& .leaflet-popup-close-button:hover': {
+        color: theme.palette.text.primary,
+        background: theme.palette.action.hover,
+    },
+
+    // In the map marker popup, we want owner Edit/Delete actions to be icon-only
+    '& .ll-map-popup-content .ll-owner-action-label': {
+        display: 'none',
+    },
+    '& .ll-map-popup-content .ll-owner-actions': {
+        gap: 1,
+    },
+    '& .ll-map-popup-content .ll-owner-action-btn': {
+        minWidth: 0,
+        paddingLeft: 10,
+        paddingRight: 10,
+    },
+    '& .ll-map-popup-content .ll-owner-action-btn .MuiButton-startIcon': {
+        marginRight: 0,
+        marginLeft: 0,
     },
 }));
 
@@ -201,6 +328,81 @@ const Recenter = ({ center, zoomLevel }) => {
     return null;
 };
 
+
+/** Close the active post popup after the user zooms out more than 2 scroll-zoom steps. */
+const ZoomDismissOnZoomOut = ({ openedPopupId, onPopupClose, maxZoomOutSteps = 2 }) => {
+    const map = useMap();
+
+    const openedIdRef = useRef(null);
+    const lastZoomRef = useRef(null);
+    const zoomOutStepsRef = useRef(0);
+    const onCloseRef = useRef(onPopupClose);
+
+    useEffect(() => {
+        onCloseRef.current = onPopupClose;
+    }, [onPopupClose]);
+
+    useEffect(() => {
+        const opened = openedPopupId != null ? String(openedPopupId) : null;
+        openedIdRef.current = opened;
+        zoomOutStepsRef.current = 0;
+        try {
+            lastZoomRef.current = map?.getZoom?.();
+        } catch {
+            lastZoomRef.current = null;
+        }
+    }, [openedPopupId, map]);
+
+    useEffect(() => {
+        if (!map) return undefined;
+
+        const handleZoomEnd = () => {
+            const opened = openedIdRef.current;
+            let newZoom = null;
+            try {
+                newZoom = map.getZoom();
+            } catch {
+                newZoom = null;
+            }
+
+            const lastZoom = lastZoomRef.current;
+
+            if (!opened) {
+                lastZoomRef.current = newZoom;
+                return;
+            }
+
+            if (typeof newZoom === 'number' && typeof lastZoom === 'number' && newZoom < lastZoom) {
+                zoomOutStepsRef.current += 1;
+
+                if (zoomOutStepsRef.current > maxZoomOutSteps) {
+                    zoomOutStepsRef.current = 0;
+                    openedIdRef.current = null;
+
+                    try {
+                        map.closePopup();
+                    } catch {}
+
+                    const fn = onCloseRef.current;
+                    if (typeof fn === 'function') fn(opened);
+                }
+            } else if (typeof newZoom === 'number' && typeof lastZoom === 'number' && newZoom > lastZoom) {
+                // If they zoom in again, reset the "zoom out" counter.
+                zoomOutStepsRef.current = 0;
+            }
+
+            lastZoomRef.current = newZoom;
+        };
+
+        map.on('zoomend', handleZoomEnd);
+        return () => {
+            map.off('zoomend', handleZoomEnd);
+        };
+    }, [map, maxZoomOutSteps]);
+
+    return null;
+};
+
 function normalizePostId(value) {
     if (value === null || typeof value === 'undefined') return null;
     const s = String(value).trim();
@@ -298,6 +500,28 @@ export default function CommunityMap({
     const animRef = useRef(null);
     const iconElRef = useRef(null);
     const lastOpenedKeyRef = useRef(null);
+
+    // Local hover/selection for marker icon swapping (green ↔ gold)
+    const [hoveredMarkerIdLocal, setHoveredMarkerIdLocal] = useState(null);
+    const [selectedMarkerIdLocal, setSelectedMarkerIdLocal] = useState(null);
+
+    const hoveredKeyExternal = useMemo(() => {
+        const k = normalizePostId(hoveredId);
+        return k || (hoveredId != null ? String(hoveredId) : null);
+    }, [hoveredId]);
+
+    // Keep our local 'selected' marker in sync with the opened popup id
+    useEffect(() => {
+        const k = normalizePostId(openedPopupId);
+        if (k) {
+            setSelectedMarkerIdLocal(String(k));
+        } else if (openedPopupId != null && String(openedPopupId).trim()) {
+            setSelectedMarkerIdLocal(String(openedPopupId));
+        } else {
+            setSelectedMarkerIdLocal(null);
+        }
+    }, [openedPopupId]);
+
 
     // cleanup any previous hover animation, then apply for hovered marker
     useEffect(() => {
@@ -486,6 +710,8 @@ export default function CommunityMap({
                     <MaskController />
                     <Recenter center={center} zoomLevel={zoomLevel} />
 
+                    <ZoomDismissOnZoomOut openedPopupId={openedPopupId} onPopupClose={onPopupClose} />
+
                     <TileLayer
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         attribution="© OpenStreetMap contributors"
@@ -503,12 +729,30 @@ export default function CommunityMap({
 
                     {/* markers */}
                     {markerEntries.map(({ groupKey, position, cat, ids }) => {
-                        const icon = CATEGORY_ICON_MAP[cat] || communityDivIcon;
                         const idx = activeIdxByGroup[groupKey] ?? 0;
                         const activeId = ids?.[idx];
                         const activeKey = normalizePostId(activeId) || (activeId != null ? String(activeId) : null);
-                        const openedKey = normalizePostId(openedPopupId) || (openedPopupId != null ? String(openedPopupId) : null);
+
+                        const openedKey =
+                            normalizePostId(openedPopupId) || (openedPopupId != null ? String(openedPopupId) : null);
+
                         const isOpen = !!openedKey && !!activeKey && String(openedKey) === String(activeKey);
+
+                        const baseIcon = CATEGORY_ICON_MAP[cat] || communityDivIcon;
+                        const goldIcon = CATEGORY_ICON_MAP_GOLD[cat] || communityDivIconGold;
+
+                        const isHovered =
+                            !!activeKey &&
+                            ((hoveredMarkerIdLocal != null && String(hoveredMarkerIdLocal) === String(activeKey)) ||
+                                (hoveredKeyExternal != null && String(hoveredKeyExternal) === String(activeKey)));
+
+                        const isSelected =
+                            !!activeKey &&
+                            (isOpen ||
+                                (selectedMarkerIdLocal != null && String(selectedMarkerIdLocal) === String(activeKey)));
+
+                        const icon = isHovered || isSelected ? goldIcon : baseIcon;
+
                         const resolvedContent = resolvePopupNode(popupContentById, activeKey ?? activeId);
                         const popupKey = `popup-${String(activeKey ?? activeId)}-${resolvedContent ? 'ready' : 'loading'}`;
 
@@ -533,13 +777,31 @@ export default function CommunityMap({
                                     });
                                 }}
                                 eventHandlers={{
+                                    mouseover: () => {
+                                        const k = activeKey ?? activeId;
+                                        const kk = normalizePostId(k) || (k != null ? String(k) : null);
+                                        if (kk) setHoveredMarkerIdLocal(String(kk));
+                                    },
+                                    mouseout: () => {
+                                        setHoveredMarkerIdLocal(null);
+                                    },
                                     click: (e) => {
                                         if (activeId == null) return;
                                         setActiveIdxByGroup((p) => ({ ...p, [groupKey]: idx }));
                                         const ll = e?.latlng;
                                         const clickId = activeKey ?? activeId;
+                                        const sel = normalizePostId(clickId) || (clickId != null ? String(clickId) : null);
+                                        if (sel) setSelectedMarkerIdLocal(String(sel));
+
                                         if (ll && typeof ll.lat === 'number' && typeof ll.lng === 'number') {
-                                            onMarkerClick?.(clickId, { lat: ll.lat, lng: ll.lng });
+                                            const map = mapRef?.current;
+                                            const panTarget = getNorthPanTarget(map, ll, 190);
+                                            onMarkerClick?.(clickId, {
+                                                lat: panTarget?.lat ?? ll.lat,
+                                                lng: panTarget?.lng ?? ll.lng,
+                                                markerLat: ll.lat,
+                                                markerLng: ll.lng,
+                                            });
                                         } else {
                                             onMarkerClick?.(clickId);
                                         }
@@ -552,56 +814,138 @@ export default function CommunityMap({
                                         closeButton
                                         closeOnClick={false}
                                         autoPan={false}
-                                        onClose={() => onPopupClose?.(activeKey ?? activeId)}
+                                        onClose={() => {
+                                            const k = normalizePostId(activeKey ?? activeId) ||
+                                                ((activeKey ?? activeId) != null ? String(activeKey ?? activeId) : null);
+                                            if (k && selectedMarkerIdLocal != null && String(selectedMarkerIdLocal) === String(k)) {
+                                                setSelectedMarkerIdLocal(null);
+                                            }
+                                            onPopupClose?.(activeKey ?? activeId);
+                                        }}
                                         maxWidth={420}
                                     >
-                                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-                                            {Array.isArray(ids) && ids.length > 1 && (
-                                                <IconButton
-                                                    size="large"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const newIdx = Math.max(idx - 1, 0);
-                                                        setActiveIdxByGroup((p) => ({ ...p, [groupKey]: newIdx }));
-                                                        const nextId = ids[newIdx];
-                                                        const nextKey = normalizePostId(nextId) || nextId;
-                                                        onMarkerClick?.(nextKey, { lat: position[0], lng: position[1] });
-                                                    }}
-                                                >
-                                                    ‹
-                                                </IconButton>
-                                            )}
+                                        {(() => {
+                                            const hasStack = Array.isArray(ids) && ids.length > 1;
 
-                                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                                                {resolvedContent ? (
-                                                    typeof resolvedContent === 'string' ? (
-                                                        <div dangerouslySetInnerHTML={{ __html: resolvedContent }} />
+                                            const goPrev = (e) => {
+                                                e.stopPropagation();
+                                                const newIdx = Math.max(idx - 1, 0);
+                                                setActiveIdxByGroup((p) => ({ ...p, [groupKey]: newIdx }));
+                                                const nextId = ids[newIdx];
+                                                const nextKey = normalizePostId(nextId) || nextId;
+                                                const map = mapRef?.current;
+                                                const ll = L.latLng(position[0], position[1]);
+                                                const panTarget = getNorthPanTarget(map, ll, 190);
+                                                onMarkerClick?.(nextKey, {
+                                                    lat: panTarget?.lat ?? position[0],
+                                                    lng: panTarget?.lng ?? position[1],
+                                                    markerLat: position[0],
+                                                    markerLng: position[1],
+                                                });
+                                            };
+
+                                            const goNext = (e) => {
+                                                e.stopPropagation();
+                                                const newIdx = Math.min(idx + 1, ids.length - 1);
+                                                setActiveIdxByGroup((p) => ({ ...p, [groupKey]: newIdx }));
+                                                const nextId = ids[newIdx];
+                                                const nextKey = normalizePostId(nextId) || nextId;
+                                                const map = mapRef?.current;
+                                                const ll = L.latLng(position[0], position[1]);
+                                                const panTarget = getNorthPanTarget(map, ll, 190);
+                                                onMarkerClick?.(nextKey, {
+                                                    lat: panTarget?.lat ?? position[0],
+                                                    lng: panTarget?.lng ?? position[1],
+                                                    markerLat: position[0],
+                                                    markerLng: position[1],
+                                                });
+                                            };
+
+                                            return (
+                                                <Box
+                                                    sx={{
+                                                        width: 'min(420px, 86vw)',
+                                                        maxWidth: '100%',
+                                                    }}
+                                                >                                                    <Box className="ll-map-popup-content" sx={{ p: resolvedContent ? 0 : 1.25 }}>
+                                                    {resolvedContent ? (
+                                                        typeof resolvedContent === 'string' ? (
+                                                            <div dangerouslySetInnerHTML={{ __html: resolvedContent }} />
+                                                        ) : (
+                                                            resolvedContent
+                                                        )
                                                     ) : (
-                                                        resolvedContent
-                                                    )
-                                                ) : (
-                                                    <Typography variant="body2" color="text.secondary">
-                                                        Loading post…
-                                                    </Typography>
-                                                )}
-                                            </Box>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            Loading post…
+                                                        </Typography>
+                                                    )}
+                                                </Box>
 
-                                            {Array.isArray(ids) && ids.length > 1 && (
-                                                <IconButton
-                                                    size="large"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const newIdx = Math.min(idx + 1, ids.length - 1);
-                                                        setActiveIdxByGroup((p) => ({ ...p, [groupKey]: newIdx }));
-                                                        const nextId = ids[newIdx];
-                                                        const nextKey = normalizePostId(nextId) || nextId;
-                                                        onMarkerClick?.(nextKey, { lat: position[0], lng: position[1] });
-                                                    }}
-                                                >
-                                                    ›
-                                                </IconButton>
-                                            )}
-                                        </Box>
+                                                    {hasStack && (
+                                                        <Box
+                                                            sx={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: 1,
+                                                                px: 1.25,
+                                                                py: 1,
+                                                                borderTop: '1px solid',
+                                                                borderColor: 'divider',
+                                                                bgcolor: 'background.paper',
+                                                            }}
+                                                        >
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={goPrev}
+                                                                disabled={idx <= 0}
+                                                                sx={{
+                                                                    width: 32,
+                                                                    height: 32,
+                                                                    borderRadius: 999,
+                                                                    border: '1px solid',
+                                                                    borderColor: 'divider',
+                                                                    bgcolor: 'background.paper',
+                                                                    boxShadow: '0 6px 14px rgba(0,0,0,0.10)',
+                                                                }}
+                                                            >
+                                                                <ChevronLeftRoundedIcon fontSize="small" />
+                                                            </IconButton>
+
+                                                            <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                                                                <Chip
+                                                                    size="small"
+                                                                    label={`${idx + 1}/${ids.length}`}
+                                                                    sx={{
+                                                                        fontWeight: 800,
+                                                                        borderRadius: 999,
+                                                                        bgcolor: 'rgba(25, 118, 210, 0.10)',
+                                                                        border: '1px solid',
+                                                                        borderColor: 'rgba(25, 118, 210, 0.25)',
+                                                                    }}
+                                                                />
+                                                            </Box>
+
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={goNext}
+                                                                disabled={idx >= ids.length - 1}
+                                                                sx={{
+                                                                    width: 32,
+                                                                    height: 32,
+                                                                    borderRadius: 999,
+                                                                    border: '1px solid',
+                                                                    borderColor: 'divider',
+                                                                    bgcolor: 'background.paper',
+                                                                    boxShadow: '0 6px 14px rgba(0,0,0,0.10)',
+                                                                }}
+                                                            >
+                                                                <ChevronRightRoundedIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </Box>
+                                                    )}
+                                                </Box>
+                                            );
+                                        })()}
                                     </Popup>
                                 )}
                             </Marker>

@@ -1,126 +1,234 @@
-// src/components/UserCardPopover.jsx
-import React, { useEffect, useMemo, useState } from 'react';
-import { Avatar, Box, Button, IconButton, Popover, Typography } from '@mui/material';
+import React from 'react';
+import PropTypes from 'prop-types';
+import {
+    Avatar,
+    Box,
+    Button,
+    ClickAwayListener,
+    Divider,
+    IconButton,
+    Paper,
+    Popper,
+    Typography,
+} from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import CloseIcon from '@mui/icons-material/Close';
+import PersonIcon from '@mui/icons-material/Person';
 
 /**
- * Lightweight user card popover with Follow/Following, Message, and View Profile.
- * - Has an "X" in the top-right.
- * - Does NOT close on outside click (backdrop) — only via the X or ESC.
- * - Follow disables immediately and shows "Following" (optimistic).
- * - If `isSelf` is true, Follow/Message are hidden.
+ * User mini card (popover).
+ * - Has an X in the top-right.
+ * - Per request: closes when clicking anywhere outside of the card.
  */
-export default function UserCardPopover({
-                                            anchorEl,
-                                            onClose,
-                                            user,
-                                            isSelf = false,
-                                            following = false,
-                                            onFollow,
-                                            onMessage,
-                                            onViewProfile,
-                                        }) {
-    const open = Boolean(anchorEl);
-    const id = open ? 'user-card-popover' : undefined;
+export default function UserCardPopover(props) {
+    const {
+        anchorEl,
+        onClose,
+        user,
+        isSelf,
+        following,
+        onFollow,
+        onViewProfile,
+    } = props;
 
-    const name =
-        `${user?.first_name || ''} ${user?.last_name || ''}`.trim() ||
-        user?.display_name ||
-        user?.name ||
-        'User';
+    const open = Boolean(anchorEl) && Boolean(user);
+    const id = open ? 'user-card-popper' : undefined;
 
-    const username = user?.handle || user?.username || '';
-    const avatar = user?.avatar_url || user?.profile_picture || '';
+    const firstName = user?.first_name || user?.firstName || '';
+    const lastName = user?.last_name || user?.lastName || '';
+    const handle = user?.handle || user?.username || '';
+    const avatarUrl =
+        user?.avatar_url ||
+        user?.avatarUrl ||
+        user?.profile_picture ||
+        user?.profilePicture ||
+        '';
 
-    // Local optimistic state so the button disables instantly
-    const [forcedFollowing, setForcedFollowing] = useState(false);
+    const displayName = `${String(firstName).trim()} ${String(lastName).trim()}`.trim() || handle || 'User';
+    const hasAvatar = Boolean(String(avatarUrl || '').trim());
 
-    useEffect(() => {
-        // Sync from prop when it becomes true, and reset when popover closes
-        if (following) setForcedFollowing(true);
-        if (!open) setForcedFollowing(false);
-    }, [following, open]);
+    const safeClose = () => {
+        if (typeof onClose === 'function') onClose();
+    };
 
-    const isFollowing = useMemo(
-        () => Boolean(following || forcedFollowing),
-        [following, forcedFollowing]
-    );
+    const handleCloseClick = (e) => {
+        e.stopPropagation();
+        safeClose();
+    };
 
-    const handleFollow = () => {
-        if (!isFollowing) {
-            setForcedFollowing(true); // flip immediately
-            onFollow?.(user);         // parent will persist to server
-        }
+    const handleView = () => {
+        if (!user) return;
+        if (typeof onViewProfile === 'function') onViewProfile(user);
+        safeClose();
+    };
+
+    const handleFollowClick = () => {
+        if (!user) return;
+        if (typeof onFollow === 'function') onFollow(user);
     };
 
     return (
-        <Popover
+        <Popper
             id={id}
             open={open}
             anchorEl={anchorEl}
-            onClose={onClose}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-            PaperProps={{
-                sx: {
-                    width: { xs: '92vw', sm: 320 },
-                    maxWidth: { xs: '92vw', sm: 320 },
-                    borderRadius: 2,
-                    boxShadow: '0 4px 18px rgba(0,0,0,0.15)',
-                },
-            }}
+            placement="bottom-start"
+            modifiers={[
+                { name: 'offset', options: { offset: [0, 10] } },
+                { name: 'preventOverflow', options: { padding: 8 } },
+            ]}
+            sx={{ zIndex: 2200 }}
         >
-            <Box sx={{ p: 2, display: 'grid', gap: 1 }}>
-                {/* Header with avatar/name and X */}
+            {/* Needed because Popper is portaled; click-away should still work. */}
+            <ClickAwayListener onClickAway={safeClose} disableReactTree>
                 <Box
-                    sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 1,
-                    }}
+                    sx={{ maxWidth: '92vw' }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
                 >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                        <Avatar src={avatar} alt={name} />
-                        <Box sx={{ minWidth: 0 }}>
-                            <Typography variant="subtitle1" noWrap title={name}>
-                                {name}
-                            </Typography>
-                            {username && (
-                                <Typography variant="caption" color="text.secondary" noWrap>
-                                    @{username}
-                                </Typography>
-                            )}
-                        </Box>
-                    </Box>
-
-                    <IconButton size="small" aria-label="Close" onClick={onClose}>
-                        <CloseIcon fontSize="small" />
-                    </IconButton>
-                </Box>
-
-                {!isSelf && (
-                    <Button
-                        fullWidth
-                        variant="contained"
-                        onClick={handleFollow}
-                        disabled={isFollowing}
-                        sx={isFollowing ? { bgcolor: 'action.disabledBackground', color: 'text.disabled' } : undefined}
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            width: { xs: 304, sm: 344 },
+                            borderRadius: 3,
+                            overflow: 'hidden',
+                            border: '1px solid',
+                            borderColor: (t) => alpha(t.palette.primary.main, 0.16),
+                            bgcolor: (t) => alpha(t.palette.background.paper, 0.94),
+                            backdropFilter: 'saturate(140%) blur(10px)',
+                            backgroundImage: 'none',
+                            boxShadow: (t) => `0 14px 40px ${alpha(t.palette.common.black, 0.16)}`,
+                        }}
+                        role="dialog"
+                        aria-label="User card"
                     >
-                        {isFollowing ? 'Following' : 'Follow'}
-                    </Button>
-                )}
+                        <Box sx={{ p: 1.5 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25 }}>
+                                <Avatar
+                                    src={hasAvatar ? avatarUrl : undefined}
+                                    alt={displayName}
+                                    sx={{
+                                        width: 46,
+                                        height: 46,
+                                        flexShrink: 0,
+                                        bgcolor: hasAvatar ? 'transparent' : 'grey.600',
+                                        color: hasAvatar ? 'inherit' : '#fff',
+                                        border: '1px solid',
+                                        borderColor: (t) => alpha(t.palette.common.black, 0.10),
+                                    }}
+                                    imgProps={{ referrerPolicy: 'no-referrer' }}
+                                >
+                                    {!hasAvatar ? <PersonIcon fontSize="small" /> : null}
+                                </Avatar>
 
-                {!isSelf && (
-                    <Button fullWidth variant="outlined" onClick={() => onMessage?.(user)}>
-                        Message
-                    </Button>
-                )}
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                    <Typography
+                                        variant="subtitle1"
+                                        sx={{
+                                            fontWeight: 800,
+                                            lineHeight: 1.2,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                        }}
+                                    >
+                                        {displayName}
+                                    </Typography>
+                                    {handle ? (
+                                        <Typography
+                                            variant="caption"
+                                            sx={{
+                                                color: 'text.secondary',
+                                                display: 'block',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            @{handle}
+                                        </Typography>
+                                    ) : null}
+                                </Box>
 
-                <Button fullWidth variant="text" onClick={() => onViewProfile?.(user)}>
-                    View Profile
-                </Button>
-            </Box>
-        </Popover>
+                                <IconButton
+                                    aria-label="Close"
+                                    onClick={handleCloseClick}
+                                    size="small"
+                                    sx={{
+                                        ml: 0.25,
+                                        borderRadius: 2,
+                                        color: 'text.secondary',
+                                        '&:hover': {
+                                            bgcolor: (t) => alpha(t.palette.common.black, 0.06),
+                                            color: 'text.primary',
+                                        },
+                                    }}
+                                >
+                                    <CloseIcon fontSize="small" />
+                                </IconButton>
+                            </Box>
+                        </Box>
+
+                        <Divider />
+
+                        <Box
+                            sx={{
+                                p: 1.25,
+                                display: 'flex',
+                                gap: 1,
+                                flexDirection: { xs: 'column', sm: 'row' },
+                            }}
+                        >
+                            {!isSelf ? (
+                                <Button
+                                    onClick={handleFollowClick}
+                                    variant={following ? 'outlined' : 'contained'}
+                                    fullWidth
+                                    sx={{
+                                        textTransform: 'none',
+                                        fontWeight: 800,
+                                        borderRadius: 999,
+                                        py: 1,
+                                        ...(following
+                                            ? {
+                                                borderColor: (t) => alpha(t.palette.primary.main, 0.35),
+                                                color: 'primary.main',
+                                            }
+                                            : {}),
+                                    }}
+                                >
+                                    {following ? 'Following' : 'Follow'}
+                                </Button>
+                            ) : null}
+
+                            <Button
+                                onClick={handleView}
+                                variant="contained"
+                                fullWidth
+                                sx={{
+                                    textTransform: 'none',
+                                    fontWeight: 900,
+                                    borderRadius: 999,
+                                    py: 1,
+                                    boxShadow: 'none',
+                                }}
+                            >
+                                View Profile
+                            </Button>
+                        </Box>
+                    </Paper>
+                </Box>
+            </ClickAwayListener>
+        </Popper>
     );
 }
+
+UserCardPopover.propTypes = {
+    anchorEl: PropTypes.any,
+    onClose: PropTypes.func,
+    user: PropTypes.object,
+    isSelf: PropTypes.bool,
+    following: PropTypes.bool,
+    onFollow: PropTypes.func,
+    onViewProfile: PropTypes.func,
+};

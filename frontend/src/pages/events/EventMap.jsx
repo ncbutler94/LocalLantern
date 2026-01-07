@@ -23,7 +23,7 @@ import announcementMarkerPng from '../../assets/mapMarkers/community/announcemen
 import discussionMarkerPng from '../../assets/mapMarkers/community/discussion-marker.png';
 import lostAndFoundMarkerPng from '../../assets/mapMarkers/community/lost-and-found-marker.png';
 import publicSafetyAlertMarkerPng from '../../assets/mapMarkers/community/public-safety-alert-marker.png';
-import recommendationAndTipsMarkerPng from '../../assets/mapMarkers/community/recommendation-and-tips-marker.png';
+import recommendationAndTipsMarkerPng from '../../assets/mapMarkers/community/recommendations-marker.png';
 import volunteerHelpRequestsMarkerPng from '../../assets/mapMarkers/community/volunteer-help-requests-marker.png';
 
 /* Build DivIcons identical to Community’s MapView */

@@ -9,9 +9,9 @@ import {
     Tooltip,
     Button,
     CircularProgress,
+    Alert,
     Box,
-    IconButton,
-} from '@mui/material';
+    IconButton} from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PhotoLibraryOutlinedIcon from '@mui/icons-material/PhotoLibraryOutlined';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
@@ -30,6 +30,70 @@ function makeId() {
     }
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+function parseApiError(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+
+    if (s.startsWith('{') && s.endsWith('}')) {
+        try {
+            const obj = JSON.parse(s);
+            if (obj && typeof obj === 'object') return obj;
+        } catch {
+            // ignore
+        }
+    }
+    return null;
+}
+
+function formatResetAt(resetAt) {
+    if (!resetAt) return '';
+    try {
+        const d = new Date(resetAt);
+        if (Number.isNaN(d.getTime())) return String(resetAt);
+        return d.toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+    } catch {
+        return String(resetAt);
+    }
+}
+
+function buildPrettyError(raw) {
+    const obj = parseApiError(raw);
+    const msg = String(obj?.message || raw || '').trim();
+
+    const isEditLimit =
+        msg.toLowerCase().includes('edit a post up to') &&
+        msg.toLowerCase().includes('times') &&
+        msg.toLowerCase().includes('24-hour');
+
+    if (isEditLimit) {
+        const when = obj?.resetAt ? formatResetAt(obj.resetAt) : '';
+        return {
+            title: 'Edit limit reached',
+            body: 'You can edit a post up to 5 times within a 24-hour window.',
+            footer: when ? `Try again after ${when}.` : '',
+        };
+    }
+
+    if (obj && (obj.message || obj.resetAt || obj.remaining != null)) {
+        const when = obj?.resetAt ? formatResetAt(obj.resetAt) : '';
+        return {
+            title: 'Unable to save',
+            body: msg || 'Something went wrong.',
+            footer: when ? `Try again after ${when}.` : '',
+        };
+    }
+
+    if (!msg) return null;
+    return { title: 'Unable to save', body: msg, footer: '' };
+}
+
 
 export default function NewPublicSafetyForm({
                                                 onClose,
@@ -320,22 +384,57 @@ export default function NewPublicSafetyForm({
             const [lat, lng] = coords;
 
             if (editMode) {
-                const payload = {
-                    category: 'public-safety-alerts',
-                    title: base.title,
-                    description: base.description,
-                    city: base.city,
-                    county: base.county,
-                    latitude: lat ?? '',
-                    longitude: lng ?? '',
-                    expires_at: expiresAt ? expiresAt.toISOString() : '',
-                    photos: photos
-                        .filter((p) => p?.existing && p?.url)
-                        .map((p) => String(p.url).trim())
-                        .filter(Boolean),
-                };
+                const postId = Number(initialData?.id ?? initialData?.post_id ?? initialData?.postId);
+                if (!Number.isFinite(postId) || postId <= 0) {
+                    throw new Error('Missing post id for edit.');
+                }
 
-                await doSubmit(payload);
+                const fd = new FormData();
+                fd.append('title', base.title || '');
+                fd.append('description', base.description || '');
+                fd.append('city', base.city || '');
+                fd.append('county', base.county || '');
+                fd.append('latitude', lat ?? '');
+                fd.append('longitude', lng ?? '');
+                fd.append('expires_at', expiresAt ? expiresAt.format('YYYY-MM-DD HH:mm:ss') : '');
+
+                const orderTokens = [];
+                let newIndex = 0;
+
+                photos.forEach((p) => {
+                    if (!p) return;
+
+                    if (p.existing && p.url) {
+                        orderTokens.push(String(p.url).trim());
+                        return;
+                    }
+
+                    if (p.file) {
+                        fd.append('photos', p.file);
+                        orderTokens.push(`__new__:${newIndex}`);
+                        newIndex += 1;
+                    }
+                });
+
+                fd.append('photo_order', JSON.stringify(orderTokens));
+
+                const res = await fetch(`/api/community/${postId}`, {
+                    method: 'PATCH',
+                    body: fd,
+                    credentials: 'include',
+                });
+
+                if (!res.ok) {
+                    const msg = (await res.text()) || 'Save failed.';
+                    throw new Error(msg);
+                }
+
+                try {
+                    await res.json();
+                } catch {
+                    // ignore
+                }
+
                 if (typeof onRefresh === 'function') await onRefresh();
                 onClose();
                 return;
@@ -348,7 +447,7 @@ export default function NewPublicSafetyForm({
             fd.append('county', base.county);
             fd.append('latitude', lat ?? '');
             fd.append('longitude', lng ?? '');
-            fd.append('expires_at', expiresAt ? expiresAt.toISOString() : '');
+            fd.append('expires_at', expiresAt ? expiresAt.format('YYYY-MM-DD HH:mm:ss') : '');
 
             photos.forEach((p) => {
                 if (p?.file) fd.append('photos', p.file);
@@ -375,7 +474,25 @@ export default function NewPublicSafetyForm({
             <DialogTitle>{titleText}</DialogTitle>
 
             <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {base.error && <Typography color="error">{base.error}</Typography>}
+                {base.error ? (() => {
+                    const pe = buildPrettyError(base.error);
+                    if (!pe) return null;
+                    return (
+                        <Alert severity="error" sx={{ borderRadius: 2 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                                {pe.title}
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 0.25 }}>
+                                {pe.body}
+                            </Typography>
+                            {pe.footer ? (
+                                <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                                    {pe.footer}
+                                </Typography>
+                            ) : null}
+                        </Alert>
+                    );
+                })() : null}
 
                 {/* Title */}
                 <TextField
@@ -691,10 +808,10 @@ export default function NewPublicSafetyForm({
                         {editMode && photos.some((p) => p?.existing === false) && (
                             <Box sx={{ mt: 1 }}>
                                 <Typography variant="caption" color="warning.main" sx={{ fontWeight: 700 }}>
-                                    Note: New photo uploads on edit will work once your PATCH endpoint accepts multipart uploads.
+                                    Note: You can add, remove, and reorder photos while editing.
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                    Right now, edits will only persist existing photo URLs.
+                                    Your changes will upload to the same cloud storage as new posts.
                                 </Typography>
                             </Box>
                         )}

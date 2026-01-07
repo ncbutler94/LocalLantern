@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams,
+    useLocation,
+    useNavigate } from 'react-router-dom';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
     Box,
     Paper,
@@ -20,32 +23,48 @@ import {
     RadioGroup,
     FormControlLabel,
     Radio,
+    Tooltip,
+    Menu,
+    MenuItem,
+    ListItemIcon,
+    ListItemText
 } from '@mui/material';
+
+import { alpha as alphaColor } from '@mui/material/styles';
 
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
-import CampaignIcon from '@mui/icons-material/Campaign';
-import ChatBubbleIcon from '@mui/icons-material/ChatBubble';
-import ReportIcon from '@mui/icons-material/Report';
-import LightbulbIcon from '@mui/icons-material/Lightbulb';
-import PanToolIcon from '@mui/icons-material/PanTool';
-import SearchIcon from '@mui/icons-material/Search';
+import announcementMarker from '../../assets/mapMarkers/community/announcement-marker.png';
+import announcementMarkerGold from '../../assets/mapMarkers/community/announcement-marker-gold.png';
+import discussionMarker from '../../assets/mapMarkers/community/discussion-marker.png';
+import discussionMarkerGold from '../../assets/mapMarkers/community/discussion-marker-gold.png';
+import recommendationsMarker from '../../assets/mapMarkers/community/recommendations-marker.png';
+import recommendationsMarkerGold from '../../assets/mapMarkers/community/recommendations-marker-gold.png';
+import volHelpMarker from '../../assets/mapMarkers/community/volunteer-help-requests-marker.png';
+import volHelpMarkerGold from '../../assets/mapMarkers/community/volunteer-help-requests-marker-gold.png';
+import lostFoundMarker from '../../assets/mapMarkers/community/lost-and-found-marker.png';
+import lostFoundMarkerGold from '../../assets/mapMarkers/community/lost-and-found-marker-gold.png';
+import safetyMarker from '../../assets/mapMarkers/community/public-safety-alert-marker.png';
+import safetyMarkerGold from '../../assets/mapMarkers/community/public-safety-alert-marker-gold.png';
+import communityMarker from '../../assets/mapMarkers/community/community-marker.png';
+import communityMarkerGold from '../../assets/mapMarkers/community/community-marker-gold.png';
+
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
 import ArrowUpwardRoundedIcon from '@mui/icons-material/ArrowUpwardRounded';
 import CloseIcon from '@mui/icons-material/Close';
-import ThumbUpOffAltIcon from '@mui/icons-material/ThumbUpOffAlt';
-import ThumbUpAltIcon from '@mui/icons-material/ThumbUpAlt';
-import ReplyRoundedIcon from '@mui/icons-material/ReplyRounded';
 import FlagRoundedIcon from '@mui/icons-material/FlagRounded';
 import PersonIcon from '@mui/icons-material/Person';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import EditRoundedIcon from '@mui/icons-material/EditRounded';
+import DeleteRoundedIcon from '@mui/icons-material/DeleteRounded';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 
 import ActionBar from '../../components/ActionBar';
 import SharePostDialog from '../../components/SharePostDialog';
 import UserCardPopover from '../../components/UserCardPopover';
-
 const api = process.env.REACT_APP_API_URL || '';
 
 /* ---------- Relative time helper ---------- */
@@ -55,79 +74,179 @@ const timeAgo = (input) => {
     const diffMs = Math.max(0, Date.now() - d.getTime());
 
     const s = Math.floor(diffMs / 1000);
-    if (s < 60) return 'just now';
+    if (s < 60) return '1m ago';
 
     const m = Math.floor(s / 60);
     if (m < 60) return `${m}m ago`;
-
     const h = Math.floor(m / 60);
     if (h < 24) return `${h} ${h === 1 ? 'hr' : 'hrs'} ago`;
-
     const dys = Math.floor(h / 24);
     if (dys < 7) return `${dys}d ago`;
-
     const w = Math.floor(dys / 7);
     if (w < 5) return `${w}${w === 1 ? 'wk' : 'wks'} ago`;
-
     const mo = Math.floor(dys / 30);
     if (mo < 12) return `${mo}${mo === 1 ? 'mo' : 'mos'} ago`;
-
     const y = Math.floor(dys / 365);
     return `${y}${y === 1 ? 'yr' : 'yrs'} ago`;
 };
 
-/* ---------- category/badge helpers ---------- */
-const BADGE = {
-    announcement: { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
-    announcements: { label: 'Announcement', color: '#1e88e5', Icon: CampaignIcon },
-    discussion: { label: 'Discussion', color: '#2e7d32', Icon: ChatBubbleIcon },
-    'general-discussion': { label: 'Discussion', color: '#2e7d32', Icon: ChatBubbleIcon },
-    recommendation: { label: 'Tip', color: '#fdd835', Icon: LightbulbIcon },
-    'recommendations-tips': { label: 'Tip', color: '#fdd835', Icon: LightbulbIcon },
-    // Help / Volunteer (Community)
-    'help-requests': { label: 'Help Request', color: '#00796b', Icon: PanToolIcon },
-    volunteers: { label: 'Volunteer', color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-requests': { label: 'Volunteer', color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-help': { label: 'Volunteer', color: '#0097a7', Icon: PanToolIcon },
-    'volunteer-help-requests': { label: 'Volunteer', color: '#0097a7', Icon: PanToolIcon },
-    'lost-found': { label: 'Lost / Found', color: '#fb8c00', Icon: SearchIcon },
-    'lost-and-found': { label: 'Lost / Found', color: '#fb8c00', Icon: SearchIcon },
-    'public-safety-alerts': { label: 'Safety Alert', color: '#e53935', Icon: ReportIcon },
+/* ---------- Compact relative time helper (for post headers / map popups) ---------- */
+const timeAgoCompact = (input) => {
+    const d = input ? new Date(input) : null;
+    if (!d || Number.isNaN(d.valueOf())) return '';
+    const diffMs = Math.max(0, Date.now() - d.getTime());
+
+    const s = Math.floor(diffMs / 1000);
+    if (s < 60) return '1m ago';
+
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}hr ago`;
+    const dys = Math.floor(h / 24);
+    if (dys < 7) return `${dys}d ago`;
+    const w = Math.floor(dys / 7);
+    if (w < 5) return `${w}wk ago`;
+    const mo = Math.floor(dys / 30);
+    if (mo < 12) return `${mo}mo ago`;
+    const y = Math.floor(dys / 365);
+    return `${y}yr ago`;
 };
 
-// Some legacy data used a combined volunteer/help category.
-// We "derive" the display category based on request_kind for a cleaner UX.
+/* ---------- category/badge helpers (match CommunityList chips) ---------- */
+const BADGE = {
+    announcement: { label: 'Announcement', markerGreen: announcementMarker, markerGold: announcementMarkerGold },
+    announcements: { label: 'Announcement', markerGreen: announcementMarker, markerGold: announcementMarkerGold },
+
+    discussion: { label: 'Discussion', markerGreen: discussionMarker, markerGold: discussionMarkerGold },
+    'general-discussion': { label: 'Discussion', markerGreen: discussionMarker, markerGold: discussionMarkerGold },
+
+    // Split recommendations (tips removed)
+    tips: { label: 'Recommendation', markerGreen: recommendationsMarker, markerGold: recommendationsMarkerGold }, // legacy fallback
+    recommendations: { label: 'Recommendation', markerGreen: recommendationsMarker, markerGold: recommendationsMarkerGold },
+    'recommendations-tips': { label: 'Recommendation', markerGreen: recommendationsMarker, markerGold: recommendationsMarkerGold }, // legacy fallback
+    tip: { label: 'Recommendation', markerGreen: recommendationsMarker, markerGold: recommendationsMarkerGold }, // legacy fallback
+
+    // Split volunteer & help requests
+    'help-requests': { label: 'Help Request', markerGreen: volHelpMarker, markerGold: volHelpMarkerGold },
+    volunteers: { label: 'Volunteer', markerGreen: volHelpMarker, markerGold: volHelpMarkerGold },
+    'volunteer-requests': { label: 'Volunteer/Help', markerGreen: volHelpMarker, markerGold: volHelpMarkerGold }, // legacy fallback
+
+    // Lost/Found handled as special case but kept as fallback
+    'lost-found': { label: 'Lost / Found', markerGreen: lostFoundMarker, markerGold: lostFoundMarkerGold },
+    'lost-and-found': { label: 'Lost / Found', markerGreen: lostFoundMarker, markerGold: lostFoundMarkerGold },
+
+    'public-safety-alerts': { label: 'Safety Alert', markerGreen: safetyMarker, markerGold: safetyMarkerGold },
+
+    // Generic fallback
+    community: { label: 'Community', markerGreen: communityMarker, markerGold: communityMarkerGold },
+};
+
 const deriveSplitCategory = (post) => {
-    if (!post) return '';
-    const rawCat = String(post.category || '').trim().toLowerCase();
-    if (!rawCat) return '';
+    // Normalize to new slugs when legacy category remains
+    let cat = String(post?.category || '').toLowerCase();
 
-    // New categories are already split
-    if (rawCat === 'help-requests' || rawCat === 'volunteers') return rawCat;
-
-    // Legacy / combined buckets
-    if (rawCat === 'volunteer-requests' || rawCat === 'volunteer-help' || rawCat === 'volunteer-help-requests') {
-        const kind = String(post.request_kind || post.requestKind || '').trim().toLowerCase();
-        if (kind === 'help') return 'help-requests';
-        if (kind === 'volunteer') return 'volunteers';
-        return 'volunteer-requests';
+    if (cat === 'recommendations-tips' || cat === 'tips' || cat === 'tip') {
+        // Tips removed — treat legacy rows as Recommendations.
+        return 'recommendations';
     }
 
-    return rawCat;
+    if (cat === 'volunteer-requests' || cat === 'volunteer-help-requests' || cat === 'volunteer-help') {
+        const kind = String(post?.request_kind || post?.requestKind || '').toLowerCase();
+        if (kind === 'volunteer' || kind === 'offer' || kind === 'offering') return 'volunteers';
+        if (kind === 'help' || kind === 'request' || kind === 'help-request' || kind === 'help_request') return 'help-requests';
+        // Fallback for legacy rows (no request_kind)
+        return 'help-requests';
+    }
+
+    return cat;
 };
+
 const buildBadgeFor = (post) => {
     if (!post) return null;
-    if (post.category === 'public-safety-alerts') return BADGE['public-safety-alerts'];
+    if (post.category === 'public-safety-alerts') {
+        return { label: 'Safety Alert', markerGreen: safetyMarker, markerGold: safetyMarkerGold };
+    }
     if (post.lost_or_found) {
         return {
             label: post.lost_or_found === 'found' ? 'Found' : 'Lost',
-            color: '#fb8c00',
-            Icon: SearchIcon,
+            markerGreen: lostFoundMarker,
+            markerGold: lostFoundMarkerGold,
         };
     }
-    const derived = deriveSplitCategory(post);
-    return BADGE[derived] || BADGE[post.category] || null;
+    const cat = deriveSplitCategory(post);
+    return BADGE[cat] || BADGE.community || null;
 };
+
+const CategoryChip = ({ badge, active = false }) => {
+    if (!badge) return null;
+
+    const markerSrc = active
+        ? (badge.markerGold || badge.marker || badge.iconGold || badge.icon)
+        : (badge.markerGreen || badge.marker || badge.iconGreen || badge.icon);
+
+    return (
+        <Chip
+            size="small"
+            label={badge.label}
+            icon={<Box component="img" src={markerSrc} alt="" sx={{ width: 20, height: 20, display: 'block' }} />}
+            sx={(t) => {
+                const green = t.palette.primary.main;
+                const gold = t.palette.secondary.main;
+
+                if (active) {
+                    return {
+                        height: 28,
+                        maxWidth: 200,
+                        minWidth: 0,
+                        bgcolor: green,
+                        color: '#FFFFFF',
+                        border: '1px solid',
+                        borderColor: gold,
+                        boxShadow: `0 8px 18px ${alphaColor(gold, 0.28)}`,
+                        '& .MuiChip-icon': { marginLeft: '6px', marginRight: '2px' },
+                        '& .MuiChip-label': {
+                            fontWeight: 900,
+                            color: '#FFFFFF',
+                            paddingRight: '10px',
+                            paddingLeft: '6px',
+                            fontSize: 12,
+                            lineHeight: 1,
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        },
+                    };
+                }
+
+                return {
+                    height: 28,
+                    maxWidth: 200,
+                    minWidth: 0,
+                    bgcolor: alphaColor(green, 0.10),
+                    color: green,
+                    border: '1px solid',
+                    borderColor: alphaColor(green, 0.28),
+                    '& .MuiChip-icon': { marginLeft: '6px', marginRight: '2px' },
+                    '& .MuiChip-label': {
+                        fontWeight: 800,
+                        color: green,
+                        paddingRight: '10px',
+                        paddingLeft: '6px',
+                        fontSize: 12,
+                        lineHeight: 1,
+                        maxWidth: 160,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    },
+                };
+            }}
+        />
+    );
+};
+
 
 /* ---------- photos ---------- */
 const extractPhotos = (post) => {
@@ -187,234 +306,90 @@ const HELP_TYPE_LABELS = {
     other: 'Other',
 };
 
-const URGENCY_LABELS = {
-    flexible: 'Flexible',
-    soon: 'Soon',
-    urgent: 'Urgent',
+const DEFAULT_AVATAR_SX = {
+    bgcolor: 'grey.600',
+    color: '#fff',
 };
 
-const TRAVEL_RADIUS_LABELS = {
-    city: 'Within my city',
-    county: 'Within my county',
-    neighboring_counties: 'Nearby counties',
-    statewide: 'Anywhere in Alabama',
+const formatDateShort = (v) => {
+    const d = v ? new Date(v) : null;
+    if (!d || Number.isNaN(d.valueOf())) return '';
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-const CONTACT_METHOD_LABELS = {
-    either: 'Either',
-    text: 'Text',
-    call: 'Call',
-    email: 'Email',
+const formatTimeShort = (v) => {
+    const d = v ? new Date(v) : null;
+    if (!d || Number.isNaN(d.valueOf())) return '';
+    return d
+        .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })
+        .toLowerCase();
 };
 
-const formatLocalDate = (input) => {
-    if (!input) return '';
-    const d = input instanceof Date ? input : new Date(input);
-    if (Number.isNaN(d.valueOf())) return String(input);
-    return d.toLocaleDateString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-    });
+const dateTimeLabelShort = (v) => {
+    const a = formatDateShort(v);
+    const b = formatTimeShort(v);
+    return a && b ? `${a} · ${b}` : a || b || '';
 };
 
-function HelpVolunteerDetailsPanel({ post, derivedCategory, viewerUser, onRequireLogin, onMessageAuthor, authorUser }) {
-    const isHelpRequest = derivedCategory === 'help-requests';
-    const isVolunteerOffer = derivedCategory === 'volunteers' || derivedCategory === 'volunteer-requests';
+function HelpVolunteerDetailsPanel({ post, derivedCategory, isUrgent }) {
+    const isHelpRequest = ['help-requests', 'help_requests', 'help request', 'help requests'].includes(String(derivedCategory || '').toLowerCase());
+    const isVolunteerOffer = ['volunteers', 'volunteer-requests', 'volunteer_requests'].includes(String(derivedCategory || '').toLowerCase());
+    const shouldShow = isHelpRequest || isVolunteerOffer;
 
-    const helpType = String(post?.help_type || '').trim().toLowerCase();
+    // Normalize for backwards-compatible values
+    const helpTypeRaw = String(post?.help_type || '').trim().toLowerCase();
     const helpTypeOther = String(post?.help_type_other || post?.other_help_type || '').trim();
-    const helpTypeLabel = helpType
-        ? helpType === 'other'
+
+    let helpTypeKey = helpTypeRaw
+        .replace(/&/g, 'and')
+        .replace(/\s+/g, '_')
+        .replace(/-+/g, '_')
+        .trim();
+
+    // Older / alternate values that should map to "care"
+    if (helpTypeKey === 'care_and_support' || helpTypeKey === 'care_and_upport') helpTypeKey = 'care';
+
+    const helpTypeLabel = helpTypeKey
+        ? helpTypeKey === 'other'
             ? helpTypeOther
                 ? `Other: ${helpTypeOther}`
                 : 'Other'
-            : HELP_TYPE_LABELS[helpType] || helpType
+            : HELP_TYPE_LABELS[helpTypeKey] || HELP_TYPE_LABELS[helpTypeRaw] || helpTypeRaw
         : '';
 
-    const neededDate = post?.needed_date || post?.date_needed;
-    const neededTime = String(post?.needed_time || '').trim();
-    const helpersNeeded = post?.helpers_needed;
-    const urgency = String(post?.urgency || '').trim().toLowerCase();
-    const availability = String(post?.availability || '').trim();
-    const travelRadius = String(post?.travel_radius || '').trim().toLowerCase();
-    const contact = String(post?.contact || '').trim();
-    const contactMethod = String(post?.contact_method || '').trim().toLowerCase();
-    const [copied, setCopied] = useState(false);
-
-    const contactHref = useMemo(() => {
-        if (!contact) return '';
-        const raw = String(contact).trim();
-        if (!raw) return '';
-        if (raw.includes('@')) return `mailto:${raw}`;
-        const digits = raw.replace(/[^\d+]/g, '');
-        if (digits.length >= 7) return `tel:${digits}`;
-        return '';
-    }, [contact]);
-
-    if (!isHelpRequest && !isVolunteerOffer) return null;
-
-    const dateChipLabel = neededDate
-        ? `${isVolunteerOffer ? 'Available' : 'Needed'}: ${formatLocalDate(neededDate)}`
-        : '';
-
-    const copyContact = async () => {
-        if (!contact) return;
-        try {
-            await navigator.clipboard.writeText(contact);
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1200);
-        } catch {
-            // ignore
-        }
-    };
-
-    const messageAuthor = () => {
-        if (!viewerUser) {
-            if (typeof onRequireLogin === 'function') onRequireLogin();
-            return;
-        }
-        if (typeof onMessageAuthor === 'function' && authorUser?.id) onMessageAuthor(authorUser);
-    };
+    if (!shouldShow) return null;
 
     return (
-        <Paper
-            variant="outlined"
-            sx={{
-                mt: 1.25,
-                p: 1.25,
-                borderRadius: 2,
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-            }}
-        >
-            <Box
-                sx={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                    gap: 1,
-                    flexWrap: 'wrap',
-                }}
-            >
-                <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
-                        {isVolunteerOffer ? 'Volunteer Offer Details' : 'Help Request Details'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                        {isVolunteerOffer
-                            ? 'What this person can help with & how to connect.'
-                            : 'What’s needed & how to connect with the requester.'}
-                    </Typography>
-                </Box>
-
-                {helpTypeLabel ? (
-                    <Chip
-                        size="small"
-                        label={helpTypeLabel}
-                        sx={{
-                            fontWeight: 800,
-                            borderRadius: 999,
-                        }}
-                    />
-                ) : null}
-            </Box>
-
-            <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                {dateChipLabel ? <Chip size="small" label={dateChipLabel} sx={{ fontWeight: 700 }} /> : null}
-                {isHelpRequest && urgency ? (
-                    <Chip
-                        size="small"
-                        label={`Urgency: ${URGENCY_LABELS[urgency] || urgency}`}
-                        sx={{ fontWeight: 700 }}
-                    />
-                ) : null}
-                {isHelpRequest && helpersNeeded ? (
-                    <Chip size="small" label={`Helpers: ${helpersNeeded}`} sx={{ fontWeight: 700 }} />
-                ) : null}
-                {isHelpRequest && neededTime ? (
-                    <Chip size="small" label={`Time: ${neededTime}`} sx={{ fontWeight: 700 }} />
-                ) : null}
-                {isVolunteerOffer && availability ? (
-                    <Chip size="small" label={`Availability: ${availability}`} sx={{ fontWeight: 700 }} />
-                ) : null}
-                {isVolunteerOffer && travelRadius ? (
-                    <Chip
-                        size="small"
-                        label={`Travel: ${TRAVEL_RADIUS_LABELS[travelRadius] || travelRadius}`}
-                        sx={{ fontWeight: 700 }}
-                    />
-                ) : null}
-            </Box>
-
-            {contact ? (
-                <>
-                    <Divider sx={{ my: 1.25 }} />
-                    <Box
-                        sx={{
-                            display: 'flex',
-                            flexDirection: { xs: 'column', sm: 'row' },
-                            alignItems: { xs: 'stretch', sm: 'center' },
-                            justifyContent: 'space-between',
-                            gap: 1.25,
-                        }}
-                    >
-                        <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>
-                                Contact
-                            </Typography>
-
-                            <Typography variant="body2" sx={{ wordBreak: 'break-word', fontWeight: 800 }}>
-                                {contactHref ? (
-                                    <Link href={contactHref} underline="hover">
-                                        {contact}
-                                    </Link>
-                                ) : (
-                                    contact
-                                )}
-                            </Typography>
-
-                            {CONTACT_METHOD_LABELS[contactMethod] ? (
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                    Preferred: {CONTACT_METHOD_LABELS[contactMethod]}
-                                </Typography>
-                            ) : null}
-                        </Box>
-
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: 1,
-                                justifyContent: { xs: 'flex-start', sm: 'flex-end' },
-                            }}
-                        >
-                            <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<ContentCopyIcon />}
-                                onClick={copyContact}
-                                sx={{ fontWeight: 800, borderRadius: 999, px: 2 }}
-                            >
-                                {copied ? 'Copied' : 'Copy'}
-                            </Button>
-
-                            <Button
-                                size="small"
-                                variant="contained"
-                                onClick={messageAuthor}
-                                sx={{ fontWeight: 800, borderRadius: 999, px: 2 }}
-                            >
-                                Message
-                            </Button>
-                        </Box>
-                    </Box>
-                </>
+        <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {helpTypeLabel ? (
+                <Chip
+                    size="small"
+                    label={helpTypeLabel}
+                    sx={{
+                        fontWeight: 800,
+                        borderRadius: 999,
+                    }}
+                />
             ) : null}
-        </Paper>
+
+            {isHelpRequest && isUrgent ? (
+                <Chip
+                    size="small"
+                    label="Urgent"
+                    sx={{
+                        borderRadius: 999,
+                        fontWeight: 900,
+                        border: '1px solid rgba(211, 47, 47, 0.35)',
+                        bgcolor: 'rgba(211, 47, 47, 0.08)',
+                        '& .MuiChip-label': { fontWeight: 900 },
+                    }}
+                />
+            ) : null}
+        </Box>
     );
 }
+
+
 
 /* ========================================================================== */
 /* Flag dialog (no click-away; X in the corner)                               */
@@ -529,6 +504,400 @@ function normalizeComments(raw) {
     return roots;
 }
 
+function ThreadedCommentItem({
+                                 node,
+                                 depth = 0,
+                                 expanded,
+                                 setExpanded,
+                                 viewerAvatarUrl,
+                                 viewerLabel,
+                                 postAuthor,
+                                 onOpenUserCard,
+                                 likeComment,
+                                 submitReply,
+                                 openFlag,
+                                 viewerId,
+                                 onDelete,
+                             }) {
+    const name = `${node.first_name || ''} ${node.last_name || ''}`.trim() || 'User';
+    const ts = node.created_at ? timeAgo(node.created_at) : '';
+    const hasReplies = Array.isArray(node.replies) && node.replies.length > 0;
+    const open = !!expanded[node.id];
+
+    const [showFull, setShowFull] = useState(false);
+
+    const nameNorm = name.toLowerCase().replace(/\s+/g, ' ').trim();
+    const authorId = postAuthor?.id != null ? String(postAuthor.id) : null;
+    const authorHandle = (postAuthor?.handle || '').toLowerCase();
+    const authorPublicId = postAuthor?.public_id != null ? String(postAuthor.public_id) : null;
+    const authorNameNorm = (postAuthor?.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const nodeId = node.user_id != null ? String(node.user_id) : null;
+    const nodeHandle = (node.handle || '').toLowerCase();
+    const nodePub = node.public_id != null ? String(node.public_id) : null;
+    const canDelete = viewerId != null && (String(viewerId) === nodeId || (authorId && String(viewerId) === authorId));
+    const deleteLabel = depth > 0 ? 'Delete Reply' : 'Delete Comment';
+
+    const isAuthor =
+        (authorId && nodeId && nodeId === authorId) ||
+        (authorHandle && nodeHandle && nodeHandle === authorHandle) ||
+        (authorPublicId && nodePub && nodePub === authorPublicId) ||
+        (!!authorNameNorm && !!nameNorm && authorNameNorm === nameNorm);
+
+    const [liked, setLiked] = useState(Boolean(node.viewer_liked));
+    const [likes, setLikes] = useState(Number(node.likes || 0));
+    const [flagged, setFlagged] = useState(Boolean(node.viewer_flagged));
+
+    useEffect(() => {
+        setLiked(Boolean(node.viewer_liked));
+        setLikes(Number(node.likes || 0));
+        setFlagged(Boolean(node.viewer_flagged));
+    }, [node.viewer_liked, node.viewer_flagged, node.likes]);
+
+    const toggleReplies = () => setExpanded((s) => ({ ...s, [node.id]: !s[node.id] }));
+
+    const [replyOpen, setReplyOpen] = useState(false);
+    const [replyText, setReplyText] = useState('');
+
+    const sendReply = () => {
+        const txt = replyText.trim();
+        if (!txt) return;
+        submitReply(node.id, txt, () => {
+            setReplyText('');
+            setReplyOpen(false);
+            setExpanded((s) => ({ ...s, [node.id]: true }));
+        });
+    };
+
+    const onReplyKeyDown = (e) => {
+        // Enter = new line. Ctrl/Cmd + Enter = submit.
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            sendReply();
+        }
+    };
+
+    const openCard = (e) => {
+        onOpenUserCard?.(e.currentTarget, {
+            id: node.user_id,
+            first_name: node.first_name,
+            last_name: node.last_name,
+            handle: node.handle,
+            avatar_url: node.avatar,
+        });
+    };
+
+    const hasNodeAvatar = !!node.avatar;
+
+    const needsTruncate = !!node.text && node.text.length > COMMENT_PREVIEW_CHARS;
+    const displayText =
+        !node.text
+            ? ''
+            : showFull || !needsTruncate
+                ? node.text
+                : `${node.text.slice(0, COMMENT_PREVIEW_CHARS)}...`;
+
+    const REPLY_BATCH = 25;
+    const [visibleReplies, setVisibleReplies] = useState(REPLY_BATCH);
+    useEffect(() => {
+        if (open) setVisibleReplies(REPLY_BATCH);
+    }, [open]);
+
+    const repliesToShow = hasReplies ? node.replies.slice(0, visibleReplies) : [];
+
+    return (
+        <Box
+            sx={{
+                pl: depth ? 2 : 0,
+                borderLeft: depth ? '2px solid rgba(0,0,0,0.08)' : 'none',
+                ml: depth ? 1 : 0,
+            }}
+        >
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', py: 1.25 }}>
+                <Avatar
+                    src={hasNodeAvatar ? node.avatar : undefined}
+                    sx={{
+                        width: 36,
+                        height: 36,
+                        flexShrink: 0,
+                        cursor: 'pointer',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                    }}
+                    onClick={openCard}
+                >
+                    {!hasNodeAvatar ? <PersonIcon fontSize="small" /> : null}
+                </Avatar>
+
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
+                        <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Typography
+                                variant="subtitle2"
+                                sx={{ fontWeight: 700, cursor: 'pointer' }}
+                                onClick={openCard}
+                                noWrap
+                            >
+                                {name}
+                            </Typography>
+
+                            {isAuthor ? (
+                                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Box sx={{ width: 6, height: 6, borderRadius: '50%' }} />
+                                    <Typography variant="caption" color="text.secondary">
+                                        Author
+                                    </Typography>
+                                </Box>
+                            ) : null}
+
+                            {ts ? (
+                                <>
+                                    <Box sx={{ width: 4, height: 4, borderRadius: '50%' }} />
+                                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                                        {ts}
+                                    </Typography>
+                                </>
+                            ) : null}
+                        </Box>
+                        {canDelete ? (
+                            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
+                                <Tooltip title={deleteLabel} placement="top">
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => onDelete?.(node.id, !!depth)}
+                                        sx={{
+                                            ml: 0.5,
+                                            border: '1px solid rgba(2,6,23,0.10)',
+                                            background: '#fff',
+                                        }}
+                                    >
+                                        <DeleteOutlineIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                            </Box>
+                        ) : null}
+                    </Box>
+
+                    {node.handle ? (
+                        <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mt: 0.25, cursor: 'pointer' }}
+                            onClick={openCard}
+                            noWrap
+                        >
+                            @{node.handle}
+                        </Typography>
+                    ) : null}
+
+                    {node.text ? (
+                        <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                            {displayText}
+                            {needsTruncate && !showFull ? (
+                                <>
+                                    {' '}
+                                    <Link
+                                        component="button"
+                                        type="button"
+                                        underline="hover"
+                                        onClick={() => setShowFull(true)}
+                                        sx={{ fontSize: 14 }}
+                                    >
+                                        more
+                                    </Link>
+                                </>
+                            ) : null}
+                            {needsTruncate && showFull ? (
+                                <>
+                                    {' '}
+                                    <Link
+                                        component="button"
+                                        type="button"
+                                        underline="hover"
+                                        onClick={() => setShowFull(false)}
+                                        sx={{ fontSize: 14 }}
+                                    >
+                                        less
+                                    </Link>
+                                </>
+                            ) : null}
+                        </Typography>
+                    ) : null}
+
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                        <Button
+                            variant="text"
+                            size="small"
+                            onClick={() => likeComment(node.id, liked, setLiked, setLikes)}
+                            sx={{ textTransform: 'none', minWidth: 0 }}
+                        >
+                            {likes > 0 ? `Like · ${likes}` : 'Like'}
+                        </Button>
+
+                        <Button
+                            variant="text"
+                            size="small"
+                            onClick={() => setReplyOpen((v) => !v)}
+                            sx={{ textTransform: 'none', minWidth: 0 }}
+                            aria-expanded={replyOpen ? 'true' : 'false'}
+                        >
+                            Reply
+                        </Button>
+
+                        <Button
+                            variant="text"
+                            size="small"
+                            startIcon={<FlagRoundedIcon />}
+                            onClick={() => {
+                                if (flagged) return;
+                                openFlag(node.id);
+                            }}
+                            disabled={flagged}
+                            sx={{ textTransform: 'none', minWidth: 0, color: flagged ? 'success.main' : 'inherit' }}
+                        >
+                            {flagged ? 'Reported' : 'Report'}
+                        </Button>
+                    </Box>
+
+                    {replyOpen ? (
+                        <Box sx={{ display: 'flex', gap: 1, mt: 1, alignItems: 'flex-start' }}>
+                            <Avatar
+                                src={viewerAvatarUrl ? viewerAvatarUrl : undefined}
+                                alt={viewerLabel}
+                                sx={{
+                                    width: 32,
+                                    height: 32,
+                                    mt: 0.25,
+                                    flexShrink: 0,
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                    bgcolor: 'grey.600'
+                                }}
+                            >
+                                {!viewerAvatarUrl ? <PersonIcon fontSize="small" /> : null}
+                            </Avatar>
+
+                            <TextField
+                                fullWidth
+                                multiline
+                                minRows={2}
+                                maxRows={6}
+                                placeholder="Write a reply…"
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                onKeyDown={onReplyKeyDown}
+                                inputProps={{ maxLength: COMMENT_MAX_CHARS }}
+                                sx={{
+                                    '& .MuiOutlinedInput-root': { borderRadius: 2, alignItems: 'flex-end' },
+                                }}
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end" sx={{ alignSelf: 'flex-end', pb: 0.25 }}>
+                                            <IconButton
+                                                aria-label="Send reply"
+                                                onClick={sendReply}
+                                                disabled={!replyText.trim()}
+                                                sx={{
+                                                    ml: 0.5,
+                                                    bgcolor: 'primary.main',
+                                                    color: '#fff',
+                                                    width: 34,
+                                                    height: 34,
+                                                    flexShrink: 0,
+                                                    '&:hover': { bgcolor: 'primary.dark' },
+                                                    '&.Mui-disabled': {
+                                                        bgcolor: 'action.disabledBackground',
+                                                        color: 'action.disabled',
+                                                        opacity: 1,
+                                                    },
+                                                }}
+                                            >
+                                                <ArrowForwardRoundedIcon />
+                                            </IconButton>
+                                        </InputAdornment>
+                                    ),
+                                }}
+                            />
+                        </Box>
+                    ) : null}
+
+                    {node.reply_count > 0 && !hasReplies ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                            {node.reply_count} repl{node.reply_count === 1 ? 'y' : 'ies'}
+                        </Typography>
+                    ) : null}
+
+                    {hasReplies ? (
+                        <Link
+                            component="button"
+                            type="button"
+                            underline="hover"
+                            onClick={toggleReplies}
+                            aria-expanded={open ? 'true' : 'false'}
+                            aria-label={open ? 'Hide replies' : `Show replies (${node.replies.length})`}
+                            sx={{
+                                mt: 0.5,
+                                p: 0,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                fontSize: 14,
+                                fontWeight: 600,
+                                color: 'primary.main',
+                                textAlign: 'left',
+                                '&:focus-visible': (theme) => ({
+                                    outline: `2px solid ${theme.palette.primary.main}`,
+                                    outlineOffset: 2,
+                                    borderRadius: 0.5,
+                                }),
+                            }}
+                        >
+                            {open ? 'Hide replies' : `Show replies (${node.replies.length})`}
+                        </Link>
+                    ) : null}
+                </Box>
+            </Box>
+
+            {hasReplies && open ? (
+                <>
+                    <Box sx={{ mt: 0.5 }}>
+                        {repliesToShow.map((r) => (
+                            <ThreadedCommentItem
+                                key={r.id}
+                                node={r}
+                                depth={depth + 1}
+                                expanded={expanded}
+                                setExpanded={setExpanded}
+                                viewerAvatarUrl={viewerAvatarUrl}
+                                viewerLabel={viewerLabel}
+                                postAuthor={postAuthor}
+                                onOpenUserCard={onOpenUserCard}
+                                likeComment={likeComment}
+                                submitReply={submitReply}
+                                openFlag={openFlag}
+                                viewerId={viewerId}
+                                onDelete={onDelete}
+                            />
+                        ))}
+                    </Box>
+
+                    {node.replies.length > repliesToShow.length ? (
+                        <Box sx={{ pl: 2, mt: 0.5 }}>
+                            <Link
+                                component="button"
+                                type="button"
+                                underline="hover"
+                                onClick={() => setVisibleReplies((n) => Math.min(n + REPLY_BATCH, node.replies.length))}
+                                sx={{ fontWeight: 600 }}
+                            >
+                                Load 25 more replies
+                            </Link>
+                        </Box>
+                    ) : null}
+                </>
+            ) : null}
+        </Box>
+    );
+}
+
 function RedditComments({
                             postId,
                             refreshKey,
@@ -543,6 +912,7 @@ function RedditComments({
     const [visibleCount, setVisibleCount] = useState(initialPageSize);
     const [scrolled, setScrolled] = useState(false);
     const [refreshTick, setRefreshTick] = useState(0);
+    const [commentDeleteConfirm, setCommentDeleteConfirm] = useState({ open: false, commentId: null, isReply: false });
 
     // "Back to Top" visibility
     useEffect(() => {
@@ -593,6 +963,22 @@ function RedditComments({
 
     const toggle = (id) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
+    const requestCommentDelete = useCallback((commentId, isReply = false) => {
+        const cid = Number(commentId);
+        if (!Number.isFinite(cid) || cid <= 0) return;
+        setCommentDeleteConfirm({ open: true, commentId: cid, isReply: !!isReply });
+    }, []);
+
+    const closeCommentDeleteConfirm = useCallback(() => {
+        setCommentDeleteConfirm({ open: false, commentId: null, isReply: false });
+    }, []);
+
+    const confirmCommentDelete = useCallback(async () => {
+        if (!commentDeleteConfirm.commentId) return;
+        await deleteComment(commentDeleteConfirm.commentId);
+        closeCommentDeleteConfirm();
+    }, [commentDeleteConfirm.commentId, deleteComment, closeCommentDeleteConfirm]);
+
     const openLogin = () => {
         try {
             window.dispatchEvent(new CustomEvent('open-login'));
@@ -600,6 +986,9 @@ function RedditComments({
             window.dispatchEvent(new CustomEvent('open-login-popup'));
         } catch {}
     };
+
+    const viewerAvatarUrl = viewer?.avatar_url || viewer?.profile_picture || '';
+    const viewerLabel = `${viewer?.first_name || ''} ${viewer?.last_name || ''}`.trim() || 'You';
 
     // like/flag/reply helpers
     const likeComment = async (commentId, currentLiked, setLiked, setLikes) => {
@@ -660,6 +1049,30 @@ function RedditComments({
 
     const [flagState, setFlagState] = useState({ open: false, commentId: null });
 
+
+    async function deleteComment(commentId) {
+        if (!viewer) return openLogin();
+        const cid = Number(commentId);
+        if (!cid) return;
+
+        const tryUrls = [
+            `/api/community/comments/${encodeURIComponent(cid)}`,
+            `/api/comments/${encodeURIComponent(cid)}`,
+        ];
+
+        for (const url of tryUrls) {
+            try {
+                const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
+                if (res.ok) {
+                    setRefreshTick((k) => k + 1);
+                    return;
+                }
+            } catch {
+                /* try next */
+            }
+        }
+    }
+
     const openFlag = (commentId) => {
         if (!viewer) return openLogin();
         setFlagState({ open: true, commentId });
@@ -694,317 +1107,6 @@ function RedditComments({
         closeFlag();
     };
 
-    const CommentItem = ({ node, depth = 0 }) => {
-        const name = `${node.first_name || ''} ${node.last_name || ''}`.trim() || 'User';
-        const ts = node.created_at ? timeAgo(node.created_at) : '';
-        const hasReplies = Array.isArray(node.replies) && node.replies.length > 0;
-        const open = !!expanded[node.id];
-
-        // text expand state (per comment)
-        const [showFull, setShowFull] = useState(false);
-
-        // Robust author detection (for "Author" badge)
-        const nameNorm = name.toLowerCase().replace(/\s+/g, ' ').trim();
-        const authorId = postAuthor?.id != null ? String(postAuthor.id) : null;
-        const authorHandle = (postAuthor?.handle || '').toLowerCase();
-        const authorPublicId = postAuthor?.public_id != null ? String(postAuthor.public_id) : null;
-        const authorNameNorm = (postAuthor?.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
-        const nodeId = node.user_id != null ? String(node.user_id) : null;
-        const nodeHandle = (node.handle || '').toLowerCase();
-        const nodePub = node.public_id != null ? String(node.public_id) : null;
-
-        const isAuthor =
-            (authorId && nodeId && nodeId === authorId) ||
-            (authorHandle && nodeHandle && nodeHandle === authorHandle) ||
-            (authorPublicId && nodePub && nodePub === authorPublicId) ||
-            (!!authorNameNorm && !!nameNorm && authorNameNorm === nameNorm);
-
-        // local state for like/flag UI
-        const [liked, setLiked] = useState(Boolean(node.viewer_liked));
-        const [likes, setLikes] = useState(Number(node.likes || 0));
-        const [flagged, setFlagged] = useState(Boolean(node.viewer_flagged));
-        useEffect(() => {
-            setLiked(Boolean(node.viewer_liked));
-            setLikes(Number(node.likes || 0));
-            setFlagged(Boolean(node.viewer_flagged));
-        }, [node.viewer_liked, node.viewer_flagged, node.likes]);
-
-        // reply composer
-        const [replyOpen, setReplyOpen] = useState(false);
-        const [replyText, setReplyText] = useState('');
-        const sendReply = () => {
-            const txt = replyText.trim();
-            if (!txt) return;
-            submitReply(node.id, txt, () => {
-                setReplyText('');
-                setReplyOpen(false);
-                setExpanded((s) => ({ ...s, [node.id]: true }));
-            });
-        };
-        const onReplyKeyDown = (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendReply();
-            }
-        };
-
-        const openCard = (e) => {
-            onOpenUserCard?.(e.currentTarget, {
-                id: node.user_id,
-                first_name: node.first_name,
-                last_name: node.last_name,
-                handle: node.handle,
-                avatar_url: node.avatar,
-            });
-        };
-
-        const hasNodeAvatar = !!node.avatar;
-
-        // Replies paging (25 at a time)
-        const REPLY_BATCH = 25;
-        const [visibleReplies, setVisibleReplies] = useState(REPLY_BATCH);
-        useEffect(() => {
-            if (open) setVisibleReplies(REPLY_BATCH);
-        }, [open]);
-
-        const repliesToShow = hasReplies ? node.replies.slice(0, visibleReplies) : [];
-
-        // Rendered comment text with preview + "more"
-        const needsTruncate = !!node.text && node.text.length > COMMENT_PREVIEW_CHARS;
-        const displayText =
-            !node.text
-                ? ''
-                : showFull || !needsTruncate
-                    ? node.text
-                    : `${node.text.slice(0, COMMENT_PREVIEW_CHARS)}...`;
-
-        return (
-            <Box sx={{ pl: depth ? 2 : 0, borderLeft: depth ? '2px solid rgba(0,0,0,0.08)' : 'none', ml: depth ? 1 : 0 }}>
-                <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start', py: 1.25 }}>
-                    <Avatar
-                        src={hasNodeAvatar ? node.avatar : undefined}
-                        sx={{ width: 44, height: 44, cursor: 'pointer' }}
-                        onClick={openCard}
-                    >
-                        {!hasNodeAvatar ? <PersonIcon /> : null}
-                    </Avatar>
-
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'baseline',
-                                gap: 1,
-                                flexWrap: 'wrap',
-                            }}
-                        >
-                            <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                <Typography
-                                    variant="subtitle2"
-                                    sx={{ fontWeight: 700, cursor: 'pointer' }}
-                                    onClick={openCard}
-                                    noWrap
-                                >
-                                    {name}
-                                </Typography>
-
-                                {/* Author marker */}
-                                {isAuthor && (
-                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Box sx={{ width: 6, height: 6, bgcolor: 'text.secondary', borderRadius: '50%' }} />
-                                        <Typography variant="caption" color="text.secondary">
-                                            Author
-                                        </Typography>
-                                    </Box>
-                                )}
-
-                                {/* Dot + time next to the name */}
-                                {ts ? (
-                                    <>
-                                        <Box sx={{ width: 4, height: 4, bgcolor: 'text.disabled', borderRadius: '50%' }} />
-                                        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                                            {ts}
-                                        </Typography>
-                                    </>
-                                ) : null}
-                            </Box>
-                        </Box>
-
-                        {node.handle ? (
-                            <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ mt: 0.25, cursor: 'pointer' }}
-                                onClick={openCard}
-                                noWrap
-                            >
-                                @{node.handle}
-                            </Typography>
-                        ) : null}
-
-                        {node.text ? (
-                            <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                {displayText}
-                                {!showFull && needsTruncate && (
-                                    <>
-                                        {' '}
-                                        <Link
-                                            component="button"
-                                            type="button"
-                                            underline="hover"
-                                            onClick={() => setShowFull(true)}
-                                            sx={{ fontSize: 14 }}
-                                        >
-                                            more
-                                        </Link>
-                                    </>
-                                )}
-                            </Typography>
-                        ) : null}
-
-                        {/* actions: like / reply / report */}
-                        <Box
-                            sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1,
-                                mt: 0.5,
-                                flexWrap: 'wrap',
-                            }}
-                        >
-                            <Button
-                                variant="text"
-                                size="small"
-                                startIcon={liked ? <ThumbUpAltIcon /> : <ThumbUpOffAltIcon />}
-                                onClick={() => likeComment(node.id, liked, setLiked, setLikes)}
-                                sx={{ textTransform: 'none', minWidth: 0 }}
-                            >
-                                {likes > 0 ? `Like · ${likes}` : 'Like'}
-                            </Button>
-
-                            <Button
-                                variant="text"
-                                size="small"
-                                startIcon={<ReplyRoundedIcon />}
-                                onClick={() => setReplyOpen((v) => !v)}
-                                sx={{ textTransform: 'none', minWidth: 0 }}
-                                aria-expanded={replyOpen ? 'true' : 'false'}
-                            >
-                                Reply
-                            </Button>
-
-                            <Button
-                                variant="text"
-                                size="small"
-                                startIcon={<FlagRoundedIcon />}
-                                onClick={() => {
-                                    if (flagged) return;
-                                    openFlag(node.id);
-                                }}
-                                disabled={flagged}
-                                sx={{
-                                    textTransform: 'none',
-                                    minWidth: 0,
-                                    color: flagged ? 'success.main' : 'inherit',
-                                }}
-                            >
-                                {flagged ? 'Reported' : 'Report'}
-                            </Button>
-                        </Box>
-
-                        {/* inline reply composer */}
-                        {replyOpen && (
-                            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                                <TextField
-                                    fullWidth
-                                    size="small"
-                                    placeholder="Write a reply…"
-                                    value={replyText}
-                                    onChange={(e) => setReplyText(e.target.value)}
-                                    onKeyDown={onReplyKeyDown}
-                                    inputProps={{ maxLength: COMMENT_MAX_CHARS }}
-                                />
-                                <IconButton
-                                    aria-label="Send reply"
-                                    onClick={sendReply}
-                                    disabled={!replyText.trim()}
-                                    sx={{
-                                        bgcolor: 'primary.main',
-                                        color: '#fff',
-                                        '&:hover': { bgcolor: 'primary.dark' },
-                                        alignSelf: 'center',
-                                    }}
-                                >
-                                    <ArrowForwardRoundedIcon />
-                                </IconButton>
-                            </Box>
-                        )}
-
-                        {node.reply_count > 0 && !hasReplies && (
-                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                                {node.reply_count} repl{node.reply_count === 1 ? 'y' : 'ies'}
-                            </Typography>
-                        )}
-
-                        {hasReplies && (
-                            <Link
-                                component="button"
-                                type="button"
-                                underline="hover"
-                                onClick={() => toggle(node.id)}
-                                aria-expanded={open ? 'true' : 'false'}
-                                aria-label={open ? 'Hide replies' : `Show replies (${node.replies.length})`}
-                                sx={{
-                                    mt: 0.5,
-                                    p: 0,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    fontSize: 14,
-                                    fontWeight: 600,
-                                    color: 'primary.main',
-                                    bgcolor: 'transparent',
-                                    textAlign: 'left',
-                                    '&:focus-visible': (theme) => ({
-                                        outline: `2px solid ${theme.palette.primary.main}`,
-                                        outlineOffset: 2,
-                                        borderRadius: 0.5,
-                                    }),
-                                }}
-                            >
-                                {open ? 'Hide replies' : `Show replies (${node.replies.length})`}
-                            </Link>
-                        )}
-                    </Box>
-                </Box>
-
-                {/* replies (25 at a time) */}
-                {hasReplies && open && (
-                    <>
-                        <Box sx={{ mt: 0.5 }}>
-                            {repliesToShow.map((r) => (
-                                <CommentItem key={r.id} node={r} depth={depth + 1} />
-                            ))}
-                        </Box>
-                        {node.replies.length > repliesToShow.length && (
-                            <Box sx={{ pl: 2, mt: 0.5 }}>
-                                <Link
-                                    component="button"
-                                    type="button"
-                                    underline="hover"
-                                    onClick={() =>
-                                        setVisibleReplies((n) => Math.min(n + REPLY_BATCH, node.replies.length))
-                                    }
-                                    sx={{ fontWeight: 600 }}
-                                >
-                                    Load 25 more replies
-                                </Link>
-                            </Box>
-                        )}
-                    </>
-                )}
-            </Box>
-        );
-    };
 
     const visibleThreads = threads.slice(0, visibleCount);
     const canLoadMore = threads.length > visibleThreads.length;
@@ -1037,7 +1139,22 @@ function RedditComments({
                     ) : visibleThreads.length ? (
                         <>
                             {visibleThreads.map((t) => (
-                                <CommentItem key={t.id} node={t} depth={0} />
+                                <ThreadedCommentItem
+                                    key={t.id}
+                                    node={t}
+                                    depth={0}
+                                    expanded={expanded}
+                                    setExpanded={setExpanded}
+                                    viewerAvatarUrl={viewerAvatarUrl}
+                                    viewerLabel={viewerLabel}
+                                    postAuthor={postAuthor}
+                                    onOpenUserCard={onOpenUserCard}
+                                    likeComment={likeComment}
+                                    submitReply={submitReply}
+                                    openFlag={openFlag}
+                                    viewerId={viewer?.id}
+                                    onDelete={requestCommentDelete}
+                                />
                             ))}
                             {canLoadMore && (
                                 <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
@@ -1075,6 +1192,39 @@ function RedditComments({
                 </Box>
             </Box>
 
+            <Dialog
+                open={!!commentDeleteConfirm.open}
+                onClose={(e, reason) => {
+                    if (reason === 'backdropClick') return;
+                    closeCommentDeleteConfirm();
+                }}
+                disableEscapeKeyDown
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle sx={{ pr: 6 }}>
+                    Confirm delete
+                    <IconButton
+                        aria-label="Close"
+                        onClick={closeCommentDeleteConfirm}
+                        sx={{ position: 'absolute', right: 8, top: 8 }}
+                    >
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Typography>
+                        {commentDeleteConfirm.isReply
+                            ? 'Delete this reply? This cannot be undone.'
+                            : 'Delete this comment and all of its replies? This cannot be undone.'}
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={closeCommentDeleteConfirm} variant="outlined">Cancel</Button>
+                    <Button onClick={confirmCommentDelete} variant="contained" color="error">Delete</Button>
+                </DialogActions>
+            </Dialog>
+
             {/* Report/Flag dialog (global for this list) */}
             <FlagCommentDialog open={flagState.open} onClose={closeFlag} onSubmit={submitFlag} />
         </Box>
@@ -1109,13 +1259,32 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
     const [commentsRefreshKey, setCommentsRefreshKey] = useState(0);
     const forceRefreshComments = () => setCommentsRefreshKey((k) => k + 1);
 
-    // Sync with prop when embedded so selecting another card updates the detail pane
+    // Description clamp (prevents a single long token from breaking layout)
+    const [showFullDescription, setShowFullDescription] = useState(false);
     useEffect(() => {
-        if (embedded && initialPost && (!post || String(initialPost.id) !== String(post.id))) {
-            setPost(initialPost);
-            setLoading(false);
-        }
-    }, [embedded, initialPost, post]);
+        setShowFullDescription(false);
+    }, [post?.id]);
+
+    // Sync with prop when embedded so selecting another card updates the detail pane
+    // Also merges when the same post is updated (e.g., edited photos) so the detail view stays current.
+    useEffect(() => {
+        if (!embedded || !initialPost) return;
+
+        setPost((prev) => {
+            if (!prev) return initialPost;
+
+            const prevId = prev?.id != null ? String(prev.id) : '';
+            const nextId = initialPost?.id != null ? String(initialPost.id) : '';
+
+            if (prevId && nextId && prevId !== nextId) return initialPost;
+
+            if (prev === initialPost) return prev;
+
+            return { ...prev, ...initialPost };
+        });
+
+        setLoading(false);
+    }, [embedded, initialPost]);
 
     // recognize viewer (includes social_json we use for following)
     useEffect(() => {
@@ -1176,9 +1345,29 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
         navigate(-1);
     }, [navigate]);
 
-    const photos = useMemo(() => extractPhotos(post || {}), [post]);
+    const photos = useMemo(
+        () => extractPhotos(post || {}),
+        [
+            post,
+            post?.photos,
+            post?.photos_json,
+            post?.photo_url,
+            post?.image_url,
+            post?.main_photo_url,
+            post?.cover_url,
+            post?.community_photos,
+        ]
+    );
     const badgeMeta = useMemo(() => buildBadgeFor(post || {}), [post]);
     const derivedCategory = useMemo(() => deriveSplitCategory(post || {}), [post]);
+
+    const isUrgent = Boolean(Number(post?.is_urgent ?? post?.isUrgent ?? post?.urgent ?? 0));
+    const displayCategoryLabel = badgeMeta?.label || post?.category_name || post?.category || '';
+
+    const showHelpVolunteerPanel = useMemo(() => {
+        const dc = String(derivedCategory || '').trim().toLowerCase();
+        return dc === 'help-requests' || dc === 'volunteers' || dc === 'volunteer-requests';
+    }, [derivedCategory]);
 
     // counts & viewer flags for ActionBar
     const likes = Number(post?.likesCount ?? post?.likes_count ?? post?.like_count ?? post?.likes ?? 0);
@@ -1209,6 +1398,172 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
             name,
         };
     }, [post, postAuthorId]);
+
+
+    const isOwner = useMemo(() => {
+        const vid = viewerUser?.id;
+        const aid = postAuthorId;
+
+        if (vid != null && aid != null && Number(vid) === Number(aid)) return true;
+
+        const vHandle = String(viewerUser?.handle || '').trim().toLowerCase();
+        const pHandle = String(post?.handle || '').trim().toLowerCase();
+        if (vHandle && pHandle && vHandle === pHandle) return true;
+
+        const vPublic = viewerUser?.public_id != null ? String(viewerUser.public_id) : '';
+        const pPublic = post?.public_id != null ? String(post.public_id) : '';
+        if (vPublic && pPublic && vPublic === pPublic) return true;
+
+        return false;
+    }, [viewerUser?.id, viewerUser?.handle, viewerUser?.public_id, postAuthorId, post?.handle, post?.public_id]);
+
+
+    // Owner actions menu (Edit/Delete)
+    const [ownerMenuEl, setOwnerMenuEl] = useState(null);
+    const ownerMenuOpen = Boolean(ownerMenuEl);
+    const openOwnerMenu = useCallback((e) => {
+        if (e) e.stopPropagation();
+        setOwnerMenuEl(e.currentTarget);
+    }, []);
+    const closeOwnerMenu = useCallback((e) => {
+        if (e) e.stopPropagation();
+        setOwnerMenuEl(null);
+    }, []);
+
+    const isEdited = Boolean(post?.edited_at || post?.editedAt);
+    const isResolved = Boolean(post?.resolved_at || post?.resolvedAt || post?.resolved_message || post?.resolvedMessage);
+
+    const DETAIL_DESC_PREVIEW_CHARS = 650;
+    const fullDescRaw = post?.description != null ? String(post.description) : '';
+    const fullDescTrimmed = fullDescRaw.trim();
+    const descNeedsTruncate = fullDescTrimmed.length > DETAIL_DESC_PREVIEW_CHARS;
+    const descDisplay = (!descNeedsTruncate || showFullDescription)
+        ? fullDescRaw
+        : `${fullDescTrimmed.slice(0, DETAIL_DESC_PREVIEW_CHARS).trimEnd()}...`;
+    const resolvedMessage = post?.resolved_message || post?.resolvedMessage || '';
+    const canMarkFound = isOwner && String(post?.lost_or_found || '').toLowerCase() === 'lost' && !isResolved;
+
+    const fire = useCallback((eventName, detail) => {
+        try {
+            window.dispatchEvent(new CustomEvent(eventName, { detail }));
+        } catch {
+            // ignore
+        }
+    }, []);
+
+    const requestEdit = useCallback((e) => {
+        if (e) e.stopPropagation();
+        if (!postId || !post) return;
+        fire('ll:communityPost:requestEdit', { postId, post });
+    }, [fire, postId, post]);
+
+    const requestDelete = useCallback((e) => {
+        if (e) e.stopPropagation();
+        if (!postId || !post) return;
+        fire('ll:communityPost:requestDelete', { postId, post });
+    }, [fire, postId, post]);
+
+    const requestMarkFound = useCallback((e) => {
+        if (e) e.stopPropagation();
+        if (!postId || !post) return;
+        fire('ll:communityPost:requestMarkFound', { postId, post });
+    }, [fire, postId, post]);
+
+    const openEditedHistory = useCallback((e) => {
+        if (e) e.stopPropagation();
+        if (!postId || !post) return;
+        fire('ll:communityPost:requestHistory', { postId, post });
+    }, [fire, postId, post]);
+
+    const activePostId = routeId || postId;
+
+    useEffect(() => {
+        if (!activePostId) return;
+
+        let alive = true;
+
+        let fetchTimer = null;
+
+        const coercePostFromEvent = (e) => {
+            const d = e?.detail;
+            if (!d) return null;
+            if (d?.post && typeof d.post === 'object') return d.post;
+            if (typeof d === 'object' && d?.id != null) return d;
+            return null;
+        };
+
+        const fetchLatest = async (pid) => {
+            try {
+                let res = await fetch(`/api/community/${encodeURIComponent(pid)}`, { credentials: 'include' });
+                if (!res.ok) {
+                    const res2 = await fetch(`/api/community/posts/${encodeURIComponent(pid)}`, { credentials: 'include' });
+                    if (res2.ok) res = res2;
+                }
+                const data = await res.json().catch(() => null);
+                if (!alive) return;
+                const normalized = Array.isArray(data) ? data[0] : data;
+                if (normalized && typeof normalized === 'object') {
+                    setPost((prev) => ({ ...(prev || {}), ...normalized }));
+                }
+            } catch {
+                // ignore
+            }
+        };
+
+        const onUpdatedLike = (e) => {
+            const next = coercePostFromEvent(e);
+            const pid = next?.id ?? e?.detail?.postId ?? e?.detail?.id ?? null;
+            if (pid == null) return;
+            if (String(pid) !== String(activePostId)) return;
+
+            if (next && typeof next === 'object') {
+                setPost((prev) => ({ ...(prev || {}), ...next }));
+            }
+
+            // Ensure the detail view reflects edits that may not include full photo payloads in the event.
+            // We debounce the refetch so rapid updates (likes, etc.) don't spam the server.
+            const detail = e?.detail || {};
+            const hasPhotoPayload =
+                next &&
+                (Object.prototype.hasOwnProperty.call(next, 'photos') ||
+                    Object.prototype.hasOwnProperty.call(next, 'community_photos') ||
+                    Object.prototype.hasOwnProperty.call(next, 'photos_json') ||
+                    Object.prototype.hasOwnProperty.call(next, 'photo_url') ||
+                    Object.prototype.hasOwnProperty.call(next, 'image_url') ||
+                    Object.prototype.hasOwnProperty.call(next, 'main_photo_url') ||
+                    Object.prototype.hasOwnProperty.call(next, 'cover_url'));
+
+            const seemsEdit = Boolean(next?.edited_at || next?.editedAt);
+            const forceRefresh = Boolean(detail?.forceRefresh || detail?.refresh || detail?.refetch);
+
+            if (forceRefresh || seemsEdit || !hasPhotoPayload) {
+                if (fetchTimer) window.clearTimeout(fetchTimer);
+                fetchTimer = window.setTimeout(() => {
+                    fetchLatest(pid);
+                }, 250);
+            }
+        };
+
+        const onDeleted = (e) => {
+            const pid = e?.detail?.postId ?? e?.detail?.id ?? e?.detail?.post?.id ?? null;
+            if (pid == null) return;
+            if (String(pid) !== String(activePostId)) return;
+            setPost(null);
+        };
+
+        window.addEventListener('ll:communityPost:updated', onUpdatedLike);
+        window.addEventListener('ll:communityPost:markedFound', onUpdatedLike);
+        window.addEventListener('ll:communityPost:deleted', onDeleted);
+
+        return () => {
+            alive = false;
+            if (fetchTimer) window.clearTimeout(fetchTimer);
+            window.removeEventListener('ll:communityPost:updated', onUpdatedLike);
+            window.removeEventListener('ll:communityPost:markedFound', onUpdatedLike);
+            window.removeEventListener('ll:communityPost:deleted', onDeleted);
+        };
+    }, [activePostId]);
+
 
     const openLoginPopup = useCallback(
         (e) => {
@@ -1263,6 +1618,32 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
         if (ok) {
             setCommentText('');
             setPost((p) => (p ? { ...p, commentsCount: Number(p.commentsCount || 0) + 1 } : p));
+            try {
+                const nextCount = (() => {
+                    try {
+                        const current = Number(post?.commentsCount ?? post?.comments_count ?? post?.comment_count ?? post?.comments ?? 0);
+                        return Number.isFinite(current) ? current + 1 : 1;
+                    } catch {
+                        return 1;
+                    }
+                })();
+
+                window.dispatchEvent(
+                    new CustomEvent('ll:communityPost:updated', {
+                        detail: {
+                            postId: postId,
+                            post: {
+                                id: postId,
+                                commentsCount: nextCount,
+                                comments_count: nextCount,
+                                comment_count: nextCount,
+                            },
+                        },
+                    })
+                );
+            } catch {
+                // ignore
+            }
             forceRefreshComments();
             const anchor = document.getElementById('comments-anchor');
             if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1273,7 +1654,8 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
     }
 
     const onComposerKeyDown = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        // Enter = new line. Ctrl/Cmd + Enter = submit.
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             submitComment();
         }
@@ -1365,15 +1747,6 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
     };
 
     const handleViewProfile = (u) => window.location.assign(`/${u.handle || u.id}`);
-
-    const handleMessage = (targetUser) => {
-        const tid = Number(targetUser?.id || userForCard?.id);
-        if (!tid) return;
-        requireAuth(() => {
-            window.dispatchEvent(new CustomEvent('open-message-center', { detail: { userId: tid } }));
-        });
-    };
-
     const postFollow = async (targetId) => {
         const payload = { target_id: targetId, action: 'follow' };
         const urls = [`${api}/users/follow`, '/api/users/follow', '/users/follow'].filter(Boolean);
@@ -1501,51 +1874,44 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
 
     const authorAvatar = post.avatar_url || post.profile_picture || '';
 
-    return (
-        <Box sx={outerSx}>
-            <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 2 }}>
-                {!embedded && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <Button
-                            onClick={backToList}
-                            startIcon={<ArrowBackIcon />}
-                            sx={{ px: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
-                        >
-                            Return to Community Posts
-                        </Button>
-                    </Box>
-                )}
 
-                {/* Header (author) */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Avatar
-                        src={authorAvatar ? authorAvatar : undefined}
-                        alt={post.first_name || ''}
-                        sx={{ width: 44, height: 44, cursor: 'pointer' }}
-                        onClick={openTopCard}
+    const mainContent = (
+        <>
+
+            {!embedded && (
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Button
+                        onClick={backToList}
+                        startIcon={<ArrowBackIcon />}
+                        sx={{ px: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
                     >
-                        {!authorAvatar ? <PersonIcon /> : null}
-                    </Avatar>
+                        Return to Community Posts
+                    </Button>
+                </Box>
+            )}
 
-                    <Box sx={{ minWidth: 0, flex: 1 }}>
-                        {/* Top row: Name · time */}
-                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
-                            <Typography variant="subtitle1" noWrap sx={{ cursor: 'pointer' }} onClick={openTopCard}>
-                                {post.first_name} {post.last_name}
-                            </Typography>
+            {/* Header (author) */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Avatar
+                    src={authorAvatar || undefined}
+                    alt={post ? `${post.first_name || ''} ${post.last_name || ''}`.trim() : ''}
+                    sx={{ bgcolor: 'grey.600', width: 36, height: 36, flexShrink: 0, cursor: 'pointer', ...DEFAULT_AVATAR_SX }}
+                    onClick={openTopCard}
+                >
+                    {!authorAvatar ? <PersonIcon /> : null}
+                </Avatar>
 
-                            {postDate ? (
-                                <>
-                                    <Box sx={{ width: 4, height: 4, bgcolor: 'text.disabled', borderRadius: '50%' }} />
-                                    <Typography variant="caption" color="text.secondary" noWrap>
-                                        {timeAgo(postDate)}
-                                    </Typography>
-                                </>
-                            ) : null}
-                        </Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                    {/* Top row: Name · time */}
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography variant="subtitle1" noWrap sx={{ cursor: 'pointer' }} onClick={openTopCard}>
+                            {post.first_name} {post.last_name}
+                        </Typography>
+                    </Box>
 
-                        {/* Second row: @handle (only) */}
-                        {post.handle ? (
+                    {/* Second row: @handle (only) */}
+                    {post.handle ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
                             <Typography
                                 variant="caption"
                                 color="text.secondary"
@@ -1555,207 +1921,452 @@ export default function PostPage({ embedded = false, post: initialPost = null, u
                             >
                                 @{post.handle}
                             </Typography>
-                        ) : null}
-                    </Box>
+                            {isEdited ? (
+                                <Link
+                                    component="button"
+                                    type="button"
+                                    underline="hover"
+                                    onClick={openEditedHistory}
+                                    sx={{ fontSize: 12, color: 'primary.main', fontWeight: 900, p: 0 }}
+                                    title="Click to view edit history"
+                                >
+                                    (Edited)
+                                </Link>
+                            ) : null}
+                        </Box>
+                    ) : null}
 
-                    <Box sx={{ ml: 'auto' }}>
-                        {(() => {
-                            const meta = badgeMeta;
-                            return (
-                                meta && (
-                                    <Chip
-                                        size="small"
-                                        label={meta.label}
-                                        sx={{
-                                            bgcolor: meta.color,
-                                            color: '#fff',
-                                            '& .MuiChip-label': { fontWeight: 600 },
-                                            '& .MuiChip-icon': { color: '#fff !important' },
-                                        }}
-                                        icon={<meta.Icon sx={{ color: '#fff !important' }} />}
-                                    />
-                                )
-                            );
-                        })()}
-                    </Box>
+                    {postDate ? (
+                        <Typography variant="caption" color="text.secondary" noWrap sx={{ mt: 0.25 }}>
+                            {timeAgoCompact(postDate)}
+                        </Typography>
+                    ) : null}
                 </Box>
 
-                {/* Title + Description */}
-                {post.title ? (
-                    <Typography variant="h5" sx={{ mt: 1.5, wordBreak: 'break-word' }}>
-                        {post.title}
-                    </Typography>
-                ) : null}
+                <Box sx={{ ml: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.75 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {canMarkFound ? (
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<CheckCircleOutlineIcon />}
+                                onClick={requestMarkFound}
+                                sx={{ textTransform: 'none', fontWeight: 800, borderRadius: 999 }}
+                            >
+                                <span className="ll-owner-action-label">Mark as Found</span>
+                            </Button>
+                        ) : null}
+                        {badgeMeta ? (
+                            <Tooltip title={displayCategoryLabel || 'Category'} arrow>
+                                <Box sx={{ display: 'inline-flex' }}>
+                                    <CategoryChip badge={badgeMeta} active />
+                                </Box>
+                            </Tooltip>
+                        ) : null}
 
-                <HelpVolunteerDetailsPanel
-                    post={post}
-                    derivedCategory={derivedCategory}
-                    viewerUser={viewerUser}
-                    onRequireLogin={openLoginPopup}
-                    onMessageAuthor={handleMessage}
-                    authorUser={authorUser}
-                />
+                        {(isUrgent && !showHelpVolunteerPanel) ? (
+                            <Chip
+                                size="small"
+                                label="Urgent"
+                                sx={{
+                                    borderRadius: 999,
+                                    fontWeight: 900,
+                                    border: '1px solid rgba(211, 47, 47, 0.35)',
+                                    bgcolor: 'rgba(211, 47, 47, 0.08)',
+                                    '& .MuiChip-label': { fontWeight: 900 },
+                                }}
+                            />
+                        ) : null}
+                        {isOwner ? (
+                            <>
+                                <Tooltip title="Post options" arrow>
+                                    <IconButton
+                                        size="small"
+                                        aria-label="Post options"
+                                        onClick={openOwnerMenu}
+                                        sx={{
+                                            width: 32,
+                                            height: 32,
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                            color: 'text.secondary',
+                                            bgcolor: 'background.paper',
+                                            '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                                        }}
+                                    >
+                                        <MoreVertIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
 
-                {post.description ? (
-                    <Typography variant="body1" sx={{ mt: 1, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                        {String(post.description)}
-                    </Typography>
-                ) : null}
+                                <Menu
+                                    anchorEl={ownerMenuEl}
+                                    open={ownerMenuOpen}
+                                    onClose={closeOwnerMenu}
+                                    onClick={(e) => e.stopPropagation()}
+                                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                                    PaperProps={{
+                                        sx: {
+                                            mt: 0.5,
+                                            borderRadius: 2,
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                            boxShadow: '0 18px 50px rgba(0,0,0,0.16)',
+                                            minWidth: 190,
+                                        },
+                                    }}
+                                >
+                                    <MenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            closeOwnerMenu(e);
+                                            requestEdit(e);
+                                        }}
+                                    >
+                                        <ListItemIcon>
+                                            <EditRoundedIcon fontSize="small" />
+                                        </ListItemIcon>
+                                        <ListItemText primary="Edit post" />
+                                    </MenuItem>
 
-                {/* Photos */}
-                {photos.length > 0 && <Carousel photos={photos} />}
+                                    <MenuItem
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            closeOwnerMenu(e);
+                                            requestDelete(e);
+                                        }}
+                                        sx={{ color: 'error.main' }}
+                                    >
+                                        <ListItemIcon sx={{ color: 'error.main' }}>
+                                            <DeleteRoundedIcon fontSize="small" />
+                                        </ListItemIcon>
+                                        <ListItemText primary="Delete post" />
+                                    </MenuItem>
+                                </Menu>
+                            </>
+                        ) : null}
+                    </Box>
+                </Box>
+            </Box>
 
-                {/* Location */}
-                {(post.city || post.county || post.street_address) && (
-                    <>
-                        <Divider sx={{ my: 1.5 }} />
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                            <LocationOnIcon fontSize="small" color="action" />
-                            {post.street_address ? (
-                                <>
-                                    <Typography variant="body2">{post.street_address}</Typography>
-                                    {locationStr && (
-                                        <Typography variant="body2" color="text.secondary" sx={{ ml: 0.25 }}>
-                                            {locationStr}
-                                        </Typography>
-                                    )}
-                                </>
-                            ) : (
-                                <Typography variant="body2">{locationStr}</Typography>
-                            )}
-                        </Box>
-                    </>
-                )}
+            {/* Title + Description */}
+            {post.title ? (
+                <Typography variant="h5" sx={{ mt: 1.25, wordBreak: 'break-word' }}>
+                    {post.title}
+                </Typography>
+            ) : null}
 
-                {/* ACTION BAR */}
-                <Paper
-                    variant="outlined"
-                    sx={{
-                        mt: 1.5,
-                        p: 1,
-                        borderRadius: 1.5,
-                        borderColor: 'divider',
-                        bgcolor: 'background.paper',
-                    }}
-                >
-                    <ActionBar
-                        user={viewerUser}
-                        postId={post.id}
-                        initialLikes={likes}
-                        initiallyLiked={viewerLiked}
-                        commentsCount={commentsCount}
-                        initialReposts={reposts}
-                        initiallyReposted={viewerReposted}
-                        onShare={() => setShareOpen(true)}
-                        onComment={() => {
-                            const anchor = document.getElementById('comments-composer');
-                            if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }}
-                    />
-                </Paper>
-
-                {/* Composer OR login prompt */}
-                {viewerUser ? (
-                    <Box
-                        id="comments-composer"
-                        sx={{ mt: 2.5, display: 'flex', alignItems: 'flex-start', gap: 1.25, flexWrap: 'nowrap' }}
-                    >
-                        <Avatar
-                            src={avatarUrl ? avatarUrl : undefined}
-                            alt={fullName || 'You'}
-                            sx={{ width: 48, height: 48, flex: '0 0 auto' }}
-                        >
-                            {!avatarUrl ? <PersonIcon /> : null}
-                        </Avatar>
-
-                        <TextField
-                            fullWidth
-                            multiline
-                            minRows={1}
-                            maxRows={6}
-                            value={commentText}
-                            onChange={(e) => setCommentText(e.target.value)}
-                            onKeyDown={onComposerKeyDown}
-                            label={`Leave a comment as ${fullName || 'Guest'}`}
-                            placeholder="Write your comment…"
-                            variant="outlined"
-                            inputProps={{ maxLength: COMMENT_MAX_CHARS }}
-                            InputProps={{
-                                endAdornment: (
-                                    <InputAdornment position="end" sx={{ alignSelf: 'flex-end', pb: 0.25 }}>
-                                        <IconButton
-                                            aria-label="Send comment"
-                                            onClick={submitComment}
-                                            disabled={posting || !commentText.trim()}
-                                            sx={{
-                                                bgcolor: 'primary.main',
-                                                color: '#fff',
-                                                '&:hover': { bgcolor: 'primary.dark' },
-                                                ml: 0.5,
-                                            }}
-                                        >
-                                            {posting ? (
-                                                <CircularProgress size={18} sx={{ color: '#fff' }} />
-                                            ) : (
-                                                <ArrowForwardRoundedIcon />
-                                            )}
-                                        </IconButton>
-                                    </InputAdornment>
-                                ),
+            {isResolved ? (
+                <Box sx={{ mt: 1.25 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip
+                            icon={<CheckCircleRoundedIcon sx={{ color: '#1b5e20 !important' }} />}
+                            label="Marked as Found"
+                            size="small"
+                            sx={{
+                                border: '1px solid rgba(46, 125, 50, 0.35)',
+                                bgcolor: 'rgba(46, 125, 50, 0.08)',
+                                fontWeight: 900,
+                                borderRadius: 999,
+                                '& .MuiChip-label': { fontWeight: 900 },
                             }}
                         />
                     </Box>
-                ) : (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2.5 }}>
-                        You need to{' '}
-                        <Link href="/login" onClick={openLoginPopup} underline="hover">
-                            log in
-                        </Link>{' '}
-                        to comment.
-                    </Typography>
-                )}
 
-                <Divider sx={{ my: 2 }} />
+                    {resolvedMessage ? (
+                        <Box
+                            sx={{
+                                mt: 0.75,
+                                px: 1.25,
+                                py: 1,
+                                borderRadius: '14px',
+                                bgcolor: 'rgba(46, 125, 50, 0.08)',
+                                border: '1px solid rgba(46, 125, 50, 0.22)',
+                            }}
+                        >
+                            <Typography variant="body2" sx={{ fontWeight: 800, mb: 0.25 }}>
+                                Updated
+                            </Typography>
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.5, wordBreak: 'break-word' }}
+                            >
+                                {String(resolvedMessage)}
+                            </Typography>
+                        </Box>
+                    ) : null}
+                </Box>
+            ) : null}
 
-                {/* Comments */}
-                <RedditComments
+
+            <HelpVolunteerDetailsPanel
+                post={post}
+                derivedCategory={derivedCategory}
+                isUrgent={isUrgent}
+                viewerUser={viewerUser}
+                onRequireLogin={openLoginPopup}
+                authorUser={authorUser}
+            />
+
+            {post.description ? (
+                <Typography
+                    variant="body1"
+                    sx={{
+                        mt: 1,
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: 1.6,
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere',
+                    }}
+                >
+                    {descDisplay}
+                    {descNeedsTruncate && !showFullDescription ? (
+                        <>
+                            {' '}
+                            <Link
+                                component="button"
+                                type="button"
+                                underline="hover"
+                                onClick={() => setShowFullDescription(true)}
+                                sx={{ fontSize: 14, fontWeight: 800 }}
+                            >
+                                more
+                            </Link>
+                        </>
+                    ) : null}
+                    {descNeedsTruncate && showFullDescription ? (
+                        <>
+                            {' '}
+                            <Link
+                                component="button"
+                                type="button"
+                                underline="hover"
+                                onClick={() => setShowFullDescription(false)}
+                                sx={{ fontSize: 14, fontWeight: 800 }}
+                            >
+                                less
+                            </Link>
+                        </>
+                    ) : null}
+                </Typography>
+            ) : null}
+
+            {/* Photos */}
+            {photos.length > 0 && <Carousel photos={photos} />}
+
+            {/* Location */}
+            {(post.city || post.county || post.street_address) && (
+                <>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <LocationOnIcon fontSize="small" color="action" />
+                        {post.street_address ? (
+                            <>
+                                <Typography variant="body2">{post.street_address}</Typography>
+                                {locationStr && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ ml: 0.25 }}>
+                                        {locationStr}
+                                    </Typography>
+                                )}
+                            </>
+                        ) : (
+                            <Typography variant="body2">{locationStr}</Typography>
+                        )}
+                    </Box>
+                </>
+            )}
+
+            {/* ACTION BAR */}
+            <Paper
+                variant="outlined"
+                sx={{
+                    mt: 1.25,
+                    p: 1,
+                    borderRadius: 1.5,
+                    bgcolor: '#FFFFFF',
+                    borderColor: (t) => alphaColor(t.palette.primary.main, 0.14),
+                }}
+            >
+                <ActionBar
+                    user={viewerUser}
                     postId={post.id}
-                    refreshKey={commentsRefreshKey}
-                    initialPageSize={50} // 50 top-level comments per batch
-                    viewer={viewerUser}
-                    postAuthor={postAuthor}
-                    onOpenUserCard={handleOpenUserCard}
+                    initialLikes={likes}
+                    initiallyLiked={viewerLiked}
+                    commentsCount={commentsCount}
+                    initialReposts={reposts}
+                    initiallyReposted={viewerReposted}
+                    onShare={() => setShareOpen(true)}
+                    onComment={() => {
+                        const anchor = document.getElementById('comments-composer');
+                        if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
                 />
             </Paper>
 
-            {/* Shared user card popover */}
-            <UserCardPopover
-                anchorEl={userAnchor}
-                onClose={() => setUserAnchor(null)}
-                user={userForCard}
-                isSelf={isSelfForCard}
-                following={isFollowingForCard}
-                onFollow={handleFollow}
-                onMessage={handleMessage}
-                onViewProfile={handleViewProfile}
-            />
+            {/* Composer OR login prompt */}
+            {viewerUser ? (
+                <Box
+                    id="comments-composer"
+                    sx={{ mt: 2, display: 'flex', alignItems: 'flex-start', gap: 1, flexWrap: 'nowrap' }}
+                >
+                    <Avatar
+                        src={avatarUrl || undefined}
+                        alt={fullName || 'You'}
+                        sx={{
+                            bgcolor: 'grey.600',
+                            width: 36,
+                            height: 36,
+                            flexShrink: 0,
+                            border: '1px solid',
+                            borderColor: 'divider',}}
+                    >
+                        {!avatarUrl ? <PersonIcon /> : null}
+                    </Avatar>
 
-            <SharePostDialog open={shareOpen} onClose={() => setShareOpen(false)} viewer={viewerUser} post={post} />
+                    <TextField
+                        fullWidth
+                        multiline
+                        minRows={1}
+                        maxRows={6}
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={onComposerKeyDown}
+                        label={`Leave a comment as ${fullName || 'Guest'}`}
+                        placeholder="Write your comment…"
+                        variant="outlined"
+                        inputProps={{ maxLength: COMMENT_MAX_CHARS }}
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end" sx={{ alignSelf: 'flex-end', pb: 0.25 }}>
+                                    <IconButton
+                                        aria-label="Send comment"
+                                        onClick={submitComment}
+                                        disabled={posting || !commentText.trim()}
+                                        sx={(t) => ({
+                                            ml: 0.5,
+                                            bgcolor: 'primary.main',
+                                            color: '#fff',
+                                            width: 38,
+                                            height: 38,
+                                            borderRadius: 2,
+                                            boxShadow: `0 10px 18px ${alphaColor(t.palette.primary.main, 0.18)}`,
+                                            '&:hover': {
+                                                bgcolor: 'primary.dark',
+                                                boxShadow: `0 14px 26px ${alphaColor(t.palette.primary.main, 0.22)}`,
+                                            },
+                                            '&.Mui-disabled': {
+                                                bgcolor: 'action.disabledBackground',
+                                                color: 'action.disabled',
+                                                boxShadow: 'none',
+                                                opacity: 1,
+                                            },
+                                        })}
+                                    >
+                                        {posting ? (
+                                            <CircularProgress size={18} sx={{ color: '#fff' }} />
+                                        ) : (
+                                            <ArrowForwardRoundedIcon />
+                                        )}
+                                    </IconButton>
+                                </InputAdornment>
+                            ),
+                        }}
+                    />
+                </Box>
+            ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                    You need to{' '}
+                    <Link href="/login" onClick={openLoginPopup} underline="hover">
+                        log in
+                    </Link>{' '}
+                    to comment.
+                </Typography>
+            )}
+
+            <Divider sx={{ my: 1.5 }} />
+
+            {/* Comments */}
+            <RedditComments
+                postId={post.id}
+                refreshKey={commentsRefreshKey}
+                initialPageSize={50} // 50 top-level comments per batch
+                viewer={viewerUser}
+                postAuthor={postAuthor}
+                onOpenUserCard={handleOpenUserCard}
+            />
+        </>
+    );
+
+    return (
+        <Box sx={outerSx}>
+            {embedded ? (
+                <Box
+                    sx={(t) => ({
+                        width: '100%',
+                        minHeight: '100%',
+                        bgcolor: '#FFFFFF',
+                        px: { xs: 1.25, sm: 1.75 },
+                        py: { xs: 1.25, sm: 1.5 },
+                    })}
+                >
+                    {mainContent}
+                </Box>
+            ) : (
+                <Paper
+                    variant="outlined"
+                    sx={(t) => ({
+                        p: { xs: 1.25, sm: 2 },
+                        borderRadius: 3,
+                        borderColor: alphaColor(t.palette.primary.main, 0.14),
+                        backgroundColor: '#FFFFFF',
+                        backgroundImage: 'none',
+                        boxShadow: embedded ? 'none' : `0 16px 56px ${alphaColor(t.palette.common.black, 0.08)}`,
+                    })}
+                >
+                    {mainContent}
+                </Paper>
+            )}
         </Box>
     );
+
 }
 
 /* ---------- Local, lightweight carousel ---------- */
 function Carousel({ photos }) {
     const [index, setIndex] = useState(0);
 
-    const prev = () => setIndex((i) => (i - 1 + photos.length) % photos.length);
-    const next = () => setIndex((i) => (i + 1) % photos.length);
+    // Reset back to the first photo whenever a different post is selected or photos change.
+    useEffect(() => {
+        setIndex(0);
+    }, [photos]);
 
-    const current = photos[index];
+    // Clamp index so we never show "3/2" style counters or read out-of-bounds.
+    useEffect(() => {
+        setIndex((i) => {
+            if (!Array.isArray(photos) || photos.length === 0) return 0;
+            const max = photos.length - 1;
+            return Math.min(Math.max(0, i), max);
+        });
+    }, [photos.length]);
+
+    const safeIndex = Array.isArray(photos) && photos.length ? Math.min(index, photos.length - 1) : 0;
+    const current = Array.isArray(photos) ? photos[safeIndex] : null;
+
+    const prev = () => {
+        if (!Array.isArray(photos) || photos.length < 2) return;
+        setIndex((i) => (i - 1 + photos.length) % photos.length);
+    };
+
+    const next = () => {
+        if (!Array.isArray(photos) || photos.length < 2) return;
+        setIndex((i) => (i + 1) % photos.length);
+    };
+
+    if (!current) return null;
 
     return (
-        <Box sx={{ position: 'relative', mt: 1.5 }}>
+        <Box sx={{ position: 'relative', mt: 1.25 }}>
             <Box
                 sx={{
                     width: '100%',
@@ -1792,7 +2403,7 @@ function Carousel({ photos }) {
                             top: '50%',
                             left: 8,
                             transform: 'translateY(-50%)',
-                            bgcolor: 'rgba(0,0,0,0.5)',
+                            bgcolor: 'rgba(0,0,0,0.45)',
                             color: '#fff',
                             '&:hover': { bgcolor: 'rgba(0,0,0,0.65)' },
                         }}
@@ -1808,7 +2419,7 @@ function Carousel({ photos }) {
                             top: '50%',
                             right: 8,
                             transform: 'translateY(-50%)',
-                            bgcolor: 'rgba(0,0,0,0.5)',
+                            bgcolor: 'rgba(0,0,0,0.45)',
                             color: '#fff',
                             '&:hover': { bgcolor: 'rgba(0,0,0,0.65)' },
                         }}
@@ -1825,12 +2436,12 @@ function Carousel({ photos }) {
                             px: 1,
                             py: 0.25,
                             borderRadius: 1,
-                            bgcolor: 'rgba(0,0,0,0.7)',
+                            bgcolor: 'rgba(0,0,0,0.45)',
                             color: '#fff',
                             fontSize: 12,
                         }}
                     >
-                        {index + 1} / {photos.length}
+                        {safeIndex + 1} / {photos.length}
                     </Box>
                 </>
             )}

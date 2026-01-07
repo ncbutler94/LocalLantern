@@ -58,7 +58,7 @@ function UserCard({ user, onOpenUserCard }) {
                     src={user.profile_picture || user.avatar_url || ''}
                     alt={toName(user)}
                     variant="square"
-                    sx={{ width: 96, height: 96, borderRadius: 1, cursor: 'pointer' }}
+                    sx={{ bgcolor: 'grey.600', width: 96, height: 96, borderRadius: 1, cursor: 'pointer' }}
                     onClick={goProfile}
                 />
                 <Box sx={{ minWidth: 0 }}>

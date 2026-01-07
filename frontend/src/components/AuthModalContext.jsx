@@ -7,25 +7,15 @@ import React, {
     useRef,
     useState,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import {
-    Dialog,
-    DialogContent,
-    IconButton,
-    Box,
-    Typography,
-    useMediaQuery,
-} from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-
-import Login from './Login';
+// NOTE: We intentionally do NOT render a login popup anymore.
+// The app uses the /login route for authentication UI.
 
 const API_BASE = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '');
 const AUTH_STORAGE_KEY = 'auth:event';
 const MIN_REFRESH_COOLDOWN_MS = 4000;
 const MIN_PROMPT_COOLDOWN_MS = 10000;
-
-const BASE_AUTH_TITLE = 'Log in to continue';
 
 const AuthContext = createContext({
     user: null,
@@ -49,15 +39,17 @@ const AuthContext = createContext({
 export function AuthModalProvider({ children }) {
     const [user, setUser] = useState(null);
     const [status, setStatus] = useState('loading');
+
+    // We keep a minimal "loginOpen" flag for compatibility with callers,
+    // but we no longer render a dialog. Auth UI lives at /login.
     const [loginOpen, setLoginOpen] = useState(false);
-    const [modalTitle, setModalTitle] = useState(BASE_AUTH_TITLE);
 
     const loginOpenRef = useRef(false);
     const lastPromptAtRef = useRef(0);
     const lastRefreshAtRef = useRef(0);
     const loginWaitersRef = useRef([]);
 
-    const isMobile = useMediaQuery('(max-width:600px)');
+    const navigate = useNavigate();
 
     useEffect(() => {
         axios.defaults.withCredentials = true;
@@ -68,15 +60,19 @@ export function AuthModalProvider({ children }) {
         if (now - lastPromptAtRef.current < MIN_PROMPT_COOLDOWN_MS && loginOpenRef.current) return;
         lastPromptAtRef.current = now;
 
-        setModalTitle(BASE_AUTH_TITLE);
-        setLoginOpen(true);
-        loginOpenRef.current = true;
-    }, []);
-
-    const closeLogin = useCallback(() => {
+        // Instead of opening a popup, redirect to /login.
         setLoginOpen(false);
         loginOpenRef.current = false;
-        setModalTitle(BASE_AUTH_TITLE);
+
+        // Preserve current path so /login can navigate back after success.
+        const from = window.location.pathname + window.location.search + window.location.hash;
+        navigate(`/login?redirect=${encodeURIComponent(from)}`);
+    }, [navigate]);
+
+    const closeLogin = useCallback(() => {
+        // No dialog to close, but keep the contract.
+        setLoginOpen(false);
+        loginOpenRef.current = false;
 
         if (loginWaitersRef.current.length) {
             loginWaitersRef.current.forEach((r) => r(false));
@@ -104,7 +100,6 @@ export function AuthModalProvider({ children }) {
                 if (loginOpenRef.current) {
                     setLoginOpen(false);
                     loginOpenRef.current = false;
-                    setModalTitle(BASE_AUTH_TITLE);
                 }
 
                 if (loginWaitersRef.current.length) {
@@ -256,69 +251,6 @@ export function AuthModalProvider({ children }) {
     return (
         <AuthContext.Provider value={value}>
             {children}
-
-            <Dialog
-                open={loginOpen}
-                onClose={(_, reason) => {
-                    if (reason === 'backdropClick' || reason === 'escapeKeyDown') return;
-                    closeLogin();
-                }}
-                fullScreen={isMobile}
-                fullWidth
-                maxWidth="xs"
-                aria-labelledby="auth-dialog-title"
-                disableEscapeKeyDown
-                scroll="body"
-                PaperProps={{
-                    sx: {
-                        borderRadius: isMobile ? 0 : 2,
-                        overflowX: 'hidden',
-                        overflowY: isMobile ? 'auto' : 'hidden', // ✅ no tiny scrollbar on desktop
-                    },
-                }}
-            >
-                <Box sx={{ position: 'relative' }}>
-                    <IconButton
-                        aria-label="Close"
-                        onClick={closeLogin}
-                        sx={{ position: 'absolute', right: 8, top: 8, zIndex: 1 }}
-                    >
-                        <CloseIcon />
-                    </IconButton>
-
-                    <Box sx={{ p: 3, pt: 6 }}>
-                        <Typography
-                            id="auth-dialog-title"
-                            variant="h6"
-                            align="center"
-                            sx={{ mb: 2 }}
-                            data-ll-modal-title
-                        >
-                            {modalTitle}
-                        </Typography>
-
-                        <DialogContent sx={{ p: 0, overflow: 'visible' }}>
-                            <Login
-                                title={BASE_AUTH_TITLE}
-                                onTitleChange={(nextTitle) => {
-                                    setModalTitle(nextTitle || BASE_AUTH_TITLE);
-                                }}
-                                onLogin={async (nextUser) => {
-                                    setUser(nextUser || null);
-                                    setStatus(nextUser ? 'authenticated' : 'unauthenticated');
-                                    try {
-                                        localStorage.setItem(
-                                            AUTH_STORAGE_KEY,
-                                            JSON.stringify({ type: 'login', at: Date.now() })
-                                        );
-                                    } catch {}
-                                    closeLogin();
-                                }}
-                            />
-                        </DialogContent>
-                    </Box>
-                </Box>
-            </Dialog>
         </AuthContext.Provider>
     );
 }

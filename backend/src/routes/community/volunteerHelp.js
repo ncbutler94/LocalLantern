@@ -4,7 +4,7 @@
 // -----------------------------------------------------------------------------
 //
 // What this route does:
-//  • Validates fields + ≤4 photos
+//  • Validates fields + ≤8 photos
 //  • Uploads photos to GCS
 //  • Inserts 1 row in community_posts         (aggregator)
 //  • Inserts 1 row in volunteer_help_requests (detail; shares id)
@@ -14,7 +14,6 @@
 //  • This endpoint is intentionally COMMUNITY-oriented (volunteer/neighbor help)
 //  • Paid/marketplace work should live on the Services page, not here
 // -----------------------------------------------------------------------------
-
 import express from 'express';
 import multer from 'multer';
 import { Storage } from '@google-cloud/storage';
@@ -45,10 +44,6 @@ const HELP_TYPES = [
     'care',
 ];
 
-const URGENCY_OPTIONS = ['flexible', 'soon', 'urgent'];
-const TRAVEL_RADIUS_OPTIONS = ['city', 'county', 'neighboring_counties', 'statewide'];
-const CONTACT_METHOD_OPTIONS = ['either', 'text', 'call', 'email'];
-
 /* ── Validation (location optional) ──────────────────────────────────────── */
 const validate = [
     body('title').trim().notEmpty().isLength({ max: 80 }),
@@ -73,22 +68,6 @@ const validate = [
         .trim()
         .isLength({ max: 80 }),
 
-    // optional
-    body('needed_date').optional({ nullable: true, checkFalsy: true }).isISO8601().toDate(),
-    body('contact').trim().notEmpty().isLength({ max: 255 }),
-
-    // optional: help-request details
-    body('needed_time').optional({ nullable: true }).trim().isLength({ max: 80 }),
-    body('helpers_needed').optional({ nullable: true }).isInt({ min: 1, max: 999 }).toInt(),
-    body('urgency').optional({ nullable: true }).isIn(URGENCY_OPTIONS),
-
-    // optional: volunteer-offer details
-    body('availability').optional({ nullable: true }).trim().isLength({ max: 160 }),
-    body('travel_radius').optional({ nullable: true }).isIn(TRAVEL_RADIUS_OPTIONS),
-
-    // optional: shared
-    body('contact_method').optional({ nullable: true }).isIn(CONTACT_METHOD_OPTIONS),
-
     body('extra_notes').trim().isLength({ max: 2000 }).optional({ nullable: true }),
 
     body('city').trim().optional({ nullable: true }),
@@ -96,6 +75,17 @@ const validate = [
 
     body('latitude').optional().isFloat(),
     body('longitude').optional().isFloat(),
+
+    // urgency checkbox (multipart/form-data often sends 'on' or 'true')
+    body('is_urgent')
+        .optional({ nullable: true })
+        .custom((value) => {
+            if (value === undefined || value === null || value === '') return true;
+            const s = String(value).trim().toLowerCase();
+            const ok = ['0','1','true','false','on','off','yes','no'].includes(s);
+            if (!ok) throw new Error('Invalid urgency flag');
+            return true;
+        }),
 ];
 
 function normalizeKind(v) {
@@ -103,26 +93,11 @@ function normalizeKind(v) {
     return raw === 'volunteer' ? 'volunteer' : 'help';
 }
 
-function normalizeContactMethod(v) {
-    const raw = String(v || '').trim().toLowerCase();
-    return CONTACT_METHOD_OPTIONS.includes(raw) ? raw : 'either';
-}
-
-function normalizeUrgency(v) {
-    const raw = String(v || '').trim().toLowerCase();
-    return URGENCY_OPTIONS.includes(raw) ? raw : 'flexible';
-}
-
-function normalizeTravelRadius(v) {
-    const raw = String(v || '').trim().toLowerCase();
-    return TRAVEL_RADIUS_OPTIONS.includes(raw) ? raw : 'county';
-}
-
 /* ── POST /api/volunteer-help ─────────────────────────────────────────────── */
 router.post(
     '/',
     authenticateToken,
-    upload.array('photos', 4),
+    upload.array('photos', 8),
     validate,
     async (req, res, next) => {
         /* 1️⃣ Field errors → 422 */
@@ -161,24 +136,28 @@ router.post(
             help_type,
             help_type_other = null,
             extra_notes = '',
-            needed_date,
-            contact,
             city = null,
             county = null,
             latitude,
             longitude,
-            needed_time = null,
-            helpers_needed = null,
-            urgency,
-            availability = null,
-            travel_radius,
-            contact_method,
+            // checkbox values may come through as 'on'/'true'/'1'
+            is_urgent,
+            isUrgent,
+            urgent,
         } = req.body;
+
+        const isUrgentValueRaw = is_urgent ?? isUrgent ?? urgent;
+        const isUrgentValue =
+            isUrgentValueRaw === true ||
+            isUrgentValueRaw === 1 ||
+            ['1', 'true', 'on', 'yes'].includes(String(isUrgentValueRaw || '').trim().toLowerCase())
+                ? 1
+                : 0;
 
         const request_kind = normalizeKind(req.body.request_kind);
 
         // Split categories for Community UX
-        // - help requests   => category 'help-requests'
+        // - help requests    => category 'help-requests'
         // - volunteer offers => category 'volunteer-requests'
         const category = request_kind === 'volunteer' ? 'volunteer-requests' : 'help-requests';
 
@@ -202,20 +181,13 @@ router.post(
             await trx('volunteer_help_requests').insert({
                 id: postId,
                 request_kind,
+                is_urgent: isUrgentValue,
                 help_type,
                 help_type_other:
                     String(help_type).trim().toLowerCase() === 'other'
                         ? String(help_type_other || '').trim() || null
                         : null,
-                needed_date: needed_date ? needed_date : null,
-                needed_time: needed_time ? String(needed_time).trim() : null,
-                helpers_needed: typeof helpers_needed === 'number' ? helpers_needed : null,
-                urgency: normalizeUrgency(urgency),
-                availability: availability ? String(availability).trim() : null,
-                travel_radius: normalizeTravelRadius(travel_radius),
-                contact_method: normalizeContactMethod(contact_method),
                 extra_notes,
-                contact: String(contact || '').trim(),
                 created_at: trx.fn.now(),
             });
 

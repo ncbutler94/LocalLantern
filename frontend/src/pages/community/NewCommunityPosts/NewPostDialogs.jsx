@@ -6,6 +6,8 @@
 
 import React, { useEffect, useState } from 'react';
 import Dialog from '@mui/material/Dialog';
+import DialogContent from '@mui/material/DialogContent';
+import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
 
@@ -121,11 +123,46 @@ export default function NewPostDialogs({
     const postRecommendation    = (fd) => post('/api/recommendations',    fd, 'Failed to submit recommendation/tip.');
     // Volunteer/Help request submits inside its dialog via createVolunteerRequest()
 
+    const normalizeStepTwoSlug = (raw) => {
+        const s0 = String(raw || '').trim().toLowerCase();
+
+        // Treat legacy/alias slugs as the canonical ones used by the Step-2 switch.
+        const ALIASES = {
+            // Lost & Found
+            'lost-found': 'lost-and-found',
+            'lost_and_found': 'lost-and-found',
+
+            // Announcements
+            announcement: 'announcements',
+
+            // Volunteer / Help
+            'volunteer-help': 'volunteer-help-requests',
+            'volunteer-help-requests': 'volunteer-help-requests',
+            'help-requests': 'volunteer-help-requests',
+            volunteers: 'volunteer-requests',
+
+            // Public safety
+            'public-safety': 'public-safety-alerts',
+            'public_safety': 'public-safety-alerts',
+
+            // Recommendations / Tips
+            recommendation: 'recommendations-tips',
+            recommendations: 'recommendations-tips',
+            tips: 'recommendations-tips',
+            tip: 'recommendations-tips',
+            'recommendations_and_tips': 'recommendations-tips',
+            'recommendations-tips': 'recommendations-tips',
+        };
+
+        return ALIASES[s0] || s0;
+    };
+
+
     /* ──────────────────────────────────────────────────────────────
      * 3) Render Step-2 form that matches the picked slug.
      * ────────────────────────────────────────────────────────────── */
     const renderStepTwoForm = () => {
-        const slug = stepOneData?.category || '';
+        const slug = normalizeStepTwoSlug(stepOneData?.category || '');
 
         const commonDefaults = {
             defaultCity: defaults.city,
@@ -209,7 +246,16 @@ export default function NewPostDialogs({
                 );
 
             default:
-                return null;
+                return (
+                    <DialogContent dividers>
+                        <Typography sx={{ fontWeight: 900, mb: 0.5 }}>
+                            Unable to open this form
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            This category isn’t wired yet (category: {String(stepOneData?.category || '')}).
+                        </Typography>
+                    </DialogContent>
+                );
         }
     };
 

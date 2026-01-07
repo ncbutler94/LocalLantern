@@ -5,7 +5,156 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="85d913a2-29a9-4691-be92-ce88b393eda8" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/boost_lit.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/comment_discreet.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/comment_lit.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/like_icon_discreet.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/like_icon_lit.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/report_discreet.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/report_lit.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/repost_discreet.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/repost_lit.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/share_discreet.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/actionBar/share_lit.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/businesses/businesses-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/announcement-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/community-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/discussion-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/lost-and-found-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/public-safety-alert-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/recommendations-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/recommendations-marker.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/volunteer-help-requests-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/events/events-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/jobs/jobs-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/marketplace/marketplace-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/music/music-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/services/services-marker-gold.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/posts_icon.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/assets/sponsored_posts.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/ProfileEngagementTabs.jsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/utils/imageProcessing.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/combined.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/combined.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/error.log" beforeDir="false" afterPath="$PROJECT_DIR$/backend/error.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250320172906_create_users_table.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250320201043_add_verification_fields_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250322011327_add_lockout_columns_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250324160140_add_2fa_fields_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250324164044_add_phone_number_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250329212653_add_social_columns_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250330011623_add_reset_fields_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250418214055_add_needs_password_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250422165342_add_profile_picture_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250422215525_add_email_change_fields_to_users.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250429193326_create_jobs_table.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250429194247_create_jobs_table.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250430184557_create_community_posts.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250510030534_create_community_categories_table.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250527215833_reset_community_posts_and_create_lost_and_found.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250528155001_create_lost_and_found_photos.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250528190026_create_post_likes.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250528190210_create_post_comments.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250528191533_restore_post_comments.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250604024517_add_city_county_to_community_posts.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250708202902_create_community_photos_table.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250709003216_create_community_categories.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250710030100_add_category_to_post_likes.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250711023326_recreate_lost_and_found.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250711025627_add_street_address_to_community_posts.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250711032649_create_announcements_table.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250711162726_add_title_and_description_to_community_posts.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250711171232_limit_title_desc_length.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250711200300_make_description_nullable.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250711200443_make_description_nullable_lost_and_found.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250714172821_add_community_announcements.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250714195634_add_visibility_to_community_posts.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250715172110_create_general_discussion.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250715172721_create_general_discussion.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250715192537_create_public_safety_alerts.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250718204250_create_recommendations_and_tips.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250719212026_create_volunteer_help_requests.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250722193256_add_contact_to_volunteer_help_requests.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250730204015_remove_alert_columns.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250731163230_add_category_to_post_comments.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250805181009_20250808_create_post_comments.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250806185113_20250830_create_comment_likes.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250808183401_20250808_add_comment_photos.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250812021234_20250812_create_businesses.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250816000719_20240816_add_business_reviews.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250819181258_20250819_alter_businesses_add_profile_fields.js.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250819181404_20250819_create_business_deals.js.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250820012541_20250820_add_business_locations_and_review_index.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/db/migrations/20250821000039_20250821_add_business_media.cjs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/announcements.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/announcements.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/community.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/community.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/lostAndFound.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/lostAndFound.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/publicSafety.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/publicSafety.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/recommendations.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/recommendations.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/community/volunteerHelp.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/community/volunteerHelp.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/messages/messages.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/users/user.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/users/user.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/routes/users/userEngagement.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/routes/users/userEngagement.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/.eslintcache" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/.eslintcache" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/0.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/0.pack_" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/3.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/3.pack_" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/4.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/4.pack_" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/5.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/5.pack_" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/6.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/6.pack_" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/8.pack_" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/node_modules/.cache/default-development/8.pack_" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/LocalLanternLogo.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/LocalLanternLogo.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/businesses/businesses-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/businesses/businesses-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/announcement-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/announcement-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/community-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/community-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/discussion-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/discussion-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/lost-and-found-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/lost-and-found-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/public-safety-alert-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/public-safety-alert-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/recommendation-and-tips-marker.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/volunteer-help-requests-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/community/volunteer-help-requests-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/events/events-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/events/events-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/jobs/jobs-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/jobs/jobs-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/marketplace/marketplace-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/marketplace/marketplace-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/music/music-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/music/music-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/services/services-marker.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/mapMarkers/services/services-marker.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/assets/trending.png" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/assets/trending.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/ActionBar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/ActionBar.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AuthModalContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AuthModalContext.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/CityCountySelect.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/CityCountySelect.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/Header/Header.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Header/Header.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/Login.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Login.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/PostCard.jsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/ReplyEditor.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/ReplyEditor.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/SharePostDialog.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/SharePostDialog.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/UserCardPopover.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/UserCardPopover.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/community/EditCommunityPostDialog.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/community/EditCommunityPostDialog.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/hooks/community/useCommunityData.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/hooks/community/useCommunityData.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Register.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/Register.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/business/BusinessDetail/MediaCommentPanel.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/business/BusinessDetail/MediaCommentPanel.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityFilter.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityFilter.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityList.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityMapView.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityMapView.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPage.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPanel.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/CommunityPanel.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/CategoryPopup.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/CategoryPopup.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewAnnouncementForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewAnnouncementForm.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewGeneralDiscussionForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewGeneralDiscussionForm.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewLostAndFoundForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewLostAndFoundForm.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewPostDialogs.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewPostDialogs.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewPublicSafetyForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewPublicSafetyForm.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewRecommendationForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewRecommendationForm.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewVolunteerHelpForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/NewCommunityPosts/NewVolunteerHelpForm.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/PostDetailModal.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/PostDetailModal.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/community/PostPage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/community/PostPage.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/events/EventMap.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/events/EventMap.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/Profile.jsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/AboutSection.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/AboutSection.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/FollowsSection.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/FollowsSection.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/ProfileHeader.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/ProfileHeader.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/ProfilePostsList.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/ProfilePostsList.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/RightRail.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/RightRail.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/UserProfilePage.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/profile/userProfile/UserProfilePage.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/pages/social/SocialHome.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/social/SocialHome.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/theme.js" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/theme.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,7 +191,7 @@
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;org.jetbrains.plugins.github.ui.GithubSettingsConfigurable&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.editor.code.editing&quot;,
     &quot;ts.external.directory.path&quot;: &quot;C:\\Program Files\\JetBrains\\WebStorm 2025.2.5\\plugins\\javascript-plugin\\jsLanguageServicesImpl\\external&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
@@ -52,10 +201,11 @@
       <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\ncbut\Documents\WebDevelopment\TheLocalLantern\TheLocalLantern\frontend\src\components\community" />
-      <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\frontend\src\components\SidePanel\Common" />
-      <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\backend\src\routes\business" />
-      <recent name="C:\Users\Nate\Documents\The Local Lantern\the-local-lantern\TheLocalLantern\frontend\src\assets\mapMarkers\businesses" />
+      <recent name="C:\Users\ncbut\Documents\WebDevelopment\TheLocalLantern\TheLocalLantern\frontend\src\assets" />
+      <recent name="C:\Users\ncbut\Documents\WebDevelopment\TheLocalLantern\TheLocalLantern\frontend\src\assets\actionBar" />
+      <recent name="C:\Users\ncbut\Documents\WebDevelopment\TheLocalLantern\TheLocalLantern\frontend\src\assets\mapMarkers\community" />
+      <recent name="C:\Users\ncbut\Documents\WebDevelopment\TheLocalLantern\TheLocalLantern\frontend\src\assets\mapMarkers\music" />
+      <recent name="C:\Users\ncbut\Documents\WebDevelopment\TheLocalLantern\TheLocalLantern\frontend\src\assets\mapMarkers\services" />
     </key>
   </component>
   <component name="RunManager">
@@ -140,7 +290,36 @@
       <workItem from="1766007557208" duration="47000" />
       <workItem from="1766012170202" duration="9550000" />
       <workItem from="1766029786661" duration="705000" />
-      <workItem from="1766066442742" duration="8653000" />
+      <workItem from="1766066442742" duration="25919000" />
+      <workItem from="1766157963279" duration="9154000" />
+      <workItem from="1766250202347" duration="4183000" />
+      <workItem from="1766421316005" duration="8649000" />
+      <workItem from="1766446182341" duration="6247000" />
+      <workItem from="1766461067027" duration="9640000" />
+      <workItem from="1766508145301" duration="25101000" />
+      <workItem from="1766543744029" duration="247000" />
+      <workItem from="1766550418653" duration="6510000" />
+      <workItem from="1766583661517" duration="26144000" />
+      <workItem from="1766631703367" duration="6001000" />
+      <workItem from="1766668584431" duration="25625000" />
+      <workItem from="1766768545293" duration="24207000" />
+      <workItem from="1766860649817" duration="8672000" />
+      <workItem from="1766869953070" duration="21451000" />
+      <workItem from="1766963610151" duration="51000" />
+      <workItem from="1767023457062" duration="1156000" />
+      <workItem from="1767030987476" duration="12110000" />
+      <workItem from="1767142232283" duration="122000" />
+      <workItem from="1767158377640" duration="1820000" />
+      <workItem from="1767162810660" duration="880000" />
+      <workItem from="1767196128143" duration="18761000" />
+      <workItem from="1767281140750" duration="2953000" />
+      <workItem from="1767295067703" duration="6097000" />
+      <workItem from="1767334397629" duration="1319000" />
+      <workItem from="1767371951424" duration="20645000" />
+      <workItem from="1767459016921" duration="1948000" />
+      <workItem from="1767554264308" duration="907000" />
+      <workItem from="1767727179747" duration="1411000" />
+      <workItem from="1767741708978" duration="16739000" />
     </task>
     <servers />
   </component>

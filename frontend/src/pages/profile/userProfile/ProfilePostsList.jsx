@@ -3,7 +3,7 @@
 // - Location line IS clickable: opens a small map popup (single marker) for that post.
 // - Category chip is re-homed under the Edit button (keeping the *original* chip styles + icons).
 // - Lost posts: "Mark as Found" button appears to the right of the category chip.
-// - Infinite render: show 20 initially; when you scroll past the 15th item of the current chunk, load 20 more.
+// - Infinite render: show 50 initially; when you scroll past the 40th item of the current chunk, load 50 more.
 //
 // FIX (this patch):
 // - Action bar no longer prompts "log in" while logged in.
@@ -23,17 +23,13 @@ import React, {
 import PropTypes from 'prop-types';
 import {
     Box,
-    Button,
     Dialog,
     DialogContent,
     DialogTitle,
     IconButton,
-    Tooltip,
     Typography,
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 import { MapContainer, TileLayer, Marker, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -47,7 +43,7 @@ import announcementMarkerPng from '../../../assets/mapMarkers/community/announce
 import discussionMarkerPng from '../../../assets/mapMarkers/community/discussion-marker.png';
 import lostAndFoundMarkerPng from '../../../assets/mapMarkers/community/lost-and-found-marker.png';
 import publicSafetyAlertMarkerPng from '../../../assets/mapMarkers/community/public-safety-alert-marker.png';
-import recommendationAndTipsMarkerPng from '../../../assets/mapMarkers/community/recommendation-and-tips-marker.png';
+import recommendationsMarkerPng from '../../../assets/mapMarkers/community/recommendations-marker.png';
 import volunteerHelpRequestsMarkerPng from '../../../assets/mapMarkers/community/volunteer-help-requests-marker.png';
 
 import { PostCard as CommunityPostCard } from '../../community/CommunityList';
@@ -94,7 +90,7 @@ const announcementDivIcon = makeDivIcon(announcementMarkerPng);
 const discussionDivIcon = makeDivIcon(discussionMarkerPng);
 const lostAndFoundDivIcon = makeDivIcon(lostAndFoundMarkerPng);
 const publicSafetyAlertDivIcon = makeDivIcon(publicSafetyAlertMarkerPng);
-const recommendationDivIcon = makeDivIcon(recommendationAndTipsMarkerPng);
+const recommendationDivIcon = makeDivIcon(recommendationsMarkerPng);
 const volunteerHelpDivIcon = makeDivIcon(volunteerHelpRequestsMarkerPng);
 
 const CATEGORY_ICON_MAP = {
@@ -451,16 +447,6 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
         []
     );
 
-    const isOwner = useMemo(() => {
-        const viewerId = Number(user?.id || 0);
-        const postUserId = Number(post?.user_id || 0);
-        if (viewerId && postUserId && viewerId === postUserId) return true;
-
-        const vh = normHandle(user?.handle);
-        const ph = normHandle(post?.handle);
-        return !!(vh && ph && vh === ph);
-    }, [normHandle, post?.handle, post?.user_id, user?.handle, user?.id]);
-
     const isEdited = useMemo(() => {
         const ea = post?.edited_at || post?.editedAt || post?.updated_at || null;
         if (!ea) return false;
@@ -479,11 +465,6 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
     const lostOrFound = String(post?.lost_or_found || '').toLowerCase();
     const resolvedAt = post?.resolved_at || post?.resolvedAt || null;
     const resolvedMessage = post?.resolved_message || post?.resolvedMessage || '';
-
-    const showMarkFound =
-        isOwner &&
-        (lostOrFound === 'lost' || (!lostOrFound && String(post?.category || '') === 'lost-and-found')) &&
-        !resolvedAt;
 
     const displayPost = useMemo(() => {
         if (!resolvedAt) return post;
@@ -508,148 +489,12 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
         return () => clearTimeout(t);
     }, [post?.id, post?.category, post?.lost_or_found, post?.rec_type]);
 
-    const topEdit = 10;
-    const topCategory = isOwner ? 46 : 10;
-    const topResolved = isOwner ? 78 : 42;
-
     return (
-        <Box ref={rootRef} sx={{ position: 'relative' }}>
-            {isOwner ? (
-                <Box
-                    sx={{
-                        position: 'absolute',
-                        top: topEdit,
-                        right: 12,
-                        zIndex: 7,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.75,
-                        flexWrap: 'wrap',
-                        justifyContent: 'flex-end',
-                    }}
-                    onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }}
-                >
-                    <Tooltip title="Edit post">
-                        <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<EditIcon fontSize="small" />}
-                            onClick={() => {
-                                fire('ll:communityPost:requestEdit', { postId: post?.id, post });
-                            }}
-                            sx={{
-                                textTransform: 'none',
-                                lineHeight: 1.1,
-                                px: 1,
-                                py: 0.4,
-                                minWidth: 0,
-                                borderRadius: 999,
-                                bgcolor: 'rgba(255,255,255,0.92)',
-                                borderColor: 'divider',
-                                boxShadow: '0 4px 14px rgba(0,0,0,0.10)',
-                                '&:hover': { bgcolor: 'rgba(255,255,255,1)' },
-                            }}
-                        >
-                            Edit Post
-                        </Button>
-                    </Tooltip>
-
-                    <Tooltip title="Delete post">
-                        <Button
-                            size="small"
-                            variant="contained"
-                            color="error"
-                            startIcon={<DeleteOutlineIcon fontSize="small" />}
-                            onClick={() => {
-                                fire('ll:communityPost:requestDelete', { postId: post?.id, post });
-                            }}
-                            sx={{
-                                textTransform: 'none',
-                                lineHeight: 1.1,
-                                px: 1,
-                                py: 0.4,
-                                minWidth: 0,
-                                borderRadius: 999,
-                                boxShadow: '0 4px 14px rgba(0,0,0,0.10)',
-                                '&:hover': { opacity: 0.95 },
-                            }}
-                        >
-                            Delete
-                        </Button>
-                    </Tooltip>
-                </Box>
-            ) : null}
-
-            <Box
-                sx={{
-                    position: 'absolute',
-                    top: topCategory,
-                    right: 12,
-                    zIndex: 6,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.75,
-                    maxWidth: 'calc(100% - 24px)',
-                }}
-                onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }}
-            >
-                <Box
-                    ref={categoryHostRef}
-                    data-ll-category-host="1"
-                    sx={{ display: 'flex', alignItems: 'center', flex: '0 1 auto' }}
-                />
-                {showMarkFound ? (
-                    <Button
-                        size="small"
-                        variant="contained"
-                        onClick={() => {
-                            fire('ll:communityPost:requestMarkFound', { postId: post?.id, post });
-                        }}
-                        sx={{
-                            textTransform: 'none',
-                            lineHeight: 1.1,
-                            px: 1,
-                            py: 0.4,
-                            minWidth: 0,
-                            borderRadius: 999,
-                            flex: '0 0 auto',
-                        }}
-                    >
-                        Mark as Found
-                    </Button>
-                ) : null}
-            </Box>
-
-            {resolvedAt ? (
-                <Box
-                    sx={{
-                        position: 'absolute',
-                        top: topResolved,
-                        right: 12,
-                        zIndex: 5,
-                        bgcolor: 'rgba(255,193,7,0.18)',
-                        border: '1px solid',
-                        borderColor: 'rgba(255,193,7,0.55)',
-                        borderRadius: 999,
-                        px: 1,
-                        py: 0.25,
-                        pointerEvents: 'none',
-                    }}
-                >
-                    <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                        Marked as Found by the Owner
-                    </Typography>
-                </Box>
-            ) : null}
-
+        <Box ref={rootRef} sx={{ position: 'relative', height: '100%' }}>
             <CommunityPostCard
                 {...rest}
+                actionBarVariant="profile"
+                forceProfileActionBar
                 post={displayPost || post}
                 viewer={user}
                 me={user}
@@ -665,34 +510,6 @@ export const ProfilePostCard = memo(function ProfilePostCard(props) {
                 onOpenUserCard={onOpenUserCard}
                 onOpenShare={onOpenShare}
             />
-
-            {isEdited ? (
-                <Box sx={{ position: 'absolute', right: 12, bottom: 10, zIndex: 4 }}>
-                    <Typography
-                        variant="caption"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            fire('ll:communityPost:requestHistory', { postId: post?.id, post });
-                        }}
-                        sx={{
-                            cursor: 'pointer',
-                            fontWeight: 700,
-                            px: 0.75,
-                            py: 0.2,
-                            borderRadius: 1,
-                            userSelect: 'none',
-                            bgcolor: 'rgba(255,255,255,0.75)',
-                            border: '1px solid',
-                            borderColor: 'divider',
-                            '&:hover': { bgcolor: 'rgba(255,235,59,0.60)' },
-                        }}
-                        title="Click to view edit history"
-                    >
-                        Edited
-                    </Typography>
-                </Box>
-            ) : null}
         </Box>
     );
 });
@@ -716,8 +533,8 @@ ProfilePostCard.propTypes = {
    List chunking
    ─────────────────────────────────────────── */
 
-const CHUNK_SIZE = 20;
-const LOAD_MORE_AT = 15;
+const CHUNK_SIZE = 50;
+const LOAD_MORE_AT = 40;
 
 export default function ProfilePostsList({
                                              user,
@@ -726,6 +543,7 @@ export default function ProfilePostsList({
                                              hoveredId,
                                              setHoveredId,
                                              onCardClick,
+                                             onVisibleCountChange,
                                          }) {
     const list = useMemo(() => (Array.isArray(posts) ? posts : []), [posts]);
 
@@ -735,6 +553,11 @@ export default function ProfilePostsList({
     }, [list.length]);
 
     const visibleCount = Math.min(renderCount, list.length);
+
+    useEffect(() => {
+        if (typeof onVisibleCountChange === 'function') onVisibleCountChange(visibleCount);
+    }, [visibleCount, onVisibleCountChange]);
+
     const sentinelAfterIndex = Math.max(0, visibleCount - (CHUNK_SIZE - LOAD_MORE_AT));
     const loadMoreRef = useRef(null);
 
@@ -799,31 +622,55 @@ export default function ProfilePostsList({
                 String(user.handle).toLowerCase() === String(userForCard.handle).toLowerCase()));
 
     return (
-        <Box sx={{ position: 'relative', minHeight: 240, width: '100%', overflow: 'hidden' }}>
+        <Box
+            sx={{
+                position: 'relative',
+                minHeight: 240,
+                width: '100%',
+                maxWidth: '100%',
+                minWidth: 0,
+                overflowX: 'hidden',
+                overflowY: 'visible',
+                boxSizing: 'border-box',
+            }}
+        >
             {loading && visibleCount === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
                     Loading…
                 </Typography>
             ) : null}
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
+            <Box
+                sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr)',
+                    gap: 2,
+                    width: '100%',
+                    maxWidth: '100%',
+                    minWidth: 0,
+                    overflowX: 'hidden',
+                    boxSizing: 'border-box',
+                }}
+            >
                 {list.slice(0, visibleCount).map((p, i) => (
                     <React.Fragment key={`${p?.category || 'post'}-${p?.id || i}`}>
-                        <ProfilePostCard
-                            post={p}
-                            user={user}
-                            hoveredId={hoveredId}
-                            setHoveredId={setHoveredId}
-                            previewWords={28}
-                            previewLineClamp={4}
-                            onCardClick={onCardClick}
-                            onOpenUserCard={handleOpenUserCard}
-                            onOpenShare={(post0) => {
-                                setSharePost(post0);
-                                setShareOpen(true);
-                            }}
-                            onOpenLocationMap={openLocForPost}
-                        />
+                        <Box sx={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'hidden', boxSizing: 'border-box' }}>
+                            <ProfilePostCard
+                                post={p}
+                                user={user}
+                                hoveredId={hoveredId}
+                                setHoveredId={setHoveredId}
+                                previewWords={28}
+                                previewLineClamp={4}
+                                onCardClick={onCardClick}
+                                onOpenUserCard={handleOpenUserCard}
+                                onOpenShare={(post0) => {
+                                    setSharePost(post0);
+                                    setShareOpen(true);
+                                }}
+                                onOpenLocationMap={openLocForPost}
+                            />
+                        </Box>
                         {i === sentinelAfterIndex - 1 ? <Box ref={loadMoreRef} sx={{ height: 1 }} /> : null}
                     </React.Fragment>
                 ))}
@@ -876,4 +723,5 @@ ProfilePostsList.propTypes = {
     hoveredId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     setHoveredId: PropTypes.func,
     onCardClick: PropTypes.func,
+    onVisibleCountChange: PropTypes.func,
 };
